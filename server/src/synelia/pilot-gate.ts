@@ -29,13 +29,12 @@ export const PILOT_ALLOWED_PREFIXES = [
 
 /**
  * /api/admin is NOT a prefix in the pilot: exact METHOD + path only. The People screen reads its
- * list and the admin status; every write (role, access), credentials, identity providers,
+ * list (GET /api/admin/people only); /api/admin/status, every write (role, access), credentials, identity providers,
  * enterprise, package, audit events, learning, and any router mounted under /api/admin later,
  * answers 404. Role changes go through deploy/synelia/add-tester.sh --role in announced windows.
  */
 export const PILOT_ADMIN_ALLOWED: readonly (readonly [string, string])[] = [
-  ["GET", "/api/admin/people"],
-  ["GET", "/api/admin/status"],
+  ["GET", "/api/admin/people"], // search/cursor ride in the query string (lib/people/queries.ts)
 ];
 /*
  * Deliberately NOT allowed (settings screens outside phase 0, gate item 6): approval settings

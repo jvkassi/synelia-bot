@@ -66,7 +66,7 @@ test("gate 10: tools are an allowlist (ask*/show* known names only)", async () =
   expect(pilotTools(offered, false)).toBe(offered);
 });
 
-test("pilot: /api/admin is exact METHOD + path (GET people, GET status); everything else 404", async () => {
+test("pilot: /api/admin is exact METHOD + path (GET people only); everything else 404", async () => {
   const { requireAdmin } = await import("../src/auth/guards");
   // Same order as the app: pilot gate, then a requireUser stand-in, then the real handlers' guard.
   const build = (role: "admin" | "user") => {
@@ -101,6 +101,8 @@ test("pilot: /api/admin is exact METHOD + path (GET people, GET status); everyth
     ["POST", "/api/admin/people"],
     ["DELETE", "/api/admin/people"],
     ["POST", "/api/admin/status"],
+    ["GET", "/api/admin/status"],
+    ["POST", "/api/admin/enterprise/people/u2/terminate-computers"],
     ["GET", "/api/admin/people/u2"],
     ["GET", "/api/admin"],
     ["GET", "/api/admin/some-future-router"],
@@ -112,14 +114,12 @@ test("pilot: /api/admin is exact METHOD + path (GET people, GET status); everyth
       path,
       (await admin.request(path, { method })).status,
     ]).toEqual([method, path, 404]);
-  for (const path of ["/api/admin/people", "/api/admin/status"])
-    expect((await admin.request(path)).status).toBe(200);
+  expect((await admin.request("/api/admin/people")).status).toBe(200);
   expect((await admin.request("/api/admin/people?cursor=x")).status).toBe(200);
   const user = build("user");
-  for (const [method, path] of [
-    ...closed,
-    ["GET", "/api/admin/people"],
-    ["GET", "/api/admin/status"],
-  ] as [string, string][])
+  for (const [method, path] of [...closed, ["GET", "/api/admin/people"]] as [
+    string,
+    string,
+  ][])
     expect([403, 404]).toContain((await user.request(path, { method })).status);
 });
