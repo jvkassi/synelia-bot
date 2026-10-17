@@ -189,7 +189,7 @@ function RouteComponent() {
           </ComboboxContent>
         </Combobox>
         {/* Synelia fork: pick the model before the first message. */}
-        <SyneliaModelPicker />
+        <SyneliaModelPicker startOnDefault />
       </div>
       <ConversationView
         // Choosing a coworker answers the "To:" field, so the message is what remains: the caret

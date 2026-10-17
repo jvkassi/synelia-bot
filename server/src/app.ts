@@ -1953,6 +1953,26 @@ export function createApp(
     return context.json(run);
   });
 
+  /*
+   * Synelia fork: in local (Postgres) mode, the "is this remembered thread still known" check is
+   * answered here, under the same owner rule as every thread read (somebody else's id = unknown),
+   * and also carries the last run's error so the app can redraw the error line after a reload.
+   * Registered before OpenBot's route, which it answers for.
+   */
+  app.get("/api/threads/:threadId", requireUser, async (context, next) => {
+    const local = config.runtime.intelligence.local;
+    if (!local) return next();
+    const store = localIntelligence(local.databaseUrl);
+    const params = { threadId: context.req.param("threadId"), userId: context.var.actor.id };
+    try {
+      const lastError = await store.lastRunError(params);
+      return context.json({ known: true, lastError });
+    } catch (error) {
+      if ((error as { status?: number }).status === 404) return context.json({ known: false, lastError: null });
+      return context.json({ error: "Could not check thread status." }, 502);
+    }
+  });
+
   if (threadIdentity) {
     app.route(
       "/api/threads",

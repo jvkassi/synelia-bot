@@ -28,6 +28,8 @@ export type ModelOption = {
   providerLabel: string;
   model: string;
   usage: string;
+  /** False when the provider's key cannot run models (e.g. an OpenRouter management key). */
+  available: boolean;
 };
 
 const env = (name: string) => process.env[name]?.trim() || undefined;
@@ -104,13 +106,45 @@ export function modelOptions(): ModelOption[] {
           providerLabel: provider.label,
           model: id.slice(colon + 1),
           usage,
+          available: availability.get(provider.id) !== false,
         },
       ];
     });
 }
 
+/**
+ * Whether each provider's key can actually run a model. Probed, never assumed from the key's mere
+ * presence: an OpenRouter management/provisioning key is accepted by /key but cannot do inference.
+ * Unknown (not probed yet) counts as available. Refreshed at most every 5 minutes.
+ */
+const availability = new Map<string, boolean>();
+let probedAt = 0;
+
+export async function probeProviders(force = false): Promise<void> {
+  if (!force && Date.now() - probedAt < 5 * 60_000) return;
+  probedAt = Date.now();
+  const openrouter = syneliaProviders().get("openrouter");
+  if (openrouter) {
+    try {
+      const response = await fetch(`${openrouter.baseURL}/key`, {
+        headers: { Authorization: `Bearer ${openrouter.apiKey}` },
+        signal: AbortSignal.timeout(5_000),
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        data?: { is_management_key?: boolean; is_provisioning_key?: boolean };
+      };
+      availability.set(
+        "openrouter",
+        response.ok && !body.data?.is_management_key && !body.data?.is_provisioning_key,
+      );
+    } catch {
+      // Network trouble says nothing about the key: keep the last answer.
+    }
+  }
+}
+
 export function defaultModelId(): string | undefined {
-  const options = modelOptions();
+  const options = modelOptions().filter((option) => option.available);
   const wanted = env("SYNELIA_DEFAULT_MODEL");
   return options.find((option) => option.id === wanted)?.id ?? options[0]?.id;
 }
@@ -121,7 +155,7 @@ const cache = new Map<string, ReturnType<ReturnType<typeof createOpenAI>["chat"]
 export function resolveSyneliaModel(picked: string | undefined) {
   const options = modelOptions();
   const option =
-    options.find((candidate) => candidate.id === picked) ??
+    options.find((candidate) => candidate.id === picked && candidate.available) ??
     options.find((candidate) => candidate.id === defaultModelId());
   if (!option) throw new Error("SYNELIA_MODELS lists no model of an enabled provider.");
   const cached = cache.get(option.id);

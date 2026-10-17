@@ -23,7 +23,7 @@ import {
 } from "../../../shared/model-providers";
 import {
   defaultModelId,
-  modelOptions,
+  modelOptions, probeProviders,
   pickedModel,
   resolveSyneliaModel,
 } from "./synelia-models";
@@ -164,6 +164,9 @@ function carriesTheServerToken(request: Request): boolean {
   return difference === 0;
 }
 
+// Synelia fork: learn at boot which providers can really answer (picker + fallback).
+void probeProviders(true);
+
 export const mastra = new Mastra({
   agents: { openbot },
   server: {
@@ -188,8 +191,10 @@ export const mastra = new Mastra({
       // Synelia fork: the allowlist the app's model picker shows (ids and labels, never keys).
       registerApiRoute("/synelia/models", {
         method: "GET",
-        handler: async (context) =>
-          context.json({ models: modelOptions(), defaultModel: defaultModelId() ?? null }),
+        handler: async (context) => {
+          await probeProviders();
+          return context.json({ models: modelOptions(), defaultModel: defaultModelId() ?? null });
+        },
       }),
     ],
   },

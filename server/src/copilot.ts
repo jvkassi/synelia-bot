@@ -1,4 +1,5 @@
 import type { Message, RunAgentInput } from "@ag-ui/client";
+import { createModelListSource } from "./synelia/models";
 import { type AbstractAgent, HttpAgent } from "@ag-ui/client";
 import type { BuiltInAgentConfiguration } from "@copilotkit/runtime/v2";
 import {
@@ -47,7 +48,7 @@ import type { DeploymentConfig } from "./config";
 import { observeModelConnection } from "./desktop-connection-failure";
 import { desktopTelemetryProperties } from "./desktop-telemetry";
 import { observeIntelligenceAuthentication } from "./intelligence-client";
-import { localIntelligence } from "./persistence/local-intelligence";
+import { type LocalIntelligence, localIntelligence } from "./persistence/local-intelligence";
 import { PostgresAgentRunner } from "./persistence/postgres-runner";
 import { requestUser } from "./persistence/request-user";
 import { RemoteLearnedSkillsMiddleware } from "./learning/remote";
@@ -1751,7 +1752,15 @@ export function mountCopilotRuntime(
   const local = intelligence.local
     ? localIntelligence(intelligence.local.databaseUrl)
     : undefined;
-  const postgresRunner = local ? new PostgresAgentRunner(local) : undefined;
+  const postgresRunner = local
+    ? new PostgresAgentRunner(
+        local,
+        createModelListSource(
+          config.managedAgent?.alsoRun ?? config.managedAgent?.endpoint,
+          config.managedAgent?.token,
+        ),
+      )
+    : undefined;
   if (postgresRunner) void local?.ready().then(() => postgresRunner.warm());
 
   const intelligenceClient: CopilotKitIntelligence = local
@@ -1839,7 +1848,7 @@ export function mountCopilotRuntime(
 
   return {
     handler: postgresRunner
-      ? withRequestUser(runtimeHandler, postgresRunner, identifyUser, basePath)
+      ? withRequestUser(runtimeHandler, postgresRunner, local as LocalIntelligence, identifyUser, basePath)
       : runtimeHandler,
     /** Synelia fork: the durable runner (also used for headless turns). */
     postgresRunner,
@@ -1903,6 +1912,7 @@ export function mountCopilotRuntime(
 function withRequestUser(
   inner: ReturnType<typeof createCopilotHonoHandler>,
   runner: PostgresAgentRunner,
+  store: LocalIntelligence,
   identifyUser: IdentifyUser,
   basePath: string,
 ) {
@@ -1911,6 +1921,7 @@ function withRequestUser(
   const threadRead = new RegExp(
     `^${prefix}/threads/([^/]+)/(messages|events|state)$`,
   );
+  const threadMutation = new RegExp(`^${prefix}/threads/([^/]+)(/archive)?$`);
   wrapper.use(`${basePath}/*`, async (context, next) => {
     let user: { id: string; name: string } | undefined;
     try {
@@ -1923,6 +1934,37 @@ function withRequestUser(
       return context.json({ error: "Sign in to use this deployment." }, 401);
     }
     return requestUser.run(user, async () => {
+      // Synelia fork: rename / archive / delete. The SSE runtime refuses them (422, they need
+      // Intelligence), so they are answered here: owner-only (404 otherwise), and the runner's
+      // thread index is updated by the store's change event.
+      const mutation = threadMutation.exec(context.req.path);
+      const method = context.req.method;
+      if (mutation?.[1] && (method === "PATCH" || method === "DELETE" || (mutation[2] && method !== "GET"))) {
+        const threadId = decodeURIComponent(mutation[1]);
+        const params = { threadId, userId: user.id, agentId: "" };
+        try {
+          if (method === "DELETE" && !mutation[2]) {
+            await store.deleteThread(params);
+            return context.body(null, 204);
+          }
+          if (mutation[2]) {
+            await store.archiveThread(params);
+            return context.body(null, 204);
+          }
+          const body = (await context.req.json().catch(() => ({}))) as {
+            name?: unknown;
+            archived?: unknown;
+          };
+          const updates: { name?: string; archived?: boolean } = {};
+          if (typeof body.name === "string" && body.name.trim()) updates.name = body.name.trim().slice(0, 200);
+          if (typeof body.archived === "boolean") updates.archived = body.archived;
+          return context.json({ thread: await store.updateThread({ ...params, updates }) });
+        } catch (error) {
+          if ((error as { status?: number }).status === 404)
+            return context.json({ error: "Thread not found." }, 404);
+          throw error;
+        }
+      }
       const match = threadRead.exec(context.req.path);
       if (match?.[1]) {
         const allowed = await runner.prepareThreadRead(

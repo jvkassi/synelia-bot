@@ -104,7 +104,7 @@ function RouteComponent() {
           ) : null}
           {/* Synelia fork: the model is chosen before the first message too. */}
           <div className="mt-3">
-            <SyneliaModelPicker />
+            <SyneliaModelPicker startOnDefault />
           </div>
           {error ? (
             <p

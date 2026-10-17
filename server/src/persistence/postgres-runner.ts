@@ -23,6 +23,7 @@ import {
 } from "@copilotkit/runtime/v2";
 import { defer, from, type Observable, switchMap } from "rxjs";
 import type { LocalIntelligence, LocalThreadSummary } from "./local-intelligence";
+import { resolveModel, type SyneliaModelList } from "../synelia/models";
 import { requestUser } from "./request-user";
 
 type HistoricRun = {
@@ -46,9 +47,31 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
   readonly #index = new Map<string, LocalThreadSummary>();
   readonly #global = ɵGLOBAL_STORE as unknown as GlobalStore;
 
-  constructor(store: LocalIntelligence) {
+  readonly #models: () => Promise<SyneliaModelList | undefined>;
+
+  constructor(
+    store: LocalIntelligence,
+    models: () => Promise<SyneliaModelList | undefined> = async () => undefined,
+  ) {
     super({ maxThreads: 500, maxRunsPerThread: 200 });
     this.#store = store;
+    this.#models = models;
+    // Rename / archive / delete / title: the index follows at once, not at the next run's end.
+    store.onThreadChange((change) => this.applyThreadChange(change));
+  }
+
+  applyThreadChange(
+    change:
+      | { kind: "updated"; thread: LocalThreadSummary }
+      | { kind: "deleted"; threadId: string },
+  ): void {
+    if (change.kind === "deleted") this.#index.delete(change.threadId);
+    else this.#index.set(change.thread.id, change.thread);
+  }
+
+  /** For tests and the thread mutation route. */
+  indexed(threadId: string): LocalThreadSummary | undefined {
+    return this.#index.get(threadId);
   }
 
   /** Load the thread index at boot. Failure is logged, not fatal: the index fills as people talk. */
@@ -127,35 +150,25 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
           const store = this.#global.peek(request.threadId);
           const run = store?.historicRuns.find((candidate) => candidate.runId === runId);
           if (!run) return;
-          void this.#store
-            .saveRun({
-              runId,
-              threadId: request.threadId,
-              agentId,
-              parentRunId: run.parentRunId ?? null,
-              events: run.events,
-              messages: store?.messagesSnapshot ?? [],
-              createdAt: run.createdAt ?? Date.now(),
-              // A provider failure arrives as a RUN_ERROR event on a stream that still completes.
-              status: run.events.some((event) => event.type === "RUN_ERROR") ? "error" : status,
-              ...modelOf(request),
-              ...(user ? { userId: user.id } : {}),
-            })
-            .then(() => {
-              const known = this.#index.get(request.threadId);
-              const now = new Date().toISOString();
-              this.#index.set(request.threadId, {
-                id: request.threadId,
-                name: known?.name ?? null,
+          void this.#models()
+            .catch(() => undefined)
+            .then((list) =>
+              this.#store.saveRun({
+                runId,
+                threadId: request.threadId,
                 agentId,
-                createdById: known?.createdById ?? user?.id ?? "",
-                organizationId: "",
-                archived: known?.archived ?? false,
-                createdAt: known?.createdAt ?? now,
-                updatedAt: now,
-                lastRunAt: now,
-              });
-            })
+                parentRunId: run.parentRunId ?? null,
+                events: run.events,
+                messages: store?.messagesSnapshot ?? [],
+                createdAt: run.createdAt ?? Date.now(),
+                // A provider failure arrives as a RUN_ERROR event on a stream that still completes.
+                status: run.events.some((event) => event.type === "RUN_ERROR") ? "error" : status,
+                // The model that really answered: allowlist + availability + default fallback,
+                // the rule Mastra applies, never the browser's header as sent.
+                ...resolveModel(pickedModel(request), list),
+                ...(user ? { userId: user.id } : {}),
+              }),
+            )
             .catch((error) =>
               console.error(
                 JSON.stringify({
@@ -212,13 +225,11 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
   }
 }
 
-/** Provider and model the run asked for, from the "Synelia model" context entry (`provider:model`). */
-function modelOf(request: AgentRunnerRunRequest): { provider?: string; model?: string } {
+/** The "Synelia model" context entry as the browser sent it (`provider:model`), unvalidated. */
+export function pickedModel(request: AgentRunnerRunRequest): string | undefined {
   const entry = (request.input.context ?? []).find(
     (candidate) => candidate.description === "Synelia model",
   );
   const value = typeof entry?.value === "string" ? entry.value.replace(/^"|"$/g, "").trim() : "";
-  const colon = value.indexOf(":");
-  if (colon <= 0) return {};
-  return { provider: value.slice(0, colon), model: value.slice(colon + 1) };
+  return value || undefined;
 }

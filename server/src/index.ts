@@ -1,4 +1,5 @@
 import type { AbstractAgent } from "@ag-ui/client";
+import { createModelListSource } from "./synelia/models";
 import {
   CopilotKitIntelligence,
   IntelligenceAgentRunner,
@@ -1577,6 +1578,10 @@ const buildAgentFor = async ({
 const routineAgentRunner = config.runtime.intelligence.local
   ? new PostgresAgentRunner(
       localIntelligence(config.runtime.intelligence.local.databaseUrl),
+      createModelListSource(
+        config.managedAgent?.alsoRun ?? config.managedAgent?.endpoint,
+        config.managedAgent?.token,
+      ),
     )
   : new IntelligenceAgentRunner({
       url: routineIntelligence.ɵgetRunnerWsUrl(),

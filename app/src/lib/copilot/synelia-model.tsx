@@ -9,7 +9,7 @@
 import { useAgentContext } from "@copilotkit/react-core/v2";
 import { ui } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { client } from "@/lib/client";
 
 export type SyneliaModel = {
@@ -18,6 +18,8 @@ export type SyneliaModel = {
   providerLabel: string;
   model: string;
   usage: string;
+  /** False when the provider's key cannot run models yet; such models are not offered. */
+  available?: boolean;
 };
 
 type ModelList = { models: SyneliaModel[]; defaultModel: string | null };
@@ -48,6 +50,11 @@ export function useModelList() {
       (await (
         await client("/api/synelia/models", { fallback: "Could not load models" })
       ).json()) as ModelList,
+    // Unavailable providers (e.g. OpenRouter before an inference key) are not offered at all.
+    select: (list: ModelList): ModelList => ({
+      ...list,
+      models: list.models.filter((model) => model.available !== false),
+    }),
     staleTime: 5 * 60_000,
   });
 }
@@ -68,7 +75,16 @@ export function SyneliaModelContext() {
   return null;
 }
 
-export function SyneliaModelPicker() {
+/**
+ * `startOnDefault`: a new conversation always begins on the deployment default, not on whatever
+ * was picked last time; the choice made here then applies to the conversation it starts.
+ */
+export function SyneliaModelPicker({ startOnDefault = false }: { startOnDefault?: boolean } = {}) {
+  useEffect(() => {
+    if (!startOnDefault) return;
+    window.localStorage.removeItem(STORAGE_KEY);
+    window.dispatchEvent(new Event(CHANGE_EVENT));
+  }, [startOnDefault]);
   const { data } = useModelList();
   const selected = useSyneliaModel();
   const models = data?.models ?? [];
@@ -162,3 +178,28 @@ export const syneliaRunModelRenderer = {
       <RunModelLabel runId={runId} />
     ) : null,
 };
+
+/**
+ * After a reload: the stored error of the thread's last run (status "error" in synelia_thread_run),
+ * read from GET /api/threads/:id under its owner check. Only shown while the conversation still ends
+ * on the person's message, i.e. nothing answered after the failure.
+ */
+export function useStoredRunError(
+  threadId: string | undefined,
+  endsOnUserMessage: boolean,
+): string | null {
+  const { data } = useQuery({
+    queryKey: ["synelia", "thread-error", threadId],
+    enabled: Boolean(threadId),
+    queryFn: async () => {
+      const response = await fetch(`/api/threads/${encodeURIComponent(threadId ?? "")}`, {
+        credentials: "include",
+      });
+      if (!response.ok) return null;
+      const body = (await response.json()) as { lastError?: { message?: string | null } | null };
+      return body.lastError?.message ?? null;
+    },
+    staleTime: 30_000,
+  });
+  return endsOnUserMessage ? (data ?? null) : null;
+}

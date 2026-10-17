@@ -1,4 +1,5 @@
 import type { Message } from "@ag-ui/core";
+import { useStoredRunError } from "@/lib/copilot/synelia-model";
 import {
   type Attachment,
   CopilotChatConfigurationProvider,
@@ -523,6 +524,12 @@ export function ChannelChat({
 
   // Run failures arrive as events and are reported only for turns started in this mount.
   const [runError, setRunError] = useState<string | null>(null);
+  // Synelia fork: after a reload the live error is gone; the stored one is drawn in its place.
+  const lastMessage = agent.messages[agent.messages.length - 1];
+  const storedRunError = useStoredRunError(
+    channel.threadId ?? undefined,
+    !agent.isRunning && lastMessage?.role === "user",
+  );
   const awaitingReply = useRef(false);
   /**
    * WHY THIS TURN ENDED WITHOUT AN ANSWER, KEPT WHERE `deliver` CAN STILL SEE IT — because the one
@@ -1054,7 +1061,7 @@ export function ChannelChat({
              * streaming says so, because the deployment's stall watchdog writes that sentence into the
              * run before closing it; see server/src/channels/stall-guard.ts.
              */
-            stopped={runError ?? undefined}
+            stopped={runError ?? storedRunError ?? undefined}
           />
         </div>
       </ConversationProvider>

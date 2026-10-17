@@ -26,7 +26,9 @@ class LocalIntelligenceError extends Error {
     readonly status: number,
   ) {
     super(message);
-    this.name = "LocalIntelligenceError";
+    // The name the platform client gives its errors: toolkit/src/lease.ts `isLockConflict` reads it
+    // (with status 409) to stop a turn whose lock was lost.
+    this.name = "PlatformRequestError";
   }
 }
 
@@ -191,6 +193,16 @@ export class LocalIntelligence {
     throw new LocalIntelligenceError("No managed channel assets locally.", 404);
   }
 
+  /** Told after every rename, archive, delete or title change (the runner's in-memory index). */
+  readonly #threadListeners = new Set<(change: ThreadChange) => void>();
+  onThreadChange(listener: (change: ThreadChange) => void): () => void {
+    this.#threadListeners.add(listener);
+    return () => this.#threadListeners.delete(listener);
+  }
+  #emit(change: ThreadChange) {
+    for (const listener of this.#threadListeners) listener(change);
+  }
+
   // ---- threads (ThreadStore) ------------------------------------------------------------------
   async listThreads(params: {
     userId: string;
@@ -283,7 +295,9 @@ export class LocalIntelligence {
         updated_at = now()
       WHERE id = ${params.threadId}
       RETURNING *`) as ThreadRow[];
-    return toSummary(rows[0] as ThreadRow);
+    const summary = toSummary(rows[0] as ThreadRow);
+    this.#emit({ kind: "updated", thread: summary });
+    return summary;
   }
 
   async archiveThread(params: { threadId: string; userId: string; agentId: string }) {
@@ -293,6 +307,32 @@ export class LocalIntelligence {
   async deleteThread(params: { threadId: string; userId: string }) {
     await this.getThread(params);
     await this.#sql`UPDATE synelia_thread SET deleted_at = now() WHERE id = ${params.threadId}`;
+    this.#emit({ kind: "deleted", threadId: params.threadId });
+  }
+
+  /** The last run of the thread, if it ended in error, with its stored technical message. */
+  async lastRunError(params: { threadId: string; userId: string }) {
+    await this.getThread(params);
+    const rows = (await this.#sql`
+      SELECT run_id, status, provider, model, events FROM synelia_thread_run
+      WHERE thread_id = ${params.threadId} ORDER BY seq DESC LIMIT 1`) as {
+      run_id: string;
+      status: string;
+      provider: string | null;
+      model: string | null;
+      events: unknown;
+    }[];
+    const last = rows[0];
+    if (!last || last.status !== "error") return null;
+    const event = jsonArray(last.events).find(
+      (candidate) => (candidate as { type?: string }).type === "RUN_ERROR",
+    ) as { message?: unknown } | undefined;
+    return {
+      runId: last.run_id,
+      provider: last.provider,
+      model: last.model,
+      message: typeof event?.message === "string" ? event.message : null,
+    };
   }
 
   async getThreadMessages(params: { threadId: string; userId: string }) {
@@ -361,8 +401,15 @@ export class LocalIntelligence {
               ${JSON.stringify(run.events)}::text::jsonb, ${JSON.stringify(run.messages)}::text::jsonb)
       ON CONFLICT (run_id) DO UPDATE SET events = EXCLUDED.events, messages = EXCLUDED.messages,
         status = EXCLUDED.status`;
-    await this.#sql`
-      UPDATE synelia_thread SET updated_at = now(), last_run_at = now() WHERE id = ${run.threadId}`;
+    // Title: set once, from the first user message of the first run that did not fail. A name that
+    // is already there (an earlier title or an explicit rename) is never overwritten.
+    const title = run.status === "error" ? null : threadTitle(run.messages);
+    const rows = (await this.#sql`
+      UPDATE synelia_thread SET updated_at = now(), last_run_at = now(),
+        name = COALESCE(name, ${title})
+      WHERE id = ${run.threadId}
+      RETURNING *`) as ThreadRow[];
+    if (rows[0]) this.#emit({ kind: "updated", thread: toSummary(rows[0]) });
   }
 
   /** Provider and model a run asked for, if the run belongs to `userId`. For "model on answer". */
@@ -408,6 +455,7 @@ export class LocalIntelligence {
       ON CONFLICT (thread_id) DO UPDATE
         SET run_id = EXCLUDED.run_id, expires_at = EXCLUDED.expires_at
         WHERE synelia_thread_lock.expires_at < now()
+           OR synelia_thread_lock.run_id = EXCLUDED.run_id
       RETURNING run_id`) as { run_id: string }[];
     if (!rows[0]) throw new LocalIntelligenceError("Thread is busy.", 409);
     return {
@@ -420,9 +468,13 @@ export class LocalIntelligence {
 
   async ɵrenewThreadLock(params: { threadId: string; runId: string; ttlSeconds: number }) {
     await this.ready();
-    await this.#sql`
+    const rows = (await this.#sql`
       UPDATE synelia_thread_lock SET expires_at = now() + make_interval(secs => ${params.ttlSeconds})
-      WHERE thread_id = ${params.threadId} AND run_id = ${params.runId}`;
+      WHERE thread_id = ${params.threadId} AND run_id = ${params.runId}
+      RETURNING run_id`) as { run_id: string }[];
+    // The lock expired and was taken by another run (or cleaned up): this run no longer holds it.
+    // 409 + PlatformRequestError is what keepLease treats as "lost", and the turn is stopped.
+    if (!rows[0]) throw new LocalIntelligenceError("Thread lock lost.", 409);
     return { ttlSeconds: params.ttlSeconds };
   }
 
@@ -447,4 +499,35 @@ let shared: LocalIntelligence | undefined;
 export function localIntelligence(databaseUrl: string): LocalIntelligence {
   shared ??= new LocalIntelligence(databaseUrl);
   return shared;
+}
+
+export type ThreadChange =
+  | { kind: "updated"; thread: LocalThreadSummary }
+  | { kind: "deleted"; threadId: string };
+
+/** First user message, markdown stripped (** __ # ` > list marks, links), cut near 60 chars. */
+export function threadTitle(messages: unknown[]): string | null {
+  const first = messages.find(
+    (message) => (message as { role?: string }).role === "user",
+  ) as { content?: unknown } | undefined;
+  const raw =
+    typeof first?.content === "string"
+      ? first.content
+      : Array.isArray(first?.content)
+        ? first.content
+            .map((part) => (typeof (part as { text?: unknown }).text === "string" ? (part as { text: string }).text : ""))
+            .join(" ")
+        : "";
+  const plain = raw
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}(#{1,6}|>|[-*+]|\d+\.)\s+/gm, "")
+    .replace(/(\*\*|__|\*|_|~~|`)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!plain) return null;
+  if (plain.length <= 60) return plain;
+  const cut = plain.slice(0, 60);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > 30 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
