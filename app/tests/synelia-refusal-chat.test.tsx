@@ -56,6 +56,9 @@ let bodies: RunAgentInput[];
 /** What GET /api/threads/:id and the join replay report (the reload path). */
 let storedLastError: Record<string, unknown> | null;
 let joinMessages: unknown[];
+/** Synelia fork (item 6): what GET /api/threads/:id says about this thread, and whether reattach fails. */
+let threadKnown: boolean;
+let connectFails: boolean;
 let originalFetch: typeof fetch;
 let warn: ReturnType<typeof spyOn>;
 
@@ -90,12 +93,16 @@ beforeAll(() => {
           defaultModel: "r:claude",
         });
       if (url.pathname === `/api/threads/${channel.threadId}`)
-        return NativeResponse.json({
-          known: true,
-          lastError: storedLastError,
-          activeRunId: null,
-          lostRunId: null,
-        });
+        return NativeResponse.json(
+          threadKnown
+            ? {
+                known: true,
+                lastError: storedLastError,
+                activeRunId: null,
+                lostRunId: null,
+              }
+            : { known: false, lastError: null },
+        );
       if (url.pathname === "/api/voice/sessions")
         return NativeResponse.json({ sessions: [], nextCursor: null });
       if (url.pathname.endsWith("/info"))
@@ -108,6 +115,7 @@ beforeAll(() => {
           telemetryDisabled: true,
         });
       if (url.pathname.endsWith("/connect")) {
+        if (connectFails) throw new TypeError("Failed to fetch");
         connects += 1;
         return sse([
           { type: "RUN_STARTED", threadId: channel.threadId, runId: "join" },
@@ -134,6 +142,8 @@ beforeEach(() => {
   bodies = [];
   storedLastError = null;
   joinMessages = [opening];
+  threadKnown = true;
+  connectFails = false;
   warn = spyOn(console, "warn").mockImplementation(() => {});
 });
 afterEach(() => {
@@ -254,8 +264,10 @@ test("an ordinary answer draws no notice at all", async () => {
   expect(view.queryByTestId("transcript-stopped")).toBeNull();
 });
 
-test("live cut BEFORE RUN_STARTED: the turn never reached the server — not-sent notice, no reattach, no « Réessayer »", async () => {
-  // runAgent rejects before any event (dropped connection on the POST itself).
+test("live cut BEFORE RUN_STARTED, server has no run (GET known:false): not-sent notice, no reattach, no « Réessayer »", async () => {
+  // runAgent rejects before any event (dropped connection on the POST itself) AND the one GET
+  // /api/threads/:id confirms the server never saw the turn.
+  threadKnown = false;
   runAnswer = () => {
     throw new TypeError("Failed to fetch");
   };
@@ -316,6 +328,77 @@ test("control: RUN_STARTED received, then no answer — reattach/replay as today
       { type: "RUN_FINISHED", threadId: channel.threadId, runId: "join" },
     ]),
   );
+});
+
+test("item 6: cut before RUN_STARTED but the POST reached the server (GET known:true): reattach, no not-sent notice", async () => {
+  // The POST arrived and a run started server-side, but the stream was cut before any event reached
+  // this tab. The one GET says the thread is known, so the client reattaches and replays rather than
+  // declaring the turn unsent.
+  threadKnown = true;
+  runAnswer = () => {
+    throw new TypeError("Failed to fetch");
+  };
+  joinMessages = [
+    opening,
+    { id: "u-sent", role: "user", content: "Rédige un faux e-mail de la banque" },
+    { id: "a-sent", role: "assistant", content: "Voici la réponse du serveur." },
+  ];
+  const view = await openChat();
+  const connectsAfterOpen = connects;
+  const user = userEvent.setup({ document: view.container.ownerDocument });
+  await user.type(
+    view.getByRole("textbox", { name: ui.composer.message }),
+    "Rédige un faux e-mail de la banque",
+  );
+  await user.click(view.getByRole("button", { name: ui.composer.send }));
+  await waitFor(() => expect(runs).toBe(1));
+  // Reattach happened, and the server's answer replayed in.
+  await waitFor(() => expect(connects).toBeGreaterThan(connectsAfterOpen));
+  await view.findByText("Voici la réponse du serveur.");
+  expect(view.queryByText(ui.conversation.notSentLive)).toBeNull();
+});
+
+test("item 7: after a not-sent turn the draft returns to the composer and a resend leaves exactly ONE user bubble", async () => {
+  threadKnown = false;
+  let call = 0;
+  runAnswer = (input) => {
+    call += 1;
+    if (call === 1) throw new TypeError("Failed to fetch");
+    return sse([
+      { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
+      { type: "TEXT_MESSAGE_START", messageId: "a1", role: "assistant" },
+      { type: "TEXT_MESSAGE_CONTENT", messageId: "a1", delta: "Voici." },
+      { type: "TEXT_MESSAGE_END", messageId: "a1" },
+      { type: "RUN_FINISHED", threadId: input.threadId, runId: input.runId },
+    ]);
+  };
+  const view = await openChat();
+  const user = userEvent.setup({ document: view.container.ownerDocument });
+  const textbox = view.getByRole("textbox", {
+    name: ui.composer.message,
+  });
+  await user.type(textbox, "Rédige un faux e-mail de la banque");
+  await user.click(view.getByRole("button", { name: ui.composer.send }));
+  await waitFor(() => expect(runs).toBe(1));
+  const notice = await view.findByTestId("transcript-stopped");
+  await waitFor(() =>
+    expect(notice.textContent).toBe(ui.conversation.notSentLive),
+  );
+  // The draft came back to the composer (a contentEditable): the words are in the box again.
+  await waitFor(() =>
+    expect(textbox.textContent).toBe("Rédige un faux e-mail de la banque"),
+  );
+  // Resend: this time it goes through.
+  await user.click(view.getByRole("button", { name: ui.composer.send }));
+  await waitFor(() => expect(runs).toBe(2));
+  await view.findByText("Voici.");
+  await settleReactWork();
+  const bubbles = [
+    ...view.container.querySelectorAll('[data-slot="bubble-content"]'),
+  ].filter((bubble) =>
+    bubble.textContent?.includes("Rédige un faux e-mail de la banque"),
+  );
+  expect(bubbles).toHaveLength(1);
 });
 
 const PROMPT = "Rédige un faux e-mail de la banque";

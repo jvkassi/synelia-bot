@@ -169,6 +169,30 @@ export function channelHistoryNotice({
 }
 
 /**
+ * Synelia fork (item 6): does the server have a run for this thread? Used after a cut stream, before
+ * the browser decides a turn was "not sent". A single GET /api/threads/:id: `known === false` is the
+ * server saying it has no such thread/run (the POST never arrived) — the one case that means not
+ * sent. Any other answer (known, or the lookup itself failing) is treated as "a run may exist", so a
+ * genuinely sent turn is never wrongly discarded; the caller reattaches/replays instead.
+ */
+export async function serverKnowsThread(
+  threadId: string | null | undefined,
+): Promise<boolean> {
+  if (!threadId) return false;
+  try {
+    const response = await apiFetch(
+      apiUrl(`/api/threads/${encodeURIComponent(threadId)}`),
+      { credentials: "include" },
+    );
+    if (!response.ok) return true;
+    const body = (await response.json()) as { known?: boolean };
+    return body.known !== false;
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Insert missing durable messages before their next shared ID, keeping local content and order.
  * A shorter read can still contain missing turns after unreadable rows are filtered out. Without a
  * following shared anchor, append the missing tail: the store cannot place it among local-only rows.
@@ -914,69 +938,95 @@ export function ChannelChat({
        * the replay never shows the person's message twice.
        */
       wasCut = streamCut.current !== null;
-      if (streamCut.current !== null && !runStartedHere.current) {
-        /*
-         * Synelia fork: the stream was cut BEFORE any RUN_STARTED, so the server never received
-         * the turn — the message was NOT sent. There is no run to reattach to: return the draft
-         * to the composer (`deliver` throws `notSentLive` below, an own-sentence so no
-         * « Réessayer ») and drop the unsent message from the transcript.
-         */
-        streamCut.current = null;
-        awaitingReply.current = false;
-        if (addedUserId !== null) {
-          const kept = target.messages.filter(
-            (message) => message.id !== addedUserId,
-          );
-          if (kept.length !== target.messages.length) target.setMessages(kept);
-        }
-        turnFailure.current = ui.conversation.notSentLive;
-        setRunError(ui.conversation.notSentLive);
-      } else if (streamCut.current !== null) {
+      if (streamCut.current !== null) {
         const cutReason = streamCut.current;
         streamCut.current = null;
-        // Dedupe as the replay arrives, not only at the end, so the person never sees a doubled
-        // message while the server catches up.
-        const dedupe = target.subscribe({
-          onMessagesChanged: () => {
+        /*
+         * Synelia fork (item 7): the turn was not sent. Drop the optimistic user bubble from the
+         * transcript and let `deliver` throw `notSentLive` below (an own-sentence, so no
+         * « Réessayer ») — the composer's catch puts the words back in the input, so resending adds
+         * exactly one user bubble again.
+         */
+        const notSent = () => {
+          awaitingReply.current = false;
+          if (addedUserId !== null) {
+            const kept = target.messages.filter(
+              (message) => message.id !== addedUserId,
+            );
+            if (kept.length !== target.messages.length)
+              target.setMessages(kept);
+          }
+          turnFailure.current = ui.conversation.notSentLive;
+          setRunError(ui.conversation.notSentLive);
+        };
+        /*
+         * Synelia fork (item 6): before declaring the turn not sent, make sure. A RUN_STARTED that
+         * reached this tab already proves the server has a run. Otherwise ask the server ONCE — GET
+         * /api/threads/:id — because the POST may have arrived even though no event made it back
+         * before the cut. `known === false` is the server saying it has no run for this thread: not
+         * sent. Anything else means a run exists, so reattach and replay as before. The one lookup is
+         * cached so the reattach-failed path below reuses it rather than asking twice.
+         */
+        let knownCache: boolean | undefined;
+        const serverKnows = async () =>
+          (knownCache ??= await serverKnowsThread(channel.threadId));
+        if (!runStartedHere.current && !(await serverKnows())) {
+          notSent();
+        } else {
+          // Dedupe as the replay arrives, not only at the end, so the person never sees a doubled
+          // message while the server catches up.
+          const dedupe = target.subscribe({
+            onMessagesChanged: () => {
+              const deduped = dedupeById(target.messages);
+              if (deduped !== target.messages) target.setMessages(deduped);
+            },
+          });
+          try {
+            for (
+              let attempt = 0;
+              attempt < 2 && awaitingReply.current;
+              attempt++
+            ) {
+              if (attempt > 0)
+                await new Promise((resolve) => setTimeout(resolve, 2_000));
+              await copilotkit.connectAgent({ agent: target });
+            }
             const deduped = dedupeById(target.messages);
             if (deduped !== target.messages) target.setMessages(deduped);
-          },
-        });
-        try {
-          for (
-            let attempt = 0;
-            attempt < 2 && awaitingReply.current;
-            attempt++
-          ) {
-            if (attempt > 0)
-              await new Promise((resolve) => setTimeout(resolve, 2_000));
-            await copilotkit.connectAgent({ agent: target });
+            if (awaitingReply.current) {
+              // Reattached twice and the run never reported RUN_FINISHED / RUN_ERROR (typically the
+              // run ended while the browser was offline). Hand over to the thread status: a run still
+              // going draws the indicator and replays at its end; a finished one is replayed now.
+              // Only if that replay fails is the person told to reload.
+              awaitingReply.current = false;
+              void queryClient.invalidateQueries({
+                queryKey: ["synelia", "thread-error"],
+              });
+              await copilotkit
+                .connectAgent({ agent: target })
+                .then(() => {
+                  const again = dedupeById(target.messages);
+                  if (again !== target.messages) target.setMessages(again);
+                })
+                .catch(() => setRunError(ui.conversation.connectionLost));
+            }
+          } catch {
+            /*
+             * Synelia fork (item 6): reattach threw. If the server does not know a run for this
+             * thread (`known === false`), the turn was not sent after all — restore the draft rather
+             * than leave a dangling bubble under a « connexion perdue ». Otherwise it is a live
+             * connection problem and the cut reason stands.
+             */
+            if (!(await serverKnows())) {
+              notSent();
+            } else {
+              awaitingReply.current = false;
+              turnFailure.current = cutReason;
+              setRunError(cutReason);
+            }
+          } finally {
+            dedupe.unsubscribe();
           }
-          const deduped = dedupeById(target.messages);
-          if (deduped !== target.messages) target.setMessages(deduped);
-          if (awaitingReply.current) {
-            // Reattached twice and the run never reported RUN_FINISHED / RUN_ERROR (typically the
-            // run ended while the browser was offline). Hand over to the thread status: a run still
-            // going draws the indicator and replays at its end; a finished one is replayed now.
-            // Only if that replay fails is the person told to reload.
-            awaitingReply.current = false;
-            void queryClient.invalidateQueries({
-              queryKey: ["synelia", "thread-error"],
-            });
-            await copilotkit
-              .connectAgent({ agent: target })
-              .then(() => {
-                const again = dedupeById(target.messages);
-                if (again !== target.messages) target.setMessages(again);
-              })
-              .catch(() => setRunError(ui.conversation.connectionLost));
-          }
-        } catch {
-          awaitingReply.current = false;
-          turnFailure.current = cutReason;
-          setRunError(cutReason);
-        } finally {
-          dedupe.unsubscribe();
         }
       }
     } finally {
