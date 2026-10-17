@@ -5,6 +5,16 @@
  * onboarding, home, sidebar, conversation, model picker) read their text from here instead, so a
  * second language is one more dictionary of the same shape. The active language is French.
  */
+/**
+ * The shape of a dictionary: the French one with every string literal widened to `string`, so a
+ * second language of the same shape typechecks while missing or extra keys still fail.
+ */
+type Widen<T> = T extends string
+  ? string
+  : T extends (...args: infer A) => infer R
+    ? (...args: A) => Widen<R>
+    : { readonly [K in keyof T]: Widen<T[K]> };
+
 const fr = {
   /** BCP 47 tag for dates and relative times. */
   locale: "fr-FR",
@@ -25,6 +35,10 @@ const fr = {
     adminSignIn: "Connexion administrateur",
     ssoRequired: "Votre organisation impose l'authentification unique (SSO).",
     noProvider: "Aucun moyen de connexion n'est configuré pour ce déploiement.",
+    noIdentityProvider:
+      "Aucun fournisseur d'identité n'est enregistré pour cette adresse.",
+    providerFailed: (provider: string) =>
+      `Impossible de lancer la connexion avec ${provider}.`,
   },
   onboarding: {
     welcome: (product: string) => `Bienvenue sur ${product}`,
@@ -64,18 +78,69 @@ const fr = {
     modelUnavailable:
       "Ce modèle est indisponible pour le moment, choisissez-en un autre.",
     stoppedWithoutReason: "L'assistant s'est arrêté sans donner de raison.",
+    networkError:
+      "Connexion au serveur interrompue. La réponse continue peut-être : rechargez la page.",
+    loading: "Chargement de la conversation",
+    queued: "En attente",
+    removeQueued: (description: string) =>
+      `Retirer le message en attente : ${description}`,
+    attachment: "Pièce jointe",
+    attachmentNamed: (filename: string) => `Pièce jointe : ${filename}`,
+    untitledFile: "Fichier sans nom",
+    attachmentUnavailable: "Cette pièce jointe n'est pas disponible.",
+    fileUnavailable: (filename: string) => `${filename} n'est pas disponible.`,
+    open: (label: string) => `Ouvrir ${label}`,
+    close: "Fermer",
+    coworker: "Assistant de la conversation",
+    computer: "Ordinateur",
+    loadFailed: "Impossible de charger cette conversation.",
+  },
+  composer: {
+    message: "Message",
+    send: "Envoyer le message",
+    queue: "Mettre en file d'attente",
+    stop: "Arrêter le Bot",
+    showCall: "Afficher l'appel vocal",
+    startCall: "Démarrer un appel vocal",
+    callAgent: "Appeler cet assistant",
+    attach: "Joindre un fichier",
+    moreOptionsUnavailable: "Autres options du message indisponibles",
+  },
+  newConversation: {
+    agentNotFound: "Assistant introuvable.",
+    coworkersFailed: "Impossible de charger les assistants.",
+    coworkerFailed: "Impossible de charger l'assistant.",
+    remove: (name: string) => `Retirer ${name}`,
+    startFailed: "Impossible de démarrer la conversation.",
+  },
+  account: {
+    admin: "Administration",
+    settings: "Paramètres",
+    logOut: "Se déconnecter",
+  },
+  layout: {
+    toggleSidebar: "Afficher ou masquer la barre latérale",
+    hideSidebar: "Masquer la barre latérale",
+    showSidebar: "Afficher la barre latérale",
+    sidebar: "Barre latérale",
+    sidebarDescription: "Affiche la barre latérale mobile.",
+    scrollToEnd: "Aller à la fin",
+    scrollToStart: "Aller au début",
   },
   model: {
     label: "Modèle",
     title: "Modèle utilisé par l'assistant",
     default: "défaut",
+    loadFailed: "Impossible de charger les modèles",
   },
 } as const;
 
-export type UiStrings = typeof fr;
+export type UiStrings = Widen<typeof fr>;
+
+
 
 /** The strings in the active language. */
-export const ui: UiStrings = fr;
+export const ui: UiStrings = fr satisfies UiStrings;
 
 /**
  * What the pilot hides: entries outside phase 0 (agent catalogue, Bots and Skills pages, the
