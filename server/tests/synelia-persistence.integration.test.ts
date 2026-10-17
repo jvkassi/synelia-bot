@@ -669,5 +669,55 @@ db(
       expect(text).toContain("vraie réponse");
       expect(text).not.toContain("partial that broke");
     });
+
+    test("usage0-converted run: text hidden on replay AND reason 'usage0' countable from the DB", async () => {
+      const threadId = id();
+      const runId = id();
+      // What adjustPersistedRun writes when the usage0 rule is ACTIVE: text kept, RUN_FINISHED
+      // replaced by a provider_refusal RUN_ERROR carrying metadata.reason "usage0".
+      await store.saveRun({
+        runId,
+        threadId,
+        agentId: "a",
+        parentRunId: null,
+        events: [
+          { type: "RUN_STARTED", threadId, runId },
+          { type: "TEXT_MESSAGE_START", messageId: "m1", role: "assistant" },
+          {
+            type: "TEXT_MESSAGE_CONTENT",
+            messageId: "m1",
+            delta: "This request was blocked under policy.",
+          },
+          { type: "TEXT_MESSAGE_END", messageId: "m1" },
+          {
+            type: "RUN_ERROR",
+            threadId,
+            runId,
+            message: "content_filter",
+            code: "provider_refusal",
+            metadata: { reason: "usage0" },
+          },
+        ],
+        createdAt: Date.now(),
+        messages: [{ id: id(), role: "user", content: "demande" }],
+        status: "error",
+        userId: "u1",
+      } as never);
+
+      const events = await replay(threadId);
+      expect(
+        events.some((event) => event.type.startsWith("TEXT_MESSAGE")),
+      ).toBe(false);
+      expect(runError(events)?.metadata?.retryable).toBe(true);
+
+      // DB-countable: the reason survives in the stored events, so a weekly script can count it
+      // without parsing docker logs.
+      const runs = await store.loadRuns(threadId);
+      const stored = (runs[0]?.events ?? []).find(
+        (event) => (event as { type?: string }).type === "RUN_ERROR",
+      ) as { code?: string; metadata?: { reason?: string } } | undefined;
+      expect(stored?.code).toBe("provider_refusal");
+      expect(stored?.metadata?.reason).toBe("usage0");
+    });
   },
 );

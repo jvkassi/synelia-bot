@@ -35,7 +35,7 @@ import {
   EFFECTFUL_TOOLS,
   finishClass,
   replayEvents,
-  usage0RefusalCandidate,
+  usage0Refusal,
 } from "../synelia/run-refusal";
 import type {
   LocalIntelligence,
@@ -259,26 +259,28 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
           if (!run) return;
           // Synelia fork: a RUN_ERROR carries a stable code, and a finish with no text and no tool
           // call becomes a provider_refusal RUN_ERROR, so a reload still shows the French notice.
-          const adjusted = adjustPersistedRun(run.events);
           void this.#models()
             .catch(() => undefined)
             .then((list) => {
               const resolved = resolveModel(pickedModel(request), list);
-              // Synelia fork: a DORMANT refusal signal (disabled unless SYNELIA_REFUSAL_USAGE0_MODELS
-              // names the pair). When on for an allowlisted provider+model, a finished run with 0
-              // output tokens and readable text is logged as a candidate silent refusal — with the
-              // text itself — so false positives can be counted before the text is ever hidden. The
-              // text is NOT dropped here; see usage0RefusalCandidate in synelia/run-refusal.ts.
-              const assistantText = (store?.messagesSnapshot ?? [])
-                .filter((message) => message.role === "assistant")
-                .map((message) =>
-                  typeof message.content === "string" ? message.content : "",
-                )
-                .join("");
-              if (usage0RefusalCandidate(run.events, resolved, assistantText))
+              // Synelia fork: a run that FINISHED with text, no tool call and usage PRESENT == 0 on an
+              // ALLOWLISTED provider+model is turned into a provider_refusal by adjustPersistedRun
+              // (reason "usage0"); the TEXT stays in storage, replayEvents hides it on reload. The
+              // allowlist (SYNELIA_REFUSAL_USAGE0_MODELS) is empty by default, so this is OFF until a
+              // pair is named. Every trigger is logged WITH its text under a STABLE type so
+              // weekly-usage.sh can count it; the persisted RUN_ERROR metadata.reason makes it
+              // countable straight from the DB too. See usage0Refusal in synelia/run-refusal.ts.
+              const adjusted = adjustPersistedRun(run.events, resolved);
+              if (usage0Refusal(run.events, resolved)) {
+                const assistantText = (store?.messagesSnapshot ?? [])
+                  .filter((message) => message.role === "assistant")
+                  .map((message) =>
+                    typeof message.content === "string" ? message.content : "",
+                  )
+                  .join("");
                 console.log(
                   JSON.stringify({
-                    type: "synelia_refusal_usage0_candidate",
+                    type: "synelia_refusal_usage0_trigger",
                     threadId: request.threadId,
                     runId,
                     provider: resolved.provider,
@@ -288,6 +290,7 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
                     text: assistantText.slice(0, 2000),
                   }),
                 );
+              }
               return this.#store.saveRun({
                 runId,
                 threadId: request.threadId,

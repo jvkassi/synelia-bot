@@ -91,14 +91,26 @@ export function finishClass(events: readonly BaseEvent[]): string {
  * Adjust a finished run's events before they are persisted, and say what status to store.
  *
  *  - A run that FINISHED with no text and no tool call is a silent provider refusal: its
- *    RUN_FINISHED is REPLACED by a RUN_ERROR { message: "content_filter", code: "provider_refusal" }.
+ *    RUN_FINISHED is REPLACED by a RUN_ERROR { message: "content_filter", code: "provider_refusal",
+ *    metadata: { reason: "empty_finish" } }.
+ *  - A run that FINISHED with text, no tool call, and usage PRESENT and == 0 on an ALLOWLISTED
+ *    provider+model (usage0Refusal, off by default) is the "model wrote an English refusal" shape:
+ *    its RUN_FINISHED is REPLACED by a RUN_ERROR { code: "provider_refusal", metadata: { reason:
+ *    "usage0" } }. The TEXT events are KEPT in storage (not dropped) so a false positive can be
+ *    audited later; the single replay rule (replayEvents) hides them on reload. The `reason` field
+ *    makes the trigger countable straight from the DB (no need to parse docker logs).
  *  - Any RUN_ERROR without a code gets a stable one (refusal vs unavailable).
  *  - Once a run carries a RUN_ERROR, every RUN_FINISHED is dropped: AG-UI treats RUN_ERROR as the
  *    terminal event, and a stored run must never carry both, whichever order they arrived in.
  *
- * Pure and total, so the whole decision is unit-testable without a database.
+ * Pure and total, so the whole decision is unit-testable without a database. `context` (the resolved
+ * provider+model) is needed only for the usage0 rule; omit it and only the empty-finish rule applies.
  */
-export function adjustPersistedRun(events: readonly BaseEvent[]): {
+export function adjustPersistedRun(
+  events: readonly BaseEvent[],
+  context: { provider?: string; model?: string } = {},
+  allowlist: ReadonlySet<string> = usage0Allowlist(),
+): {
   events: BaseEvent[];
   status: "done" | "error";
 } {
@@ -109,6 +121,8 @@ export function adjustPersistedRun(events: readonly BaseEvent[]): {
   const hasTool = list.some((event) => TOOL_TYPES.has(event.type ?? ""));
 
   const emptyRefusal = hasFinished && !hasError && !hasText && !hasTool;
+  const usage0 = !emptyRefusal && usage0Refusal(events, context, allowlist);
+  const reason = emptyRefusal ? "empty_finish" : usage0 ? "usage0" : undefined;
 
   let next = events.map((event) => {
     const value = event as Eventish;
@@ -118,7 +132,7 @@ export function adjustPersistedRun(events: readonly BaseEvent[]): {
     return { ...event, code: classifyErrorCode(message) } as BaseEvent;
   });
 
-  if (emptyRefusal) {
+  if (reason) {
     const finished = list.find((event) => event.type === "RUN_FINISHED");
     next = next.map((event) =>
       (event as Eventish).type === "RUN_FINISHED"
@@ -132,6 +146,7 @@ export function adjustPersistedRun(events: readonly BaseEvent[]): {
               : {}),
             message: "content_filter",
             code: SYNELIA_ERROR_CODES.providerRefusal,
+            metadata: { reason },
           } as BaseEvent)
         : event,
     );
@@ -215,16 +230,25 @@ export function usage0Allowlist(
  * (the default), a non-allowlisted pair, absent usage, usage > 0, or empty text — so a genuine short
  * answer with normal usage is never flagged and usage 0 on a non-allowlisted model never triggers.
  */
-export function usage0RefusalCandidate(
+export function usage0Refusal(
   events: readonly BaseEvent[],
   context: { provider?: string; model?: string },
-  text: string,
   allowlist: ReadonlySet<string> = usage0Allowlist(),
 ): boolean {
+  // Disabled unless the allowlist names this pair, by EXACT `provider:model` match — never a prefix,
+  // so cc/claude-sonnet-5-6 does not match an allowlisted cc/claude-sonnet-5-5.
   if (allowlist.size === 0) return false;
   if (!context.provider || !context.model) return false;
   if (!allowlist.has(`${context.provider}:${context.model}`)) return false;
-  if (text.trim().length === 0) return false;
+  const list = events as readonly Eventish[];
+  // Only a clean finish with text and NO tool call: a tool call means the model acted, not a silent
+  // refusal, and an already-errored run is left to the other rules.
+  if (!list.some((event) => event.type === "RUN_FINISHED")) return false;
+  if (list.some((event) => event.type === "RUN_ERROR")) return false;
+  if (!list.some((event) => TEXT_TYPES.has(event.type ?? ""))) return false;
+  if (list.some((event) => TOOL_TYPES.has(event.type ?? ""))) return false;
+  // usage must be PRESENT and exactly 0; absent (undefined) never triggers — a 5369-char answer with
+  // usage absent was a real answer on this path (konnect 2026-10-17).
   return finishedOutputTokens(events) === 0;
 }
 

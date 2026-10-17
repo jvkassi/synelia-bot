@@ -15,7 +15,7 @@ import {
   replayEvents,
   SYNELIA_ERROR_CODES,
   usage0Allowlist,
-  usage0RefusalCandidate,
+  usage0Refusal,
 } from "../src/synelia/run-refusal";
 
 const ev = (type: string, extra: Record<string, unknown> = {}) =>
@@ -206,13 +206,18 @@ describe("computeRetryable", () => {
   });
 });
 
-describe("usage0 refusal candidate (dormant signal)", () => {
+describe("usage0Refusal (allowlist-gated silent-refusal signal, off by default)", () => {
   const finishedUsage = (out: number | null) =>
     ev("RUN_FINISHED", {
       usage: out === null ? undefined : [{ outputTokens: out, inputTokens: 5 }],
     });
   const on = usage0Allowlist("router9:cc/claude-sonnet-5-5");
   const ctx = { provider: "router9", model: "cc/claude-sonnet-5-5" };
+  const textContent = ev("TEXT_MESSAGE_CONTENT", {
+    messageId: "m",
+    delta: "English refusal",
+  });
+  const base = [started, textContent, finishedUsage(0)];
 
   test("outputTokens reads from a usage array", () => {
     expect(finishedOutputTokens([started, finishedUsage(0)])).toBe(0);
@@ -222,40 +227,99 @@ describe("usage0 refusal candidate (dormant signal)", () => {
     ).toBeUndefined();
   });
 
-  test("disabled by default: empty allowlist never flags, even on the proven pair", () => {
+  test("disabled by default: empty allowlist never triggers, even on the proven pair", () => {
+    expect(usage0Refusal(base, ctx, usage0Allowlist(""))).toBe(false);
+  });
+
+  test("allowlisted pair with 0 tokens, text and no tool call triggers", () => {
+    expect(usage0Refusal(base, ctx, on)).toBe(true);
+  });
+
+  test("EXACT match only: another Sonnet version (cc/claude-sonnet-5-6) does NOT match", () => {
     expect(
-      usage0RefusalCandidate(
-        [started, finishedUsage(0)],
-        ctx,
-        "refus",
-        usage0Allowlist(""),
+      usage0Refusal(
+        base,
+        { provider: "router9", model: "cc/claude-sonnet-5-6" },
+        on,
+      ),
+    ).toBe(false);
+    // and a prefix of the allowlisted model never matches either
+    expect(
+      usage0Refusal(
+        base,
+        { provider: "router9", model: "cc/claude-sonnet-5" },
+        on,
       ),
     ).toBe(false);
   });
 
-  test("allowlisted pair with 0 tokens and text is a candidate", () => {
+  test("usage must be PRESENT and == 0: a usage-absent answer never triggers", () => {
+    // Modeled on the konnect 5369-char answer: real text, usage absent -> no trigger.
+    const longText = ev("TEXT_MESSAGE_CONTENT", {
+      messageId: "m",
+      delta: "x".repeat(5369),
+    });
     expect(
-      usage0RefusalCandidate([started, finishedUsage(0)], ctx, "refus", on),
-    ).toBe(true);
+      usage0Refusal([started, longText, finishedUsage(null)], ctx, on),
+    ).toBe(false);
   });
 
   test("negative: a genuine short reply with usage > 0 is never flagged", () => {
     expect(
-      usage0RefusalCandidate([started, finishedUsage(3)], ctx, "oui", on),
+      usage0Refusal([started, textContent, finishedUsage(3)], ctx, on),
     ).toBe(false);
   });
 
-  test("negative: usage 0 on a non-allowlisted model never triggers", () => {
-    const other = { provider: "router9", model: "gemini/gemini-3.8-flash" };
+  test("negative: usage 0 on a non-allowlisted model (Gemini) never triggers", () => {
+    const gemini = { provider: "router9", model: "gemini/gemini-3.8-flash" };
+    expect(usage0Refusal(base, gemini, on)).toBe(false);
+  });
+
+  test("negative: a run with a tool call + usage 0 never triggers", () => {
     expect(
-      usage0RefusalCandidate([started, finishedUsage(0)], other, "x", on),
+      usage0Refusal(
+        [started, textContent, toolStart, finishedUsage(0)],
+        ctx,
+        on,
+      ),
     ).toBe(false);
   });
 
-  test("empty text is not a candidate (that is the empty-finish path, not this one)", () => {
-    expect(
-      usage0RefusalCandidate([started, finishedUsage(0)], ctx, "   ", on),
-    ).toBe(false);
+  test("a run with no text (empty finish) is not this rule (handled by empty-finish)", () => {
+    expect(usage0Refusal([started, finishedUsage(0)], ctx, on)).toBe(false);
+  });
+
+  test("adjustPersistedRun: an allowlisted usage0 run becomes provider_refusal (reason usage0), text kept, no RUN_FINISHED", () => {
+    const { events, status } = adjustPersistedRun(base, ctx, on);
+    expect(status).toBe("error");
+    const types = events.map((e) => (e as { type?: string }).type);
+    expect(types).not.toContain("RUN_FINISHED");
+    expect(types).toContain("TEXT_MESSAGE_CONTENT"); // text is KEPT in storage for auditing
+    const error = events.find(
+      (e) => (e as { type?: string }).type === "RUN_ERROR",
+    ) as { code?: string; metadata?: { reason?: string } } | undefined;
+    expect(error?.code).toBe(SYNELIA_ERROR_CODES.providerRefusal);
+    expect(error?.metadata?.reason).toBe("usage0");
+  });
+
+  test("adjustPersistedRun: without the allowlist, a usage0 run stays done (text untouched)", () => {
+    const { events, status } = adjustPersistedRun(
+      base,
+      ctx,
+      usage0Allowlist(""),
+    );
+    expect(status).toBe("done");
+    expect(events.map((e) => (e as { type?: string }).type)).toContain(
+      "RUN_FINISHED",
+    );
+  });
+
+  test("adjustPersistedRun: the empty-finish RUN_ERROR carries reason empty_finish", () => {
+    const { events } = adjustPersistedRun([started, finished]);
+    const error = events.find(
+      (e) => (e as { type?: string }).type === "RUN_ERROR",
+    ) as { metadata?: { reason?: string } } | undefined;
+    expect(error?.metadata?.reason).toBe("empty_finish");
   });
 });
 
