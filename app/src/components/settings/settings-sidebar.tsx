@@ -20,10 +20,11 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { pilot, ui } from "@/lib/i18n";
 
 const appLinkOptions = { to: "/" } satisfies LinkOptions;
 
-const ITEMS: {
+const ALL_ITEMS: {
   /**
    * Whether this entry lights only on its own route.
    *
@@ -34,9 +35,11 @@ const ITEMS: {
   icon: React.ComponentType<{ className?: string }>;
   linkOptions: LinkOptions;
   title: string;
+  /** Synelia fork: hidden while the pilot is on (its API is closed there). */
+  pilotHidden?: boolean;
 }[] = [
   {
-    title: "General",
+    title: ui.settings.nav.general,
     icon: IconSettings,
     /* `/settings` prefixes every other route here, and would otherwise light up on all of them. */
     exact: true,
@@ -44,19 +47,20 @@ const ITEMS: {
   },
   {
     /* Where updates go for every Bot at once; how much each Bot sends is on that Bot's page. */
-    title: "Notifications",
+    title: ui.settings.nav.notifications,
     icon: IconBell,
     linkOptions: { to: "/settings/notifications" },
   },
   {
     /* Whether Bots ask first, and rules for every Bot. Team settings are an administrator's. */
-    title: "Approvals",
+    title: ui.settings.nav.approvals,
+    pilotHidden: true,
     icon: IconChecks,
     linkOptions: { to: "/settings/approvals" },
   },
   {
     /* What your Bots know about you, across all of them. */
-    title: "Memory",
+    title: ui.settings.nav.memory,
     icon: IconBrain,
     linkOptions: { to: "/settings/memory" },
   },
@@ -65,23 +69,30 @@ const ITEMS: {
      * The same subject as Admin's Plugins, from the other side: there an administrator decides what
      * this deployment may reach at all, here you decide what it may reach as you.
      */
-    title: "Connected accounts",
+    title: ui.settings.nav.connectedAccounts,
+    pilotHidden: true,
     icon: IconPlug,
     linkOptions: { to: "/settings/connected-accounts" },
   },
   {
     /* Logins saved from a Bot's private sign-in form. */
-    title: "Passwords",
+    title: ui.settings.nav.passwords,
+    pilotHidden: true,
     icon: IconKey,
     linkOptions: { to: "/settings/passwords" },
   },
   {
     /* The same mark Admin gives UI Components. It is the same subject seen from the other side. */
-    title: "Components gallery",
+    title: ui.settings.nav.componentsGallery,
+    pilotHidden: true,
     icon: IconLayoutGrid,
     linkOptions: { to: "/settings/components-gallery" },
   },
 ];
+
+const ITEMS = ALL_ITEMS.filter(
+  (item) => !(pilot.hideSettingsExtras && item.pilotHidden),
+);
 
 export function SettingsSidebar({
   ...props
@@ -96,7 +107,7 @@ export function SettingsSidebar({
               render={(props) => (
                 <Link {...appLinkOptions} {...props}>
                   <IconArrowLeft className="mr-2 h-4 w-4" />
-                  Back to app
+                  {ui.settings.backToApp}
                 </Link>
               )}
             />

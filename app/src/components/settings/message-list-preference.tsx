@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ui } from "@/lib/i18n";
 import {
   saveUserPreferencesMutationOptions,
   useUserPreferences,
@@ -35,10 +36,8 @@ export function MessageListPreference() {
     <PageRows>
       <Item size="sm">
         <ItemContent>
-          <ItemTitle>Message list emphasis</ItemTitle>
-          <ItemDescription>
-            Choose which name appears larger in the sidebar.
-          </ItemDescription>
+          <ItemTitle>{ui.settings.emphasis}</ItemTitle>
+          <ItemDescription>{ui.settings.emphasisDescription}</ItemDescription>
         </ItemContent>
         <ItemActions>
           <Select
@@ -50,18 +49,18 @@ export function MessageListPreference() {
               }
             }}
           >
-            <SelectTrigger aria-label="Message list emphasis">
+            <SelectTrigger aria-label={ui.settings.emphasis}>
               <SelectValue>
                 {emphasis
                   ? emphasis === "agent"
-                    ? "Agent name"
-                    : "Thread title"
-                  : "Loading…"}
+                    ? ui.settings.agentName
+                    : ui.settings.threadTitle
+                  : ui.settings.loading}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="thread">Thread title</SelectItem>
-              <SelectItem value="agent">Agent name</SelectItem>
+              <SelectItem value="thread">{ui.settings.threadTitle}</SelectItem>
+              <SelectItem value="agent">{ui.settings.agentName}</SelectItem>
             </SelectContent>
           </Select>
         </ItemActions>
@@ -76,7 +75,7 @@ export function MessageListPreference() {
             size="sm"
             onClick={() => void preferences.refetch()}
           >
-            Retry
+            {ui.settings.retry}
           </Button>
         </div>
       ) : null}
@@ -87,19 +86,19 @@ export function MessageListPreference() {
       ) : null}
       {save.isPending ? (
         <p role="status" className="px-3 text-sm text-muted-foreground">
-          Saving…
+          {ui.settings.saving}
         </p>
       ) : null}
       {emphasis ? (
         <div className="flex justify-center px-6 pt-3 pb-6">
           <figure
-            aria-label="Message list preview"
+            aria-label={ui.settings.preview}
             className="flex h-16 w-full max-w-xs items-center rounded-lg border border-border bg-sidebar px-3"
           >
             <ChannelItemContent
               participantIds={["message-list-preview"]}
-              name="General Assistant"
-              title="Plan next week"
+              name={ui.settings.previewAgent}
+              title={ui.settings.previewTitle}
               lastMessageAt="2h"
               emphasis={emphasis}
             />

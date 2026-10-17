@@ -84,6 +84,7 @@ import {
 import { ToolRenderBoundary } from "./tool-boundary";
 import { ToolLine } from "./tool-line";
 import { VoiceChatCard } from "./voice-chat-card";
+import { Thinking } from "@/components/channels/thinking";
 
 type ChatTranscriptProps = {
   busy?: boolean;
@@ -175,8 +176,8 @@ function RestoringTranscript() {
   );
 }
 
-/**
- * The Bot has the turn and has produced nothing yet.
+/*
+ * `Thinking` (./thinking.tsx): the Bot has the turn and has produced nothing yet.
  *
  * THE GAP THIS FILLS IS THE WORST ONE IN THE CONVERSATION. Between pressing send and the first token
  * there was `aria-busy` and nothing else: announced to a screen reader, invisible to everybody else.
@@ -186,19 +187,6 @@ function RestoringTranscript() {
  * It borrows the shimmer a running tool line uses, so "working on it" reads the same whether the
  * work is a tool call or a model that has not spoken yet.
  */
-function Thinking() {
-  return (
-    <p
-      className="tool-line-running synelia-thinking text-muted-foreground text-sm"
-      // `status` rather than `alert`: this is progress, not something that interrupts what somebody
-      // is doing. The text says it, so a screen reader is told the same thing the shimmer implies.
-      role="status"
-      aria-live="polite"
-    >
-      {ui.conversation.thinking}
-    </p>
-  );
-}
 
 /**
  * The turn ended and no answer came.
@@ -648,13 +636,15 @@ function ResponsibilityFiring({
       <IconClock aria-hidden className="size-4 shrink-0 translate-y-0.5" />
       <div className="min-w-0">
         <p>
-          <span className="font-medium">Responsibility ran.</span> Trigger:{" "}
-          {describeTrigger(turn.trigger)}
+          <span className="font-medium">
+            {ui.conversation.responsibilityRan}
+          </span>{" "}
+          {ui.conversation.trigger} {describeTrigger(turn.trigger)}
         </p>
         <p className="whitespace-pre-wrap">{turn.instruction}</p>
         <details className="group mt-1">
           <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-sm text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-            Details
+            {ui.conversation.details}
             <IconChevronDown
               aria-hidden
               className="size-3 transition-transform group-open:rotate-180 motion-reduce:transition-none"

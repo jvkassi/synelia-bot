@@ -21,6 +21,7 @@ import {
   removePushDeviceMutationOptions,
 } from "@/lib/delivery";
 import { queryClient } from "@/query-client";
+import { appConfig } from "@/lib/generated/application-config";
 
 const PLATFORM: Record<"ios" | "android", string> = {
   ios: "iOS",
@@ -34,7 +35,7 @@ export function NativeDevices() {
   const error = reach.error ?? remove.error;
   return (
     <PageSection
-      description="Sign in to the OpenBot app on your phone and turn on notifications to add it here."
+      description={`Sign in to the ${appConfig.brand.productName} app on your phone and turn on notifications to add it here.`}
       title="Your devices"
     >
       {error ? (

@@ -53,6 +53,7 @@ import {
   startSmsMutationOptions,
 } from "@/lib/delivery";
 import { queryClient } from "@/query-client";
+import { appConfig } from "@/lib/generated/application-config";
 
 /**
  * The phone verification waiting for its code, kept for the tab.
@@ -164,7 +165,7 @@ export function ReachingYou({ agentId: fixedBot }: { agentId?: string }) {
     if (open(transport)) return TRANSPORT[transport].summary;
     return transport === "sms"
       ? "Text messages are not set up on this deployment."
-      : "An administrator needs to pair OpenBot with OpenTag before Slack or Teams can be linked.";
+      : `An administrator needs to pair ${appConfig.brand.productName} with OpenTag before Slack or Teams can be linked.`;
   };
 
   return (
@@ -513,7 +514,7 @@ function ConnectDialog({
             <Item size="sm" variant="muted">
               <ItemContent>
                 <ItemDescription className="line-clamp-none">
-                  Send this message to the OpenBot app in{" "}
+                  Send this message to the {appConfig.brand.productName} app in{" "}
                   {linked.platform === "teams" ? "Microsoft Teams" : "Slack"}{" "}
                   within {Math.ceil((linked.expiresAt - Date.now()) / 60_000)}{" "}
                   minutes. It links that account to this conversation and Bot.

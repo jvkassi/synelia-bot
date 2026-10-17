@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { threadStatusView } from "@/lib/copilot/synelia-model";
+import { showInterrupted, threadStatusView } from "@/lib/copilot/synelia-model";
 
 test("2a: F5 mid-run, last message is the PARTIAL assistant text: activeRunId is exposed", () => {
   const view = threadStatusView(
@@ -88,4 +88,19 @@ test("thread busy is recognised by its code or the runner's exact sentence, neve
   expect(
     isAlreadyRunning(Object.assign(new Error("conflict"), { status: 409 })),
   ).toBe(false);
+});
+
+test("lost run: « Réponse interrompue » never drawn while a turn sent from this tab is in flight", () => {
+  const idle = {
+    interrupted: true,
+    localRunning: false,
+    sentHere: false,
+    turnsInFlight: 0,
+  };
+  expect(showInterrupted(idle)).toBe(true);
+  // Between send and RUN_STARTED: the turn is counted, the run is not yet.
+  expect(showInterrupted({ ...idle, turnsInFlight: 1 })).toBe(false);
+  expect(showInterrupted({ ...idle, localRunning: true })).toBe(false);
+  expect(showInterrupted({ ...idle, sentHere: true })).toBe(false);
+  expect(showInterrupted({ ...idle, interrupted: false })).toBe(false);
 });

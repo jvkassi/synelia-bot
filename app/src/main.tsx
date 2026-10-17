@@ -6,11 +6,14 @@ import { queryClient } from "./query-client";
 import { router } from "./router";
 import "@copilotkit/react-core/v2/styles.css";
 import "./styles.css";
+import { appConfig } from "@/lib/generated/application-config";
 
 const rootElement = document.getElementById("root");
 
 if (!rootElement) {
-  throw new Error("OpenBot could not find the application root element.");
+  throw new Error(
+    `${appConfig.brand.productName} could not find the application root element.`,
+  );
 }
 
 createRoot(rootElement).render(

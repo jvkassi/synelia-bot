@@ -113,11 +113,13 @@ test("a chip removed mid-upload gives its row back once the upload lands", async
   // The placeholder goes on the strip the moment the upload starts, which is the window this whole
   // test lives in: a chip on screen with no row behind it yet.
   await waitFor(() =>
-    expect(view.queryByLabelText("Remove notes.txt")).not.toBeNull(),
+    expect(
+      view.queryByLabelText(ui.composer.removeFile("notes.txt")),
+    ).not.toBeNull(),
   );
 
-  fireEvent.click(view.getByLabelText("Remove notes.txt"));
-  expect(view.queryByLabelText("Remove notes.txt")).toBeNull();
+  fireEvent.click(view.getByLabelText(ui.composer.removeFile("notes.txt")));
+  expect(view.queryByLabelText(ui.composer.removeFile("notes.txt"))).toBeNull();
   // Nothing to delete yet, and nothing invented: the row does not exist until the upload answers,
   // so a DELETE here would be for an id the composer has never been told.
   expect(deletes).toEqual([]);
@@ -147,11 +149,15 @@ test("only the removed one is given back when two files are pending", async () =
   drop(form, [textFile("gone.txt")]);
   drop(form, [textFile("kept.txt")]);
   await waitFor(() => {
-    expect(view.queryByLabelText("Remove gone.txt")).not.toBeNull();
-    expect(view.queryByLabelText("Remove kept.txt")).not.toBeNull();
+    expect(
+      view.queryByLabelText(ui.composer.removeFile("gone.txt")),
+    ).not.toBeNull();
+    expect(
+      view.queryByLabelText(ui.composer.removeFile("kept.txt")),
+    ).not.toBeNull();
   });
 
-  fireEvent.click(view.getByLabelText("Remove gone.txt"));
+  fireEvent.click(view.getByLabelText(ui.composer.removeFile("gone.txt")));
   releaseUploads();
   // The kept file was queued behind the removed file. Let its actual upload finish as well;
   // reconciliation intentionally waits until no attachments are uploading.
@@ -162,7 +168,9 @@ test("only the removed one is given back when two files are pending", async () =
     expect(deletes).toEqual(["/api/attachments/row-gone.txt"]),
   );
   // The one nobody touched is still on the strip, and still owns its row.
-  expect(view.queryByLabelText("Remove kept.txt")).not.toBeNull();
+  expect(
+    view.queryByLabelText(ui.composer.removeFile("kept.txt")),
+  ).not.toBeNull();
 });
 
 test("an upload nobody removed keeps its row", async () => {
@@ -177,7 +185,9 @@ test("an upload nobody removed keeps its row", async () => {
 
   drop(form, [textFile("notes.txt")]);
   await waitFor(() =>
-    expect(view.queryByLabelText("Remove notes.txt")).not.toBeNull(),
+    expect(
+      view.queryByLabelText(ui.composer.removeFile("notes.txt")),
+    ).not.toBeNull(),
   );
   releaseUploads();
 
@@ -192,7 +202,9 @@ test("an upload nobody removed keeps its row", async () => {
   );
 
   expect(deletes).toEqual([]);
-  expect(view.queryByLabelText("Remove notes.txt")).not.toBeNull();
+  expect(
+    view.queryByLabelText(ui.composer.removeFile("notes.txt")),
+  ).not.toBeNull();
 });
 
 test("a message that was sent keeps the rows it carried", async () => {
@@ -220,7 +232,9 @@ test("a message that was sent keeps the rows it carried", async () => {
 
   drop(form, [textFile("notes.txt")]);
   await waitFor(() =>
-    expect(view.queryByLabelText("Remove notes.txt")).not.toBeNull(),
+    expect(
+      view.queryByLabelText(ui.composer.removeFile("notes.txt")),
+    ).not.toBeNull(),
   );
   releaseUploads();
   // `canSendDraft` refuses a draft carrying an upload in flight, so a live Send is an upload that
@@ -235,7 +249,9 @@ test("a message that was sent keeps the rows it carried", async () => {
 
   await waitFor(() => expect(sent).toHaveLength(1));
   await waitFor(() =>
-    expect(view.queryByLabelText("Remove notes.txt")).toBeNull(),
+    expect(
+      view.queryByLabelText(ui.composer.removeFile("notes.txt")),
+    ).toBeNull(),
   );
   expect(deletes).toEqual([]);
 });
@@ -265,7 +281,9 @@ test("a parked message keeps the rows it is carrying", async () => {
 
   drop(form, [textFile("notes.txt")]);
   await waitFor(() =>
-    expect(view.queryByLabelText("Remove notes.txt")).not.toBeNull(),
+    expect(
+      view.queryByLabelText(ui.composer.removeFile("notes.txt")),
+    ).not.toBeNull(),
   );
   releaseUploads();
   await waitFor(() =>
@@ -278,7 +296,7 @@ test("a parked message keeps the rows it is carrying", async () => {
 
   await waitFor(() => expect(queued).toHaveLength(1));
   // The chip has left the strip with the parked message, and the row has NOT been given back.
-  expect(view.queryByLabelText("Remove notes.txt")).toBeNull();
+  expect(view.queryByLabelText(ui.composer.removeFile("notes.txt"))).toBeNull();
   expect(deletes).toEqual([]);
 
   /*

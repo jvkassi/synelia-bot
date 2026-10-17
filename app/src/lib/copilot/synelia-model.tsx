@@ -25,11 +25,40 @@ export type SyneliaModel = {
   providerLabel: string;
   model: string;
   usage: string;
-  /** Display label from the server ('Rapide', 'Approfondi'); shown instead of raw ids. */
-  label?: string;
   /** False when the provider's key cannot run models yet; such models are not offered. */
   available?: boolean;
+  /**
+   * Friendly name chosen server-side (e.g. « Rapide », « Approfondi »). Shown instead of the raw
+   * model id wherever it is present; this file never maps ids to names itself.
+   */
+  label?: string;
 };
+
+/** What the answer footer says: the server's label when it has one, else the raw model id. */
+export function answerModelText(
+  entry: { provider: string | null; model: string; label?: string | null },
+  list?: readonly SyneliaModel[],
+): string {
+  const own = entry.label?.trim();
+  if (own) return own;
+  const listed = list
+    ?.find(
+      (option) =>
+        option.model === entry.model &&
+        (entry.provider === null || option.provider === entry.provider),
+    )
+    ?.label?.trim();
+  return listed || entry.model;
+}
+
+/** One picker option: the label alone when the server named the model, else id · usage as before. */
+export function modelOptionText(model: SyneliaModel, isDefault: boolean) {
+  const suffix = isDefault ? ` (${ui.model.default})` : "";
+  const label = model.label?.trim();
+  return label
+    ? `${label}${suffix}`
+    : `${model.model} · ${model.usage}${suffix}`;
+}
 
 type ModelList = { models: SyneliaModel[]; defaultModel: string | null };
 
@@ -104,12 +133,21 @@ export function SyneliaModelPicker({
   const selected = useSyneliaModel();
   const models = data?.models ?? [];
   if (models.length === 0) return null;
+  // Grouped by provider only while some model has no label: once the server names every model,
+  // the provider is not shown at all.
+  const named = models.every((model) => Boolean(model.label?.trim()));
   const groups = new Map<string, SyneliaModel[]>();
   for (const model of models) {
-    // With server labels there is no provider grouping (no provider name on screen).
-    const group = model.label ? "" : model.providerLabel;
-    groups.set(group, [...(groups.get(group) ?? []), model]);
+    groups.set(model.providerLabel, [
+      ...(groups.get(model.providerLabel) ?? []),
+      model,
+    ]);
   }
+  const option = (model: SyneliaModel) => (
+    <option key={model.id} value={model.id}>
+      {modelOptionText(model, model.id === data?.defaultModel)}
+    </option>
+  );
   return (
     <select
       aria-label={ui.model.label}
@@ -119,41 +157,25 @@ export function SyneliaModelPicker({
       title={ui.model.title}
       value={selected ?? ""}
     >
-      {[...groups.entries()].map(([label, entries]) => {
-        const options = entries.map((model) => (
-          <option key={model.id} value={model.id}>
-            {`${model.label ?? `${model.model} · ${model.usage}`}${model.id === data?.defaultModel ? ` (${ui.model.default})` : ""}`}
-          </option>
-        ));
-        return label ? (
-          <optgroup key={label} label={label}>
-            {options}
-          </optgroup>
-        ) : (
-          options
-        );
-      })}
+      {named
+        ? models.map(option)
+        : [...groups.entries()].map(([label, entries]) => (
+            <optgroup key={label} label={label}>
+              {entries.map(option)}
+            </optgroup>
+          ))}
     </select>
   );
 }
 
-const providerName = (provider: string | null) =>
-  provider === "router9"
-    ? "9router"
-    : provider === "openrouter"
-      ? "OpenRouter"
-      : (provider ?? "");
-
-function Badge({
-  provider,
-  model,
-  label,
-}: {
+/** Under an answer: the model's label, or its raw id. No provider prefix (« 9router · … »). */
+export function Badge(entry: {
   provider: string | null;
   model: string;
-  label?: string;
+  label?: string | null;
 }) {
-  const text = label ?? `${providerName(provider)} · ${model}`;
+  const { data } = useModelList();
+  const text = answerModelText(entry, data?.models);
   return (
     <div
       className="mt-1 text-xs text-muted-foreground"
@@ -216,7 +238,7 @@ function useThreadModels() {
       if (!response.ok) return {};
       return (await response.json()) as Record<
         string,
-        { provider: string | null; model: string; label?: string }
+        { provider: string | null; model: string; label?: string | null }
       >;
     },
     staleTime: Number.POSITIVE_INFINITY,
@@ -247,7 +269,7 @@ function RunModelLabel({ runId }: { runId: string }) {
       return (await response.json()) as {
         provider: string | null;
         model: string | null;
-        label?: string;
+        label?: string | null;
       };
     },
     staleTime: Number.POSITIVE_INFINITY,
@@ -336,6 +358,25 @@ export function threadStatusView(
     // one whose last message is the person's for any other reason, is never "interrupted".
     interrupted: !activeRunId && Boolean(data?.lostRunId),
   };
+}
+
+/**
+ * Synelia fork: whether « Réponse interrompue » (a lost run) may be drawn. Never while this tab has a
+ * turn of its own in flight, including the gap between send and RUN_STARTED (`turnsInFlight` > 0
+ * while `agent.isRunning` is still false), nor once this page has sent a turn.
+ */
+export function showInterrupted(state: {
+  interrupted: boolean;
+  localRunning: boolean;
+  sentHere: boolean;
+  turnsInFlight: number;
+}): boolean {
+  return (
+    state.interrupted &&
+    !state.localRunning &&
+    !state.sentHere &&
+    state.turnsInFlight === 0
+  );
 }
 
 /**

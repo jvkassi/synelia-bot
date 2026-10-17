@@ -117,7 +117,7 @@ async function uploaded(
   name: string,
 ) {
   await waitFor(() => {
-    expect(queryByLabelText(`Remove ${name}`)).not.toBeNull();
+    expect(queryByLabelText(ui.composer.removeFile(name))).not.toBeNull();
     expect(
       (getByLabelText(ui.composer.send) as HTMLButtonElement).disabled,
     ).toBe(false);
@@ -158,7 +158,7 @@ test("a send in flight takes its attachment off the composer, so a second press 
   // The screenshot is in the transcript now. It must not also still be here: it was on screen
   // twice for the length of the run, and `canSendDraft` unlocks on attachments alone, so the empty
   // text box was not what kept the button from going again.
-  expect(queryByLabelText("Remove notes.txt")).toBeNull();
+  expect(queryByLabelText(ui.composer.removeFile("notes.txt"))).toBeNull();
   expect((getByLabelText(ui.composer.send) as HTMLButtonElement).disabled).toBe(
     true,
   );
@@ -175,7 +175,7 @@ test("a send in flight takes its attachment off the composer, so a second press 
   // and so asked nothing.
   await waitFor(() => expect(form.getAttribute("aria-busy")).toBe("false"));
   // And it does not come back once the run lands, either: the send became a message.
-  expect(queryByLabelText("Remove notes.txt")).toBeNull();
+  expect(queryByLabelText(ui.composer.removeFile("notes.txt"))).toBeNull();
 });
 
 test("a send carries off only what it took, and a failure would have it to hand back", async () => {
@@ -222,7 +222,9 @@ test("a send carries off only what it took, and a failure would have it to hand 
   // wait for here — the wait after `land()` is what closes the upload out.
   drop(form, [new File(["later"], "report.txt", { type: "text/plain" })]);
   await waitFor(() =>
-    expect(queryByLabelText("Remove report.txt")).not.toBeNull(),
+    expect(
+      queryByLabelText(ui.composer.removeFile("report.txt")),
+    ).not.toBeNull(),
   );
 
   land();
@@ -235,7 +237,7 @@ test("a send carries off only what it took, and a failure would have it to hand 
   await uploaded(view, "report.txt");
 
   // And the half that rode on the send is gone, and does not come back with the run.
-  expect(queryByLabelText("Remove notes.txt")).toBeNull();
+  expect(queryByLabelText(ui.composer.removeFile("notes.txt"))).toBeNull();
   expect(submitted[0].attachments).toHaveLength(1);
   expect(deletes).toEqual([]);
 });
@@ -252,12 +254,12 @@ test("removing a staged attachment gives its row back to the server", async () =
   // upload has been answered.
   await uploaded(view, "notes.txt");
 
-  fireEvent.click(getByLabelText("Remove notes.txt"));
+  fireEvent.click(getByLabelText(ui.composer.removeFile("notes.txt")));
 
   // The id the server stored it under — `metadata.attachmentId` — not the client-side placeholder
   // id the strip keys its chips on.
   await waitFor(() => expect(deletes).toEqual(["/api/attachments/stored-id"]));
-  expect(queryByLabelText("Remove notes.txt")).toBeNull();
+  expect(queryByLabelText(ui.composer.removeFile("notes.txt"))).toBeNull();
 });
 
 /**
@@ -287,12 +289,14 @@ test("removing an attachment that is still uploading asks the server for nothing
   // The placeholder is on the strip from the moment the upload starts, and there is no row behind
   // it yet: `POST .../attachments` has not answered, so there is no id to delete.
   await waitFor(() =>
-    expect(queryByLabelText("Remove notes.txt")).not.toBeNull(),
+    expect(
+      queryByLabelText(ui.composer.removeFile("notes.txt")),
+    ).not.toBeNull(),
   );
 
-  fireEvent.click(getByLabelText("Remove notes.txt"));
+  fireEvent.click(getByLabelText(ui.composer.removeFile("notes.txt")));
 
-  expect(queryByLabelText("Remove notes.txt")).toBeNull();
+  expect(queryByLabelText(ui.composer.removeFile("notes.txt"))).toBeNull();
   expect(deletes).toEqual([]);
 });
 
@@ -308,11 +312,11 @@ test("a delete that fails still takes the chip off the strip", async () => {
   // no DELETE, so the failure this pins would never be reached.
   await uploaded(view, "notes.txt");
 
-  fireEvent.click(getByLabelText("Remove notes.txt"));
+  fireEvent.click(getByLabelText(ui.composer.removeFile("notes.txt")));
 
   // Best-effort, and the person asked for it gone: the removal is not held open by the request,
   // and the sweeper is the backstop for the row this one did not reclaim.
-  expect(queryByLabelText("Remove notes.txt")).toBeNull();
+  expect(queryByLabelText(ui.composer.removeFile("notes.txt"))).toBeNull();
   await waitFor(() => expect(deletes).toEqual(["/api/attachments/stored-id"]));
 });
 

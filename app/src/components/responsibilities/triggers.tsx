@@ -59,6 +59,7 @@ import {
   triggersQueryOptions,
 } from "@/lib/responsibilities";
 import { queryClient } from "@/query-client";
+import { appConfig } from "@/lib/generated/application-config";
 
 export const KIND_LABEL: Record<TriggerKind, string> = {
   webhook: "Webhook",
@@ -535,7 +536,8 @@ function NewTriggerDialog({
         <DialogHeader>
           <DialogTitle>Add trigger</DialogTitle>
           <DialogDescription>
-            Something outside OpenBot that starts this responsibility.
+            Something outside {appConfig.brand.productName} that starts this
+            responsibility.
           </DialogDescription>
         </DialogHeader>
         <DialogBody className="mt-4 overflow-y-auto">

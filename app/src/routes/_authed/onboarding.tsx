@@ -68,7 +68,7 @@ function ComputerUseStep() {
   return (
     <div className="w-full flex flex-col items-center justify-center">
       <h1 className="text-3xl font-semibold tracking-tight max-w-md text-center">
-        Each agent has its own computer
+        {ui.onboarding.computerTitle}
       </h1>
       <div className="h-8" />
       <div className="relative aspect-5/3 w-full max-w-lg rounded-2xl overflow-hidden border border-border">
@@ -89,13 +89,17 @@ type RosterCard = Pick<AgentProfile, "id" | "name" | "avatarSeed">;
 const AGENTS_PLACEHOLDER: RosterCard[] = [
   {
     id: "placeholder-research",
-    name: "Research Analyst",
+    name: ui.onboarding.placeholderResearch,
     avatarSeed: "research-analyst",
   },
-  { id: "placeholder-data", name: "Data Analyst", avatarSeed: "data-analyst" },
+  {
+    id: "placeholder-data",
+    name: ui.onboarding.placeholderData,
+    avatarSeed: "data-analyst",
+  },
   {
     id: "placeholder-support",
-    name: "Support Agent",
+    name: ui.onboarding.placeholderSupport,
     avatarSeed: "support-agent",
   },
 ];
@@ -117,7 +121,7 @@ function RosterStep() {
   return (
     <div className="w-full flex flex-col items-center justify-center">
       <h1 className="text-3xl font-semibold tracking-tight max-w-md text-center">
-        Choose from a variety of agents or create your own
+        {ui.onboarding.rosterTitle}
       </h1>
       <div className="h-8" />
       <div className="w-full max-w-lg overflow-hidden grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -134,7 +138,9 @@ function RosterStep() {
                   {a.name}
                 </h3>
                 {a.example ? (
-                  <span className="text-xs text-muted-foreground">Example</span>
+                  <span className="text-xs text-muted-foreground">
+                    {ui.onboarding.example}
+                  </span>
                 ) : null}
               </div>
             </div>
@@ -143,7 +149,7 @@ function RosterStep() {
         <div className="bg-card p-4 rounded-lg flex flex-row gap-4 items-center">
           <div className="rounded-full size-[40px] border border-foreground/30 border-dashed" />
           <h3 className="line-clamp-1 text-base font-medium tracking-tight text-foreground/70">
-            Your own agent
+            {ui.onboarding.ownAgent}
           </h3>
         </div>
       </div>

@@ -11,6 +11,7 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { Composer } from "@/components/channels/composer/composer";
 import { MAX_ATTACHMENTS_PER_MESSAGE } from "@/lib/channels/attachments";
 import { settleReactWork } from "./settle-react-work";
+import { ui } from "@/lib/i18n";
 
 /**
  * THE TWO HALVES OF ONE CAP, AND THE TICK IN WHICH THE CLIENT'S HALF USED TO MISCOUNT.
@@ -101,9 +102,9 @@ test("two batches staged in one tick cannot exceed the per-message cap", async (
   // have been refused go out first and be counted — an over-count shows up here as a surplus
   // rather than as a wait that merely has not finished yet.
   await waitFor(() =>
-    expect(view.queryAllByLabelText(/^Remove /)).toHaveLength(
-      MAX_ATTACHMENTS_PER_MESSAGE,
-    ),
+    expect(
+      view.queryAllByLabelText(new RegExp(`^${ui.composer.removeFile("")}`)),
+    ).toHaveLength(MAX_ATTACHMENTS_PER_MESSAGE),
   );
 
   expect(groups).toHaveLength(MAX_ATTACHMENTS_PER_MESSAGE);

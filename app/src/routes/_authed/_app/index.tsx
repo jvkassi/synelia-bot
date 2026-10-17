@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { AgentCard } from "@/components/agents/agent-card";
 import { Composer, toAgentOptions } from "@/components/channels/composer";
+import { Thinking } from "@/components/channels/thinking";
 import { SidebarToggleBar } from "@/components/layout/sidebar-toggle";
 import {
   Carousel,
@@ -59,6 +60,18 @@ function RouteComponent() {
           </h1>
         </div>
         <div className="mt-8 w-full flex flex-col items-center">
+          {/* Synelia fork: above the composer, where a conversation puts its newest turn. */}
+          {sending !== null ? (
+            <div
+              className="mb-4 flex w-full max-w-2xl flex-col gap-2"
+              data-testid="synelia-optimistic-send"
+            >
+              <p className="self-end max-w-[80%] whitespace-pre-wrap rounded-2xl bg-muted px-4 py-2 text-sm">
+                {sending}
+              </p>
+              <Thinking />
+            </div>
+          ) : null}
           <Composer
             agents={toAgentOptions(agents)}
             className="w-full max-w-2xl"
@@ -110,23 +123,6 @@ function RouteComponent() {
             }}
             pending={pending}
           />
-          {sending !== null ? (
-            <div
-              className="mt-4 flex w-full max-w-2xl flex-col gap-2"
-              data-testid="synelia-optimistic-send"
-            >
-              <p className="self-end max-w-[80%] whitespace-pre-wrap rounded-2xl bg-muted px-4 py-2 text-sm">
-                {sending}
-              </p>
-              <p
-                className="tool-line-running synelia-thinking text-muted-foreground text-sm"
-                role="status"
-                aria-live="polite"
-              >
-                {ui.conversation.thinking}
-              </p>
-            </div>
-          ) : null}
           {fallback ? (
             // Said out loud: a message that silently reaches somebody you did not choose is the
             // kind of surprise that costs trust the first time it happens.

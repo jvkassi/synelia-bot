@@ -1038,9 +1038,9 @@ test("a responsibility turn is drawn as a compact line with the model's message 
   const { container, getByText } = renderTranscript([message]);
   await settleReactWork();
 
-  expect(getByText("Responsibility ran.")).toBeTruthy();
+  expect(getByText(ui.conversation.responsibilityRan)).toBeTruthy();
   expect(getByText(instruction)).toBeTruthy();
-  expect(container.textContent).toContain("Trigger: manual");
+  expect(container.textContent).toContain(`${ui.conversation.trigger} manual`);
   const details = container.querySelector("details");
   expect(details?.open).toBe(false);
   expect(details?.textContent).toContain("Success criteria: Posted.");

@@ -217,7 +217,7 @@ function correction() {
  */
 async function uploaded({ queryByLabelText }: RenderResult, name: string) {
   await waitFor(() => {
-    expect(queryByLabelText(`Remove ${name}`)).not.toBeNull();
+    expect(queryByLabelText(ui.composer.removeFile(name))).not.toBeNull();
     const button = (queryByLabelText(ui.composer.send) ??
       queryByLabelText(ui.composer.queue)) as HTMLButtonElement | null;
     expect(button?.disabled).toBe(false);
@@ -252,7 +252,7 @@ test("queuing a correction mid-send removes only what it takes, never sweeps the
   await uploaded(view, "notes.txt");
   fireEvent.submit(form);
   await waitFor(() => expect(submitted).toHaveLength(1));
-  expect(queryByLabelText("Remove notes.txt")).toBeNull();
+  expect(queryByLabelText(ui.composer.removeFile("notes.txt"))).toBeNull();
 
   // A correction, staged while the first send is still out — the next message's file, not this
   // one's.
@@ -267,7 +267,7 @@ test("queuing a correction mid-send removes only what it takes, never sweeps the
   expect(queued[0].attachments).toHaveLength(1);
   expect(queued[0].attachments[0].filename).toBe("correction.txt");
   // Taken off the strip because it was queued, same as any parked attachment.
-  expect(queryByLabelText("Remove correction.txt")).toBeNull();
+  expect(queryByLabelText(ui.composer.removeFile("correction.txt"))).toBeNull();
 
   // THE REGRESSION, PINNED DIRECTLY. The old code called `consumeAttachments()`, which sweeps
   // every `ready` attachment regardless of `sending` — including notes.txt, which this send is
@@ -294,14 +294,14 @@ test("removing a ready attachment issues the DELETE through attachmentUrl(), not
   // it and issues no DELETE at all, so pressing Remove too early would pin nothing.
   await uploaded(view, "notes.txt");
 
-  fireEvent.click(getByLabelText("Remove notes.txt"));
+  fireEvent.click(getByLabelText(ui.composer.removeFile("notes.txt")));
 
   // Built from the same helper the server-side comment and `chat-transcript.tsx` both insist on:
   // a hand-typed literal here is exactly the fifth spelling this repository forbids.
   await waitFor(() =>
     expect(deletes).toEqual([attachmentUrl("stored-notes.txt")]),
   );
-  expect(queryByLabelText("Remove notes.txt")).toBeNull();
+  expect(queryByLabelText(ui.composer.removeFile("notes.txt"))).toBeNull();
 });
 
 /**
@@ -320,7 +320,9 @@ test("removing a ready attachment issues the DELETE through attachmentUrl(), not
 
 /** Every `Remove <name>` chip currently on the composer's strip. */
 function chips({ container }: RenderResult): string[] {
-  return Array.from(container.querySelectorAll("[aria-label^='Remove ']"))
+  return Array.from(
+    container.querySelectorAll(`[aria-label^='${ui.composer.removeFile("")}']`),
+  )
     .map((button) => button.getAttribute("aria-label") ?? "")
     .filter((label) => !label.startsWith(ui.conversation.removeQueued("")));
 }
@@ -487,7 +489,7 @@ test("the spy hands the composer one stable pair of callbacks, not a fresh pair 
   // Several renders: the placeholder going on the strip, the upload resolving, the strip
   // re-rendering without it.
   await dropAndWait(view, [notes()]);
-  fireEvent.click(view.getByLabelText("Remove notes.txt"));
+  fireEvent.click(view.getByLabelText(ui.composer.removeFile("notes.txt")));
   await waitFor(() => expect(chips(view)).toEqual([]));
 
   expect(handedOut.removeAttachment.size).toBe(1);
@@ -686,7 +688,9 @@ test("an ordinary send that fails releases nothing, because the chips come back"
 
   await waitFor(() => expect(attempted).toHaveLength(1));
   // Back on the strip, which is the fact the assertion after it depends on.
-  await waitFor(() => expect(chips(view)).toEqual(["Remove notes.txt"]));
+  await waitFor(() =>
+    expect(chips(view)).toEqual([ui.composer.removeFile("notes.txt")]),
+  );
   expect(deletes).toEqual([]);
 });
 
@@ -788,7 +792,7 @@ test("taking the parked message back frees the slots it was holding", async () =
   await dropAndWait(view, [named("ninth.txt")]);
 
   expect(uploads).toContain("ninth.txt");
-  expect(chips(view)).toEqual(["Remove ninth.txt"]);
+  expect(chips(view)).toEqual([ui.composer.removeFile("ninth.txt")]);
 });
 
 /**

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { PageSection } from "@/components/layout/page-shell";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { ui } from "@/lib/i18n";
 import { saveInstructionsMutationOptions } from "@/lib/settings/mutations";
 import {
   INSTRUCTIONS_LIMIT,
@@ -57,8 +58,8 @@ export function StandingInstructions() {
 
   return (
     <PageSection
-      description="Applies to every coworker in every channel. Your role text on a coworker says what it does; this says how you want things done, for example writing style or how to describe your company."
-      title="Standing instructions"
+      description={ui.settings.standingDescription}
+      title={ui.settings.standingTitle}
     >
       {stored.isPending ? null : stored.error ? (
         <p className="mt-4 text-destructive text-sm" role="alert">
@@ -67,14 +68,14 @@ export function StandingInstructions() {
       ) : (
         <div className="mt-4 flex flex-col gap-2">
           <Textarea
-            aria-label="Standing instructions"
+            aria-label={ui.settings.standingTitle}
             className="min-h-40"
             disabled={save.isPending}
             onChange={(event) => {
               setDraft(event.target.value);
               setSaved(false);
             }}
-            placeholder="We are two people, not a team. Write in British English, and never call our product a platform."
+            placeholder={ui.settings.standingPlaceholder}
             value={text}
           />
           <div className="flex flex-row items-center justify-between gap-4">
@@ -85,7 +86,7 @@ export function StandingInstructions() {
                   : "text-muted-foreground text-xs"
               }
             >
-              {text.trim().length} of {INSTRUCTIONS_LIMIT} characters
+              {ui.settings.characters(text.trim().length, INSTRUCTIONS_LIMIT)}
             </p>
             <div className="flex flex-row items-center gap-3">
               {/*
@@ -97,14 +98,16 @@ export function StandingInstructions() {
                   {problem}
                 </span>
               ) : saved ? (
-                <span className="text-muted-foreground text-xs">Saved</span>
+                <span className="text-muted-foreground text-xs">
+                  {ui.settings.saved}
+                </span>
               ) : null}
               <Button
                 disabled={save.isPending || over || unchanged}
                 onClick={submit}
                 size="sm"
               >
-                Save
+                {ui.settings.save}
               </Button>
             </div>
           </div>

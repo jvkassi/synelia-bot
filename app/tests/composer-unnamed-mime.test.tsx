@@ -10,6 +10,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { Composer } from "@/components/channels/composer/composer";
 import { settleReactWork } from "./settle-react-work";
+import { ui } from "@/lib/i18n";
 
 /**
  * A CLAIM THAT NAMES NO FORMAT, ALL THE WAY TO THE UPLOAD — WHICH IS THE ONLY PLACE IT CAN BE SEEN.
@@ -106,7 +107,9 @@ for (const claim of unnamed) {
     // `File "notes.txt" is not accepted. Supported types: …`, which is the machine sentence
     // `stageFiles` promises a screened file can never produce.
     await waitFor(() =>
-      expect(view.queryByLabelText("Remove notes.txt")).not.toBeNull(),
+      expect(
+        view.queryByLabelText(ui.composer.removeFile("notes.txt")),
+      ).not.toBeNull(),
     );
     expect(view.queryByRole("alert")).toBeNull();
   });
