@@ -3,7 +3,7 @@
  * Run: SYNELIA_TEST_DATABASE_URL=postgres://... bun test tests/synelia-persistence.integration.test.ts
  * Skipped without the variable (CI without a database).
  */
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { isLockConflict } from "@openbot/toolkit/lease";
 import {
   LocalIntelligence,
@@ -25,6 +25,16 @@ const url = process.env.SYNELIA_TEST_DATABASE_URL?.trim()
   : undefined;
 const db = url ? describe : describe.skip;
 const id = () => crypto.randomUUID();
+/** Every pool this file opens, closed at the end so the suite does not run out of connections. */
+const opened: LocalIntelligence[] = [];
+const open = (options?: { expireLocksAtBoot?: boolean }) => {
+  const store = new LocalIntelligence(url as string, options);
+  opened.push(store);
+  return store;
+};
+afterAll(async () => {
+  await Promise.all(opened.map((store) => store.close()));
+});
 
 const list = {
   defaultModel: "router9:gemini/flash",
@@ -97,9 +107,7 @@ describe("threadTitle (G)", () => {
 
 db("LocalIntelligence locks (gate 1)", () => {
   // describe.skip still runs this body: no DB url, no client.
-  const store = url
-    ? new LocalIntelligence(url)
-    : (undefined as unknown as LocalIntelligence);
+  const store = url ? open() : (undefined as unknown as LocalIntelligence);
   const base = { userId: "u1", agentId: "a" };
 
   test("acquire with the same runId twice succeeds; another runId gets 409", async () => {
@@ -128,7 +136,7 @@ db("LocalIntelligence locks (gate 1)", () => {
 
 db("boot expires stale locks, row kept, acquire works again", () => {
   test("a lock held before boot is expired (interrupted), not deleted; a new run can lock", async () => {
-    const before = new LocalIntelligence(url as string, {
+    const before = open({
       expireLocksAtBoot: true,
     });
     const threadId = id();
@@ -143,7 +151,7 @@ db("boot expires stale locks, row kept, acquire works again", () => {
     expect(
       (await before.threadRunState({ threadId, userId: "u1" })).lockedRunId,
     ).toBe(runId);
-    const booted = new LocalIntelligence(url as string, {
+    const booted = open({
       expireLocksAtBoot: true,
     }); // fresh process: ready() runs the boot step
     await booted.ready();
@@ -165,9 +173,7 @@ db("boot expires stale locks, row kept, acquire works again", () => {
 
 db("runner index follows rename / archive / delete (gate 4)", () => {
   // describe.skip still runs this body: no DB url, no client.
-  const store = url
-    ? new LocalIntelligence(url)
-    : (undefined as unknown as LocalIntelligence);
+  const store = url ? open() : (undefined as unknown as LocalIntelligence);
   const runner = new PostgresAgentRunner(store);
 
   test("index updated immediately, not at the next run", async () => {
@@ -237,9 +243,7 @@ db("runner index follows rename / archive / delete (gate 4)", () => {
 
 db("message_ids + per-thread badge map (I)", () => {
   // describe.skip still runs this body: no DB url, no client.
-  const store = url
-    ? new LocalIntelligence(url)
-    : (undefined as unknown as LocalIntelligence);
+  const store = url ? open() : (undefined as unknown as LocalIntelligence);
   test("START and CHUNK ids stored; map has the last assistant message of each run; other user 404", async () => {
     const threadId = id();
     const save = (events: unknown[], model: string) =>

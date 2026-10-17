@@ -96,6 +96,25 @@ function toSummary(row: ThreadRow): LocalThreadSummary {
 }
 
 const NOOP_UNSUBSCRIBE = () => () => {};
+
+/**
+ * The DDL runs once per process and database, not once per instance: its `ALTER TABLE ... ADD
+ * COLUMN IF NOT EXISTS` takes an ACCESS EXCLUSIVE lock on synelia_thread_run even when the column
+ * exists, so every new instance (tests build many) queued behind, and blocked, any open use of the
+ * table. A failed run is forgotten so the next caller retries.
+ */
+const schemaReady = new Map<string, Promise<unknown>>();
+function ensureSchema(key: string, run: () => Promise<unknown>) {
+  let pending = schemaReady.get(key);
+  if (!pending) {
+    pending = run().catch((error: unknown) => {
+      schemaReady.delete(key);
+      throw error;
+    });
+    schemaReady.set(key, pending);
+  }
+  return pending;
+}
 const UNOWNED = "__unowned__";
 
 export class LocalIntelligence {
@@ -104,6 +123,7 @@ export class LocalIntelligence {
   #ready: Promise<void> | undefined;
 
   readonly #expireLocksAtBoot: boolean;
+  readonly #schemaKey: string;
 
   /**
    * `expireLocksAtBoot` defaults to on; the test preload sets SYNELIA_BOOT_EXPIRE_LOCKS=0 so one test
@@ -114,6 +134,7 @@ export class LocalIntelligence {
     options: { expireLocksAtBoot?: boolean } = {},
   ) {
     this.#sql = new SQL({ ...addressOf(databaseUrl), max: 5 });
+    this.#schemaKey = databaseUrl;
     this.#expireLocksAtBoot =
       options.expireLocksAtBoot ??
       process.env.SYNELIA_BOOT_EXPIRE_LOCKS !== "0";
@@ -121,8 +142,9 @@ export class LocalIntelligence {
 
   /** Creates the tables once per process. Every public method awaits it. */
   ready(): Promise<void> {
-    this.#ready ??= this.#sql
-      .unsafe(LOCAL_PERSISTENCE_DDL)
+    this.#ready ??= ensureSchema(this.#schemaKey, () =>
+      this.#sql.unsafe(LOCAL_PERSISTENCE_DDL),
+    )
       .then(async () => {
         if (!this.#expireLocksAtBoot) return;
         // Single-instance assumption: at boot no turn can be running in this process, so every
@@ -141,6 +163,11 @@ export class LocalIntelligence {
         throw error;
       });
     return this.#ready;
+  }
+
+  /** Closes this instance's pool (tests; a server keeps its one instance for the process). */
+  async close(): Promise<void> {
+    await this.#sql.close();
   }
 
   // ---- realtime subscriptions: no gateway in local mode ---------------------------------------
