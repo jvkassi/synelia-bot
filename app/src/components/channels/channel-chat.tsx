@@ -294,6 +294,14 @@ export function ChannelChat({
   const seedRef = useRef(seed);
   seedRef.current = seed;
 
+  /*
+   * Synelia fork: a thread created a moment ago by the compose path (it stashed the first message,
+   * `start.ts`) has no stored history, so the mount read is skipped. Fixed at mount from the seed,
+   * the same explicit signal `restoring` uses, never inferred from an empty list: a reload or an
+   * old channel has no seed and still reads.
+   */
+  const freshThread = useRef(seed !== null);
+
   /** Promise gate for ordering the first message after the thread join when possible. */
   const openJoinGate = useRef<() => void>(() => {});
   const joinGate = useRef<Promise<void> | null>(null);
@@ -377,6 +385,9 @@ export function ChannelChat({
       }
 
       try {
+        // Synelia fork: nothing stored yet for a thread created from the compose path. `finally`
+        // still clears `restoring` and opens the gate.
+        if (freshThread.current) return;
         const stored = await readThreadMessages(
           channel.threadId,
           runtimeAgentId,

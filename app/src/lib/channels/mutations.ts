@@ -24,8 +24,11 @@ export function createChannelMutationOptions(queryClient: QueryClient) {
       });
       return ((await response.json()) as { channel: AgentChannel }).channel;
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: channelKeys.all }),
+    // Synelia fork: not awaited. A returned promise holds `mutateAsync` until the roster refetch
+    // lands, one round trip before the new conversation opens; the sidebar still refreshes.
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: channelKeys.all });
+    },
   });
 }
 
