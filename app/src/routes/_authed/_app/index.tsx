@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { AgentCard } from "@/components/agents/agent-card";
 import { Composer, toAgentOptions } from "@/components/channels/composer";
-import { Thinking } from "@/components/channels/thinking";
+import { noteSend, Thinking } from "@/components/channels/thinking";
 import { SidebarToggleBar } from "@/components/layout/sidebar-toggle";
 import {
   Carousel,
@@ -83,6 +83,7 @@ function RouteComponent() {
               // run, it falls back to the same default the composer used to always use.
               setError(null);
               setSending(draft.text);
+              noteSend();
               try {
                 if (draft.agentId) {
                   // Recorded and started as one sequence, shared with `/channel/new`: the person

@@ -275,6 +275,47 @@ const fr = {
     changePasswordTitle: "Changez votre mot de passe",
     changePasswordRequired:
       "Pour continuer, choisissez un nouveau mot de passe.",
+    currentPassword: "Mot de passe actuel",
+    /** Forced change (`mustChangePassword`): the first field is the invitation's password. */
+    temporaryPassword: "Mot de passe provisoire",
+    temporaryPasswordHelp: "Celui que vous avez reçu avec votre invitation.",
+    newPassword: "Nouveau mot de passe",
+    confirmPassword: "Confirmez le nouveau mot de passe",
+    /** Show/hide toggle of one field (`aria-pressed` says which state it is in). */
+    showPassword: (field: string) => `Afficher le champ « ${field} »`,
+    passwordRules: (min: number, max: number, temporary: boolean) =>
+      `Au moins ${min} caractères (${max} au maximum), différent du mot de passe ${temporary ? "provisoire" : "actuel"}.`,
+    errorSummary: "Le mot de passe n'a pas été changé :",
+    currentRequired: "Saisissez votre mot de passe actuel.",
+    temporaryRequired: "Saisissez votre mot de passe provisoire.",
+    invalidCurrent: "Mot de passe actuel incorrect.",
+    invalidTemporary: "Mot de passe provisoire incorrect.",
+    tooShort: (min: number) =>
+      `Le nouveau mot de passe doit contenir au moins ${min} caractères.`,
+    tooLong: (max: number) =>
+      `Le nouveau mot de passe doit contenir au plus ${max} caractères.`,
+    sameAsCurrent: "Le nouveau mot de passe doit être différent de l'actuel.",
+    sameAsTemporary:
+      "Le nouveau mot de passe doit être différent du mot de passe provisoire.",
+    confirmRequired: "Confirmez le nouveau mot de passe.",
+    mismatch: "La confirmation ne correspond pas au nouveau mot de passe.",
+    tooManyAttempts:
+      "Trop de tentatives. Patientez un moment avant de réessayer.",
+    networkError: "Connexion impossible. Vérifiez votre réseau et réessayez.",
+    changeFailed: "Le mot de passe n'a pas pu être changé. Réessayez.",
+    serviceUnavailable:
+      "Le service est momentanément indisponible. Réessayez dans un instant.",
+    /** Changed, but get-session still says `mustChangePassword` (or has no session). */
+    sessionNotUpdated:
+      "Le mot de passe a été changé, mais la session n'a pas été mise à jour. Reconnectez-vous.",
+    /** Changed, but get-session could not be read (503, network). */
+    sessionUnverified:
+      "Le mot de passe a été changé, mais la session n'a pas pu être vérifiée. Réessayez dans un instant.",
+    retry: "Réessayer",
+    submitChange: "Changer le mot de passe",
+    saving: "Enregistrement…",
+    signOut: "Se déconnecter",
+    signOutFailed: "Déconnexion impossible. Réessayez.",
   },
 } as const;
 

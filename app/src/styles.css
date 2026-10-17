@@ -320,8 +320,8 @@ body {
 .synelia-thinking::before {
   content: "";
   flex-shrink: 0;
-  width: 0.625rem;
-  height: 0.625rem;
+  width: 0.75rem;
+  height: 0.75rem;
   border-radius: 9999px;
   background: var(--color-foreground, currentColor);
   -webkit-text-fill-color: initial;

@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { act, cleanup, render } from "@testing-library/react";
 import {
+  noteSend,
+  slowDelay,
   THINKING_SLOW_AFTER_MS,
   Thinking,
 } from "@/components/channels/thinking";
@@ -18,6 +20,7 @@ afterAll(() => GlobalRegistrator.unregister());
 
 test("no first token after 8 s: the same status line says it can take up to 30 seconds", () => {
   jest.useFakeTimers();
+  noteSend();
   const view = render(<Thinking />);
   const status = view.getByRole("status");
   expect(status.textContent).toBe(ui.conversation.thinking);
@@ -30,14 +33,53 @@ test("no first token after 8 s: the same status line says it can take up to 30 s
     "Le modèle réfléchit, cela peut prendre jusqu'à 30 secondes…",
   );
   expect(status.getAttribute("aria-live")).toBe("polite");
+  // Normal text colour at the replies' size, not the muted grey.
+  expect(status.className).toContain("text-foreground");
+  expect(status.className).not.toContain("text-muted-foreground");
+  expect(status.className).toContain("text-sm");
+  expect(status.className).toContain("tool-line-running");
 });
 
 test("first token before 8 s (the line unmounts): the timer is cleared", () => {
   jest.useFakeTimers();
+  noteSend();
   const view = render(<Thinking />);
   expect(jest.getTimerCount()).toBe(1);
   view.unmount();
   expect(jest.getTimerCount()).toBe(0);
+});
+
+test("the 8 s count from the SEND: the home page hands over to the conversation at 1.5 s, the long message still comes at 8 s", () => {
+  jest.useFakeTimers();
+  const sent = Date.now();
+  noteSend(sent);
+  // Home page: optimistic bubble + indicator.
+  const home = render(<Thinking />);
+  act(() => jest.advanceTimersByTime(1_500));
+  expect(home.getByRole("status").textContent).toBe(ui.conversation.thinking);
+  home.unmount();
+  // The conversation opens and draws its own indicator, mounted fresh.
+  const channel = render(<Thinking />);
+  const status = channel.getByRole("status");
+  act(() => jest.advanceTimersByTime(6_499));
+  expect(Date.now() - sent).toBe(7_999);
+  expect(status.textContent).toBe(ui.conversation.thinking);
+  act(() => jest.advanceTimersByTime(1));
+  expect(status.textContent).toBe(ui.conversation.thinkingSlow);
+});
+
+test("more than 8 s already gone at mount: the long message at once; an old send does not count", () => {
+  jest.useFakeTimers();
+  noteSend(Date.now() - 9_000);
+  const late = render(<Thinking />);
+  expect(late.getByRole("status").textContent).toBe(
+    ui.conversation.thinkingSlow,
+  );
+  expect(jest.getTimerCount()).toBe(0);
+  late.unmount();
+  // A send from minutes ago (a run the server started itself): counted from mount.
+  noteSend(Date.now() - 5 * 60_000);
+  expect(slowDelay()).toBe(THINKING_SLOW_AFTER_MS);
 });
 
 /** sRGB channel (0..1) → relative luminance component. */
@@ -66,6 +108,8 @@ test("the thinking dot keeps ≥ 3:1 against the page at every frame, both theme
   const dark = css.slice(css.indexOf(".dark"));
   const dot = css.slice(css.indexOf(".synelia-thinking::before"));
   expect(dot).toMatch(/background: var\(--color-foreground/);
+  // Slightly larger than the first version (0.625rem).
+  expect(dot).toMatch(/width: 0\.75rem;\s*height: 0\.75rem;/);
   const keyframes = css.slice(css.indexOf("@keyframes synelia-thinking-pulse"));
   const opacities = [
     ...keyframes
@@ -79,6 +123,8 @@ test("the thinking dot keeps ≥ 3:1 against the page at every frame, both theme
     // Alpha compositing over the page, as the browser does in sRGB.
     const drawn = faintest * fg + (1 - faintest) * bg;
     expect(contrast(drawn, bg)).toBeGreaterThanOrEqual(3);
+    // The text is now in the foreground colour: well above 4.5:1 (it was the muted grey).
+    expect(contrast(fg, bg)).toBeGreaterThanOrEqual(4.5);
   }
   const reduced = css.slice(
     css.lastIndexOf(
