@@ -19,7 +19,8 @@ const fr = {
     or: "ou",
     companyEmail: "vous@entreprise.com",
     continueWith: (provider: string) => `Continuer avec ${provider}`,
-    opening: (provider?: string) => (provider ? `Ouverture de ${provider}…` : "Ouverture…"),
+    opening: (provider?: string) =>
+      provider ? `Ouverture de ${provider}…` : "Ouverture…",
     continueWithCompany: "Continuer avec votre compte d'entreprise",
     adminSignIn: "Connexion administrateur",
     ssoRequired: "Votre organisation impose l'authentification unique (SSO).",
@@ -35,9 +36,11 @@ const fr = {
   },
   home: {
     title: "Nouvelle conversation",
-    routedHint: "Envoyé à l'assistant concerné. Tapez @ pour en choisir un vous-même.",
+    routedHint:
+      "Envoyé à l'assistant concerné. Tapez @ pour en choisir un vous-même.",
     startFailed: "Impossible de démarrer la conversation.",
-    agentsUnavailable: "Les assistants n'ont pas pu être chargés : personne à qui envoyer ce message pour l'instant.",
+    agentsUnavailable:
+      "Les assistants n'ont pas pu être chargés : personne à qui envoyer ce message pour l'instant.",
   },
   sidebar: {
     search: "Rechercher…",
@@ -46,7 +49,8 @@ const fr = {
     emptyHint: "Vos conversations apparaîtront ici.",
     noMatchLoaded: "Aucune conversation chargée ne correspond",
     noMatch: "Aucune conversation ne correspond",
-    loadOlder: "Chargez les conversations plus anciennes pour chercher plus loin.",
+    loadOlder:
+      "Chargez les conversations plus anciennes pour chercher plus loin.",
     nothingNamed: (term: string) => `Rien ne s'appelle « ${term} ».`,
   },
   conversation: {
@@ -57,7 +61,8 @@ const fr = {
     noBots: "Aucun assistant trouvé.",
     startFailed: "Impossible de démarrer la conversation.",
     newChat: "Nouvelle conversation",
-    modelUnavailable: "Ce modèle est indisponible pour le moment, choisissez-en un autre.",
+    modelUnavailable:
+      "Ce modèle est indisponible pour le moment, choisissez-en un autre.",
     stoppedWithoutReason: "L'assistant s'est arrêté sans donner de raison.",
   },
   model: {
@@ -83,4 +88,5 @@ export const pilot = {
   shortOnboarding: true,
   /** No computer supervisor in this deployment: the "watch the computer" control is hidden. */
   hideComputerControls: true,
+  hideBotPage: true,
 } as const;

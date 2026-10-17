@@ -40,6 +40,19 @@ CREATE INDEX IF NOT EXISTS synelia_thread_run_thread_idx
 -- the Mastra Bot only honours allowlisted ids and otherwise uses its default).
 ALTER TABLE synelia_thread_run ADD COLUMN IF NOT EXISTS provider text;
 ALTER TABLE synelia_thread_run ADD COLUMN IF NOT EXISTS model text;
+-- Assistant messageIds the run wrote (TEXT_MESSAGE_START / TEXT_MESSAGE_CHUNK), in order; filled at
+-- write time, backfilled once for older rows. Serves the per-thread "model under each answer" map.
+ALTER TABLE synelia_thread_run ADD COLUMN IF NOT EXISTS message_ids text[];
+CREATE INDEX IF NOT EXISTS synelia_thread_run_message_ids_idx
+  ON synelia_thread_run USING GIN (message_ids);
+UPDATE synelia_thread_run r SET message_ids = COALESCE((
+  SELECT array_agg(id ORDER BY first) FROM (
+    SELECT e.value->>'messageId' AS id, min(e.ordinality) AS first
+    FROM jsonb_array_elements(r.events) WITH ORDINALITY e
+    WHERE e.value->>'type' IN ('TEXT_MESSAGE_START', 'TEXT_MESSAGE_CHUNK')
+      AND e.value->>'messageId' IS NOT NULL
+    GROUP BY 1) ids), '{}')
+WHERE r.message_ids IS NULL;
 
 CREATE TABLE IF NOT EXISTS synelia_thread_lock (
   thread_id   text PRIMARY KEY,

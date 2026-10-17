@@ -141,90 +141,90 @@ function RouteComponent() {
          */}
         {/* Synelia fork: the agent catalogue is outside the pilot. */}
         {pilot.hideExploreAgents ? null : (
-        <div className="mt-10 w-full max-w-2xl">
-          {/*
-           * The heading is repeated in each arm rather than hoisted above this conditional:
-           * `CarouselPrevious`/`CarouselNext` read the carousel's own context, so they must stay
-           * inside `<Carousel>`, and the heading shares that row with them once populated. Each
-           * arm also reserves the same ~180px of body beneath it — a skeleton here, the
-           * carousel's 144×180 cards, or the empty/error state's own `h-[180px]` — so the section
-           * holds its own height across all four states and the composer sitting above it on
-           * this centred column does not move when the query settles or fails.
-           */}
-          {loading ? (
-            <>
-              <h2 className="font-bold text-lg">Explore agents</h2>
-              <Skeleton className="mt-4 h-[180px]" />
-            </>
-          ) : explore?.length ? (
-            // Wins over `failed`: a failed background refetch does not clear TanStack Query's
-            // cached `data`, so a stale carousel here beats an error card claiming there is
-            // nothing to explore, which would be false while this list is still populated.
-            <Carousel
-              opts={{ align: "start" }}
-              aria-labelledby="explore-agents-heading"
-            >
-              <div className="flex flex-row items-center justify-between gap-4">
-                <h2 id="explore-agents-heading" className="font-bold text-lg">
-                  Explore agents
-                </h2>
-                {/*
-                 * `static` undoes the primitive's own absolute placement, which parks these either
-                 * side of the row and off the edge of a prose-width column. They belong on the
-                 * heading's baseline, where the section's other decisions are.
-                 */}
-                <div className="flex items-center gap-2">
-                  <CarouselPrevious className="static translate-x-0 translate-y-0" />
-                  <CarouselNext className="static translate-x-0 translate-y-0" />
+          <div className="mt-10 w-full max-w-2xl">
+            {/*
+             * The heading is repeated in each arm rather than hoisted above this conditional:
+             * `CarouselPrevious`/`CarouselNext` read the carousel's own context, so they must stay
+             * inside `<Carousel>`, and the heading shares that row with them once populated. Each
+             * arm also reserves the same ~180px of body beneath it — a skeleton here, the
+             * carousel's 144×180 cards, or the empty/error state's own `h-[180px]` — so the section
+             * holds its own height across all four states and the composer sitting above it on
+             * this centred column does not move when the query settles or fails.
+             */}
+            {loading ? (
+              <>
+                <h2 className="font-bold text-lg">Explore agents</h2>
+                <Skeleton className="mt-4 h-[180px]" />
+              </>
+            ) : explore?.length ? (
+              // Wins over `failed`: a failed background refetch does not clear TanStack Query's
+              // cached `data`, so a stale carousel here beats an error card claiming there is
+              // nothing to explore, which would be false while this list is still populated.
+              <Carousel
+                opts={{ align: "start" }}
+                aria-labelledby="explore-agents-heading"
+              >
+                <div className="flex flex-row items-center justify-between gap-4">
+                  <h2 id="explore-agents-heading" className="font-bold text-lg">
+                    Explore agents
+                  </h2>
+                  {/*
+                   * `static` undoes the primitive's own absolute placement, which parks these either
+                   * side of the row and off the edge of a prose-width column. They belong on the
+                   * heading's baseline, where the section's other decisions are.
+                   */}
+                  <div className="flex items-center gap-2">
+                    <CarouselPrevious className="static translate-x-0 translate-y-0" />
+                    <CarouselNext className="static translate-x-0 translate-y-0" />
+                  </div>
                 </div>
-              </div>
-              {/* `-ml-4`/`pl-4` is the primitive's own gap convention; `basis-auto` keeps each
+                {/* `-ml-4`/`pl-4` is the primitive's own gap convention; `basis-auto` keeps each
                   slide the card's own 144px instead of a full-width slide. */}
-              <CarouselContent className="-ml-4 mt-4">
-                {explore.map((agent) => (
-                  <CarouselItem className="basis-auto pl-4" key={agent.id}>
-                    <Link search={{ agent: agent.id }} to="/channel/new">
-                      <AgentCard agent={agent} appearance="artwork" />
-                    </Link>
-                  </CarouselItem>
-                ))}
-              </CarouselContent>
-            </Carousel>
-          ) : failed && agents === undefined ? (
-            // `agents === undefined` narrows this to "the query has never once returned
-            // successfully" — not merely "the last request errored". `?.length` alone can't
-            // tell that apart from a slice that loaded and is genuinely empty: TanStack Query
-            // never clears `data` on a failed background refetch, so once the query has
-            // resolved even one response, `agents` stays defined and `explore`'s emptiness is a
-            // fact about that response, not a symptom of the failure. Rendering the destructive
-            // card there would say the opposite of what a populated composer beside it (still
-            // working off that same, successfully loaded `agents`) proves.
-            <>
-              <h2 className="font-bold text-lg">Explore agents</h2>
-              <Empty className="mt-4 h-[180px] border border-dashed border-destructive">
-                <EmptyHeader>
-                  <EmptyTitle className="text-destructive">
-                    Agents shared with you couldn't be loaded.
-                  </EmptyTitle>
-                </EmptyHeader>
-              </Empty>
-            </>
-          ) : (
-            // Reached both when the query never failed and `explore` is genuinely empty, and
-            // when it failed but `agents` is defined — a loaded, empty slice either way. Same
-            // plain copy for both: an empty roster is a fact, not an error.
-            <>
-              <h2 className="font-bold text-lg">Explore agents</h2>
-              <Empty className="mt-4 h-[180px] border border-dashed">
-                <EmptyHeader>
-                  <EmptyTitle className="text-muted-foreground">
-                    Nobody has shared an agent with you yet.
-                  </EmptyTitle>
-                </EmptyHeader>
-              </Empty>
-            </>
-          )}
-        </div>
+                <CarouselContent className="-ml-4 mt-4">
+                  {explore.map((agent) => (
+                    <CarouselItem className="basis-auto pl-4" key={agent.id}>
+                      <Link search={{ agent: agent.id }} to="/channel/new">
+                        <AgentCard agent={agent} appearance="artwork" />
+                      </Link>
+                    </CarouselItem>
+                  ))}
+                </CarouselContent>
+              </Carousel>
+            ) : failed && agents === undefined ? (
+              // `agents === undefined` narrows this to "the query has never once returned
+              // successfully" — not merely "the last request errored". `?.length` alone can't
+              // tell that apart from a slice that loaded and is genuinely empty: TanStack Query
+              // never clears `data` on a failed background refetch, so once the query has
+              // resolved even one response, `agents` stays defined and `explore`'s emptiness is a
+              // fact about that response, not a symptom of the failure. Rendering the destructive
+              // card there would say the opposite of what a populated composer beside it (still
+              // working off that same, successfully loaded `agents`) proves.
+              <>
+                <h2 className="font-bold text-lg">Explore agents</h2>
+                <Empty className="mt-4 h-[180px] border border-dashed border-destructive">
+                  <EmptyHeader>
+                    <EmptyTitle className="text-destructive">
+                      Agents shared with you couldn't be loaded.
+                    </EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
+              </>
+            ) : (
+              // Reached both when the query never failed and `explore` is genuinely empty, and
+              // when it failed but `agents` is defined — a loaded, empty slice either way. Same
+              // plain copy for both: an empty roster is a fact, not an error.
+              <>
+                <h2 className="font-bold text-lg">Explore agents</h2>
+                <Empty className="mt-4 h-[180px] border border-dashed">
+                  <EmptyHeader>
+                    <EmptyTitle className="text-muted-foreground">
+                      Nobody has shared an agent with you yet.
+                    </EmptyTitle>
+                  </EmptyHeader>
+                </Empty>
+              </>
+            )}
+          </div>
         )}
       </div>
     </>

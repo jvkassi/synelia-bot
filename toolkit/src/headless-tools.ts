@@ -341,22 +341,34 @@ class InvocationTransport extends AbstractAgent {
   }
 }
 
+/** Synelia fork: API keys never leave in an error text (OpenRouter / OpenAI style `sk-...`). */
+export function redactSecrets(text: string): string {
+  return text.replace(/sk-[A-Za-z0-9_-]{6,}/g, "sk-***").slice(0, 300);
+}
+
 /**
- * Synelia fork: a sentence for a failed run, whatever shape the failure arrived in.
+ * Synelia fork: the technical sentence for a failed run, whatever shape the failure arrived in.
  *
- * Prefers the provider's own words (`responseBody.error.message`), then any `message`, then a
- * nested `error`, and only falls back to a short JSON rendering. Never includes headers or
- * request bodies, which is where a credential could be.
+ * THE SAME RULE as `__syneliaErrorMessage` in patches/@ag-ui%2Fmastra@1.1.6.patch (the Mastra
+ * bridge cannot import this module; keep the two in step): the provider's own words
+ * (`responseBody` error message), else `message`, else a nested `error`/`cause`, plus "(HTTP n)".
+ * Secrets redacted; the object itself is never serialised, so `requestBodyValues`, `url` and
+ * headers cannot leak. Nothing usable → a generic sentence. The UI puts the French "model
+ * unavailable" line above it; this text is what synelia_thread_run stores.
  */
 export function describeRunError(error: unknown, depth = 0): string {
-  if (typeof error === "string") return error;
-  if (error === null || error === undefined || depth > 3) return "The Bot stopped without saying why.";
-  if (typeof error !== "object") return String(error);
+  if (error == null) return "Erreur du fournisseur";
+  if (typeof error === "string") return redactSecrets(error);
+  if (typeof error !== "object" || depth > 3) return "Erreur du fournisseur";
   const record = error as Record<string, unknown>;
-  const status = typeof record.statusCode === "number" ? ` (HTTP ${record.statusCode})` : "";
+  const status =
+    typeof record.statusCode === "number" ? ` (HTTP ${record.statusCode})` : "";
   if (typeof record.responseBody === "string") {
     try {
-      const body = JSON.parse(record.responseBody) as { error?: { message?: unknown } | string; message?: unknown };
+      const body = JSON.parse(record.responseBody) as {
+        error?: { message?: unknown } | string;
+        message?: unknown;
+      };
       const said =
         typeof body.error === "string"
           ? body.error
@@ -365,19 +377,21 @@ export function describeRunError(error: unknown, depth = 0): string {
             : typeof body.message === "string"
               ? body.message
               : undefined;
-      if (said) return `The model provider refused the request: ${said}${status}`;
+      if (said) return `${redactSecrets(said)}${status}`;
     } catch {
       // Not JSON: fall through to the message.
     }
   }
-  if (typeof record.message === "string" && record.message.trim()) {
-    return `${record.message}${status}`;
+  if (
+    typeof record.message === "string" &&
+    record.message.trim() &&
+    record.message !== "[object Object]"
+  ) {
+    return `${redactSecrets(record.message)}${status}`;
   }
-  if ("error" in record && record.error !== error) return describeRunError(record.error, depth + 1);
-  if ("cause" in record && record.cause !== error) return describeRunError(record.cause, depth + 1);
-  try {
-    return JSON.stringify(error).slice(0, 300);
-  } catch {
-    return "The Bot stopped without saying why.";
-  }
+  if ("error" in record && record.error && record.error !== error)
+    return describeRunError(record.error, depth + 1);
+  if ("cause" in record && record.cause && record.cause !== error)
+    return describeRunError(record.cause, depth + 1);
+  return `Erreur du fournisseur${status}`;
 }

@@ -20,10 +20,13 @@ export async function bootstrapPasswordUser(
   environment: Record<string, string | undefined> = process.env,
 ): Promise<void> {
   for (const suffix of ["", "_2", "_3", "_4", "_5", "_6", "_7", "_8", "_9"]) {
-    const email = environment[`OPENBOT_BOOTSTRAP_USER${suffix}_EMAIL`]?.trim().toLowerCase();
+    const email = environment[`OPENBOT_BOOTSTRAP_USER${suffix}_EMAIL`]
+      ?.trim()
+      .toLowerCase();
     const password = environment[`OPENBOT_BOOTSTRAP_USER${suffix}_PASSWORD`];
     if (!email || !password) continue;
-    const name = environment[`OPENBOT_BOOTSTRAP_USER${suffix}_NAME`]?.trim() || email;
+    const name =
+      environment[`OPENBOT_BOOTSTRAP_USER${suffix}_NAME`]?.trim() || email;
     await bootstrapOne(auth, email, password, name);
   }
 }
@@ -47,7 +50,8 @@ async function bootstrapOne(
   const issuer = createLocalAccountIssuer("credential");
   if (
     found?.accounts?.some(
-      (account) => account.providerId === "credential" && account.issuer === issuer,
+      (account) =>
+        account.providerId === "credential" && account.issuer === issuer,
     )
   ) {
     return;
@@ -58,7 +62,10 @@ async function bootstrapOne(
   const { runWithEndpointContext } = (await import(
     Bun.resolveSync("@better-auth/core/context", betterAuthEntry)
   )) as {
-    runWithEndpointContext: <T>(context: unknown, fn: () => Promise<T>) => Promise<T>;
+    runWithEndpointContext: <T>(
+      context: unknown,
+      fn: () => Promise<T>,
+    ) => Promise<T>;
   };
   const user =
     found?.user ??
@@ -75,5 +82,7 @@ async function bootstrapOne(
     accountId: user.id,
     password: await context.password.hash(password),
   });
-  console.log(JSON.stringify({ type: "synelia-bootstrap-user-created", email }));
+  console.log(
+    JSON.stringify({ type: "synelia-bootstrap-user-created", email }),
+  );
 }

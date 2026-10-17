@@ -210,14 +210,21 @@ function Stopped({ reason }: { reason: string }) {
   // The run row keeps the technical text only.
   const { data } = useModelList();
   const selected = useSyneliaModel();
-  const providerError = /\(HTTP \d{3}\)\s*$/.test(reason);
+  const providerError = /\(HTTP \d{3}\)\s*$|^Erreur du fournisseur/.test(
+    reason,
+  );
   if (providerError) {
     const model = data?.models.find((entry) => entry.id === selected);
     const detail = model ? `${model.providerLabel} : ${reason}` : reason;
     return (
       <div data-testid="transcript-stopped" role="alert">
-        <p className="text-destructive text-sm">{ui.conversation.modelUnavailable}</p>
-        <p className="text-muted-foreground text-xs" data-testid="transcript-stopped-detail">
+        <p className="text-destructive text-sm">
+          {ui.conversation.modelUnavailable}
+        </p>
+        <p
+          className="text-muted-foreground text-xs"
+          data-testid="transcript-stopped-detail"
+        >
           {detail}
         </p>
       </div>
@@ -737,7 +744,9 @@ const TranscriptMessage = memo(function TranscriptMessage({
             </BubbleContent>
           </Bubble>
           {/* Synelia fork: which provider/model wrote this answer, from the stored run. */}
-          {!isUser && messageId ? <MessageModelLabel messageId={messageId} /> : null}
+          {!isUser && messageId ? (
+            <MessageModelLabel messageId={messageId} />
+          ) : null}
         </Arriving>
       </MessageContent>
     </MessageRow>

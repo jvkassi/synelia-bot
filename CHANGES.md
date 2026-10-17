@@ -48,6 +48,36 @@ on konnect behind Traefik + basicauth, with a Mastra Bot answering through OpenR
 | `app/src/routes/_authed/admin/learning.tsx`, `routes/_authed/admin/index.tsx`, `components/admin/admin-sidebar.tsx` | Learning (Intelligence feature) redirected to /admin, links removed; route kept for upstream merges. |
 | `patches/@ag-ui%2Fmastra@1.1.6.patch`, `package.json`, `bun.lock`, `server/Dockerfile` | bun patch of the Mastra AG-UI bridge: RUN_ERROR message built from the provider error (message / nested error / responseBody message + HTTP status, never headers) instead of `[object Object]`; so the stored run events and the UI carry the same sentence. |
 
+## Phase 0 hardening pass (gate before opening to 5 users)
+| File | Why |
+|---|---|
+| `server/src/synelia/pilot-gate.ts` (new), `server/src/app.ts` | Server twin of the UI `pilot` flags (`SYNELIA_PILOT`, on by default): `/api/bots`, `/api/team-bots`, `/api/plugins/*` (Skills, MCP, connections, Composio, grants), `/api/computers`, `/api/host-access`, `/api/sandboxed`, `/api/agent-tools`, `/api/demonstrations`, `/api/routines`, `/api/responsibilities`, `/api/proactive`, `/api/voice`, `/api/components`, `/api/groups`, `/api/delivery`, `/api/events`, `/api/admin/learning`, and every non-GET `/api/agents*` answer 404. `GET /bot` redirects home. Tools outside the pilot (`computer_*`, `report_refusal`, `generateSandboxedUi`) are removed from the run input before the Bot sees them. |
+| `server/src/persistence/local-intelligence.ts` | Lock acquire idempotent for the same runId; renew throws a 409 `PlatformRequestError` when 0 rows (keepLease stops the turn); thread change events (rename/archive/delete/title); `lastRunError`; title set once from the first user message of the first non-failed run (markdown stripped, ~60 chars), never over an existing name; `message_ids` written per run; `threadMessageModels` (badge map, owner-checked). |
+| `server/src/persistence/schema.ts` | `synelia_thread_run.message_ids text[]` + GIN index + one-time backfill from events. |
+| `server/src/persistence/postgres-runner.ts`, `server/src/synelia/models.ts` (new) | Stored provider/model = the one that really answered (allowlist + availability + default, same rule as Mastra), not the browser header; index follows store change events; pilot tool filter. |
+| `server/src/copilot.ts` | Rename/archive/delete of a thread answered in SSE mode (the runtime returns 422 without Intelligence), owner-only, 404 otherwise. |
+| `server/src/app.ts` | `GET /api/threads/:id` (local mode) → `{known, lastError}` under the owner rule; `GET /api/synelia/threads/:id/models` badge map. |
+| `server/src/auth/bootstrap-password-user.ts` | Extra operator accounts `OPENBOT_BOOTSTRAP_USER_2_*`..`_9_*` (test account B for ownership checks). |
+| `toolkit/src/headless-tools.ts`, `patches/@ag-ui%2Fmastra@1.1.6.patch` | One error rule in both places: provider words + `(HTTP n)`, `sk-…` redacted, the error object is never serialised (no requestBodyValues/url/headers), generic "Erreur du fournisseur" otherwise. |
+| `agent-mastra/src/mastra/synelia-models.ts`, `index.ts` | `available` per model (OpenRouter key probed via `/key`: a management/provisioning key is unavailable); default and fallback only among available models. |
+| `app/src/lib/copilot/synelia-model.tsx`, `components/channels/channel-chat.tsx`, `chat-transcript.tsx` | Unavailable models hidden; new conversation starts on the default; badge = one read per thread, disabled during a run, refreshed when it ends, last message of each run, aria-label; provider failure shown as "Ce modèle est indisponible pour le moment, choisissez-en un autre." with the technical line below; stored error redrawn after reload; resending the restored draft after a failure replaces the failed message instead of duplicating it. |
+| `app/src/routes/_authed/_app/bot.tsx`, `lib/i18n/index.ts` | `/bot` redirected home under the pilot (`hideBotPage`). |
+| `deploy/synelia/deploy.sh` (new) | Refuses to deploy a dirty tree; writes DEPLOYED_COMMIT and a chmod-600 bundle only from a clean commit. |
+| tests | `server/tests/synelia-persistence.integration.test.ts` (needs `SYNELIA_TEST_DATABASE_URL`), `server/tests/synelia-pilot-gate.test.ts`, `toolkit/tests/synelia-error-text.test.ts`; e2e `e2e.sh ownership` and `e2e.sh gate` (outside the repo, /workspace/synelia-grokbot). |
+
+## Gate ouverture 5 utilisateurs
+| # | Critère | Statut | Preuve |
+|---|---|---|---|
+| 1 | acquire même runId ×2 OK, autre runId 409 ; renew sur verrou perdu lève | OK — COMMIT_HASH | `synelia-persistence.integration.test.ts` › "acquire with the same runId twice…", "renew on a lost lock throws…" |
+| 2 | `thread_run.model` = modèle qui a réellement répondu après fallback | OK — COMMIT_HASH | `resolveModel (gate 2…)` (5 tests) + vérif DB après run prod |
+| 3 | B reçoit 404 sur threads/runs de A ; API Bots/Skills/ordinateur directe 404 | OK — COMMIT_HASH | `e2e.sh ownership`, `e2e.sh gate`, `synelia-pilot-gate.test.ts`, "other user: rename/delete answer 404" |
+| 4 | rename/archive/delete mettent à jour `#index` | OK — COMMIT_HASH | "index updated immediately, not at the next run" |
+| 5 | mots de passe tournés, credentials.txt supprimé, branche poussée sur remote privé | OUVERT | — |
+| 6 | erreurs sans fuite (requestBodyValues + clé sk- absents du RUN_ERROR et de la DB) | OK — COMMIT_HASH | `synelia-error-text.test.ts` (formatter + helper du patch exécuté) |
+| 7 | badge fiable (run >20 s, badge sans reload, pas de polling par message) | PARTIEL — COMMIT_HASH | requête unique par thread, invalidée en fin de run ; test navigateur >20 s à faire (Chief) |
+| 8 | CI front verte (format:check, 6 tests cassés, lang=fr, pas d'anglais login/composer/sidebar/picker) | OUVERT (Frontend Expert) | — |
+| 9 | déploiement refusé si arbre sale ; DEPLOYED_COMMIT depuis arbre propre | OK — COMMIT_HASH | `deploy/synelia/deploy.sh` |
+
 ## Deployment
 | File | Why |
 |---|---|

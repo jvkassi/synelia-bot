@@ -29,13 +29,17 @@ export const PILOT_GATED_PREFIXES = [
 /** Read-only listing stays (the model picker and the transcript need the Bot names). */
 const AGENT_WRITE = /^\/api\/agents(\/|$)/;
 
-export function pilotEnabled(env: Record<string, string | undefined> = process.env): boolean {
+export function pilotEnabled(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
   return (env.SYNELIA_PILOT ?? "1") !== "0";
 }
 
 export function isPilotGated(method: string, path: string): boolean {
   if (
-    PILOT_GATED_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))
+    PILOT_GATED_PREFIXES.some(
+      (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+    )
   )
     return true;
   return AGENT_WRITE.test(path) && method !== "GET" && method !== "HEAD";
@@ -47,4 +51,25 @@ export function createPilotGate(enabled = pilotEnabled()): MiddlewareHandler {
       return context.json({ error: "Not found" }, 404);
     await next();
   };
+}
+
+/**
+ * Tools the browser offers the Bot that are outside the pilot: the agent computer (computer_*,
+ * report_refusal, which belongs to it) and sandboxed generated UI (its API is gated above). The
+ * in-chat questions (askApproval/askChoice/askForm) and display components (show*) stay.
+ */
+export function isPilotGatedTool(name: string): boolean {
+  return (
+    name.startsWith("computer_") ||
+    name === "report_refusal" ||
+    name === "generateSandboxedUi"
+  );
+}
+
+export function pilotTools<T extends { name: string }>(
+  tools: T[] | undefined,
+  enabled = pilotEnabled(),
+): T[] | undefined {
+  if (!enabled || !tools) return tools;
+  return tools.filter((tool) => !isPilotGatedTool(tool.name));
 }

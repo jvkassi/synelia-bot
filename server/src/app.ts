@@ -1,5 +1,5 @@
 import type { Hono as HonoApp, MiddlewareHandler } from "hono";
-import { createPilotGate } from "./synelia/pilot-gate";
+import { createPilotGate, pilotEnabled } from "./synelia/pilot-gate";
 import { localIntelligence } from "./persistence/local-intelligence";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -624,6 +624,8 @@ export function createApp(
   // govern, the admin screen's API, and the SCIM verbs the GET/POST auth handler above does not take.
   // Synelia fork: pilot surfaces off server-side too (404), before any route can answer.
   app.use("/api/*", createPilotGate());
+  // The /bot page is outside the pilot too: the server sends the browser home before any HTML.
+  if (pilotEnabled()) app.get("/bot", (context) => context.redirect("/", 302));
   app.use("/api/*", createEnterpriseGate(requireUser));
   app.route("/api/admin/enterprise", createEnterpriseAdminRoutes(requireUser));
   app.on(["PUT", "PATCH", "DELETE"], "/api/auth/scim/*", (context) =>
@@ -1942,16 +1944,45 @@ export function createApp(
     return context.json(run);
   });
 
-  app.get("/api/synelia/messages/:messageId/model", requireUser, async (context) => {
-    const local = config.runtime.intelligence.local;
-    if (!local) return context.json({ error: "Not available." }, 404);
-    const run = await localIntelligence(local.databaseUrl).messageModel({
-      messageId: context.req.param("messageId"),
-      userId: context.var.actor.id,
-    });
-    if (!run) return context.json({ error: "Message not found." }, 404);
-    return context.json(run);
-  });
+  /*
+   * Synelia fork: the badge map of one thread, {messageId: {provider, model}}, last assistant
+   * message of each run only. One owner-checked read per thread; 404 if the thread is not yours.
+   */
+  app.get(
+    "/api/synelia/threads/:threadId/models",
+    requireUser,
+    async (context) => {
+      const local = config.runtime.intelligence.local;
+      if (!local) return context.json({ error: "Not available." }, 404);
+      try {
+        return context.json(
+          await localIntelligence(local.databaseUrl).threadMessageModels({
+            threadId: context.req.param("threadId"),
+            userId: context.var.actor.id,
+          }),
+        );
+      } catch (error) {
+        if ((error as { status?: number }).status === 404)
+          return context.json({ error: "Thread not found." }, 404);
+        throw error;
+      }
+    },
+  );
+
+  app.get(
+    "/api/synelia/messages/:messageId/model",
+    requireUser,
+    async (context) => {
+      const local = config.runtime.intelligence.local;
+      if (!local) return context.json({ error: "Not available." }, 404);
+      const run = await localIntelligence(local.databaseUrl).messageModel({
+        messageId: context.req.param("messageId"),
+        userId: context.var.actor.id,
+      });
+      if (!run) return context.json({ error: "Message not found." }, 404);
+      return context.json(run);
+    },
+  );
 
   /*
    * Synelia fork: in local (Postgres) mode, the "is this remembered thread still known" check is
@@ -1963,12 +1994,16 @@ export function createApp(
     const local = config.runtime.intelligence.local;
     if (!local) return next();
     const store = localIntelligence(local.databaseUrl);
-    const params = { threadId: context.req.param("threadId"), userId: context.var.actor.id };
+    const params = {
+      threadId: context.req.param("threadId"),
+      userId: context.var.actor.id,
+    };
     try {
       const lastError = await store.lastRunError(params);
       return context.json({ known: true, lastError });
     } catch (error) {
-      if ((error as { status?: number }).status === 404) return context.json({ known: false, lastError: null });
+      if ((error as { status?: number }).status === 404)
+        return context.json({ known: false, lastError: null });
       return context.json({ error: "Could not check thread status." }, 502);
     }
   });

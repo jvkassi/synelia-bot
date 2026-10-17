@@ -8,8 +8,15 @@
  */
 import { useAgentContext } from "@copilotkit/react-core/v2";
 import { ui } from "@/lib/i18n";
-import { useQuery } from "@tanstack/react-query";
-import { useEffect, useSyncExternalStore } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  createContext,
+  type ReactNode,
+  useContext,
+  useEffect,
+  useRef,
+  useSyncExternalStore,
+} from "react";
 import { client } from "@/lib/client";
 
 export type SyneliaModel = {
@@ -48,7 +55,9 @@ export function useModelList() {
     queryKey: ["synelia", "models"],
     queryFn: async () =>
       (await (
-        await client("/api/synelia/models", { fallback: "Could not load models" })
+        await client("/api/synelia/models", {
+          fallback: "Could not load models",
+        })
       ).json()) as ModelList,
     // Unavailable providers (e.g. OpenRouter before an inference key) are not offered at all.
     select: (list: ModelList): ModelList => ({
@@ -79,7 +88,11 @@ export function SyneliaModelContext() {
  * `startOnDefault`: a new conversation always begins on the deployment default, not on whatever
  * was picked last time; the choice made here then applies to the conversation it starts.
  */
-export function SyneliaModelPicker({ startOnDefault = false }: { startOnDefault?: boolean } = {}) {
+export function SyneliaModelPicker({
+  startOnDefault = false,
+}: {
+  startOnDefault?: boolean;
+} = {}) {
   useEffect(() => {
     if (!startOnDefault) return;
     window.localStorage.removeItem(STORAGE_KEY);
@@ -91,7 +104,10 @@ export function SyneliaModelPicker({ startOnDefault = false }: { startOnDefault?
   if (models.length === 0) return null;
   const groups = new Map<string, SyneliaModel[]>();
   for (const model of models) {
-    groups.set(model.providerLabel, [...(groups.get(model.providerLabel) ?? []), model]);
+    groups.set(model.providerLabel, [
+      ...(groups.get(model.providerLabel) ?? []),
+      model,
+    ]);
   }
   return (
     <select
@@ -115,46 +131,119 @@ export function SyneliaModelPicker({ startOnDefault = false }: { startOnDefault?
   );
 }
 
-/**
- * Under the last assistant message of each run: which provider/model answered it.
- *
- * Read from the run record the server keeps (`/api/synelia/runs/:runId`), so it is the same fact the
- * database holds. A run still streaming is not stored yet: the query retries until it is.
- */
-function ModelLabel({ path, cacheKey }: { path: string; cacheKey: string }) {
-  const { data } = useQuery({
-    queryKey: ["synelia", "answer-model", cacheKey],
-    queryFn: async () => {
-      const response = await fetch(path, { credentials: "include" });
-      if (!response.ok) throw new Error("not yet");
-      return (await response.json()) as { provider: string | null; model: string | null; status: string };
-    },
-    retry: 8,
-    retryDelay: 2_000,
-    staleTime: Number.POSITIVE_INFINITY,
-  });
-  if (!data?.model) return null;
-  const providerLabel =
-    data.provider === "router9" ? "9router" : data.provider === "openrouter" ? "OpenRouter" : data.provider;
+const providerName = (provider: string | null) =>
+  provider === "router9"
+    ? "9router"
+    : provider === "openrouter"
+      ? "OpenRouter"
+      : (provider ?? "");
+
+function Badge({
+  provider,
+  model,
+}: {
+  provider: string | null;
+  model: string;
+}) {
+  const text = `${providerName(provider)} · ${model}`;
   return (
-    <div className="mt-1 text-xs text-muted-foreground" data-testid="synelia-run-model">
-      {`${providerLabel} · ${data.model}`}
+    <div
+      aria-label={`${ui.model.label} : ${text}`}
+      className="mt-1 text-xs text-muted-foreground"
+      data-testid="synelia-run-model"
+    >
+      {text}
     </div>
   );
 }
 
-function RunModelLabel({ runId }: { runId: string }) {
-  return <ModelLabel cacheKey={`run:${runId}`} path={`/api/synelia/runs/${encodeURIComponent(runId)}`} />;
+/**
+ * The conversation a transcript shows, and whether a run is in flight. Provided by channel-chat.
+ * The badge map is ONE owner-checked read per thread (`/api/synelia/threads/:id/models`), disabled
+ * while a run streams, and refreshed when the run ends (RUN_FINISHED / RUN_ERROR → not running).
+ * No per-message polling.
+ */
+type ThreadModelsState = { threadId?: string; running: boolean };
+const ThreadModelsContext = createContext<ThreadModelsState>({
+  running: false,
+});
+
+const threadModelsKey = (threadId?: string) => [
+  "synelia",
+  "thread-models",
+  threadId,
+];
+
+export function SyneliaThreadModels({
+  threadId,
+  running,
+  children,
+}: ThreadModelsState & { children: ReactNode }) {
+  const queryClient = useQueryClient();
+  const wasRunning = useRef(running);
+  useEffect(() => {
+    if (wasRunning.current && !running)
+      void queryClient.invalidateQueries({
+        queryKey: threadModelsKey(threadId),
+      });
+    wasRunning.current = running;
+  }, [running, threadId, queryClient]);
+  return (
+    <ThreadModelsContext.Provider value={{ threadId, running }}>
+      {children}
+    </ThreadModelsContext.Provider>
+  );
 }
 
-/** Under an assistant message in OpenBot's own transcript (conversation pages). */
+function useThreadModels() {
+  const { threadId, running } = useContext(ThreadModelsContext);
+  return useQuery({
+    queryKey: threadModelsKey(threadId),
+    enabled: Boolean(threadId) && !running,
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/synelia/threads/${encodeURIComponent(threadId ?? "")}/models`,
+        { credentials: "include" },
+      );
+      if (!response.ok) return {};
+      return (await response.json()) as Record<
+        string,
+        { provider: string | null; model: string }
+      >;
+    },
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+}
+
+/** Under an assistant message in OpenBot's own transcript: shown only on the last one of a run. */
 export function MessageModelLabel({ messageId }: { messageId: string }) {
-  return (
-    <ModelLabel
-      cacheKey={`message:${messageId}`}
-      path={`/api/synelia/messages/${encodeURIComponent(messageId)}/model`}
-    />
-  );
+  const { data } = useThreadModels();
+  const entry = data?.[messageId];
+  return entry ? <Badge model={entry.model} provider={entry.provider} /> : null;
+}
+
+/** Packaged CopilotChat (bot page): one read per finished run, no retry loop. */
+function RunModelLabel({ runId }: { runId: string }) {
+  const { data } = useQuery({
+    queryKey: ["synelia", "answer-model", runId],
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/synelia/runs/${encodeURIComponent(runId)}`,
+        {
+          credentials: "include",
+        },
+      );
+      if (!response.ok) return null;
+      return (await response.json()) as {
+        provider: string | null;
+        model: string | null;
+      };
+    },
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  return data?.model ? (
+    <Badge model={data.model} provider={data.provider} />
+  ) : null;
 }
 
 export const syneliaRunModelRenderer = {
@@ -192,11 +281,16 @@ export function useStoredRunError(
     queryKey: ["synelia", "thread-error", threadId],
     enabled: Boolean(threadId),
     queryFn: async () => {
-      const response = await fetch(`/api/threads/${encodeURIComponent(threadId ?? "")}`, {
-        credentials: "include",
-      });
+      const response = await fetch(
+        `/api/threads/${encodeURIComponent(threadId ?? "")}`,
+        {
+          credentials: "include",
+        },
+      );
       if (!response.ok) return null;
-      const body = (await response.json()) as { lastError?: { message?: string | null } | null };
+      const body = (await response.json()) as {
+        lastError?: { message?: string | null } | null;
+      };
       return body.lastError?.message ?? null;
     },
     staleTime: 30_000,

@@ -2,7 +2,7 @@ import { CopilotChat } from "@copilotkit/react-core/v2";
 import { pilot, ui } from "@/lib/i18n";
 import { IconPlus } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { ComputerChatControls } from "@/components/computer/computer-controls";
 import { SyneliaModelPicker } from "@/lib/copilot/synelia-model";
 import { ComputerViewPanel } from "@/components/computer/computer-panel";
@@ -21,6 +21,10 @@ import { useBotThread } from "@/lib/copilot/bot-thread";
 import { useStoppedTurn } from "@/lib/copilot/stopped-turn";
 
 export const Route = createFileRoute("/_authed/_app/bot")({
+  // Synelia fork: the single-Bot page is outside the pilot (conversations only). Kept for merges.
+  beforeLoad: () => {
+    if (pilot.hideBotPage) throw redirect({ to: "/" });
+  },
   component: RouteComponent,
   validateSearch: (
     search: Record<string, unknown>,
@@ -188,11 +192,11 @@ function BotChat({ agentId, name }: { agentId: string; name: string }) {
               <SyneliaModelPicker />
               {/* Synelia fork: no computers in the pilot. */}
               {pilot.hideComputerControls ? null : (
-              <ComputerChatControls
-                computerId={agentId}
-                open={watch === true}
-                onOpenChange={showComputer}
-              />
+                <ComputerChatControls
+                  computerId={agentId}
+                  open={watch === true}
+                  onOpenChange={showComputer}
+                />
               )}
               <Button onClick={startNew} size="sm" variant="ghost">
                 <IconPlus />

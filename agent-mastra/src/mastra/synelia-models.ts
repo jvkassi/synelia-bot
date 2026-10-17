@@ -69,7 +69,9 @@ export function syneliaProviders(): Map<string, Provider> {
     providers.set("openrouter", {
       id: "openrouter",
       label: "OpenRouter",
-      baseURL: withV1(env("OPENROUTER_BASE_URL") ?? "https://openrouter.ai/api/v1"),
+      baseURL: withV1(
+        env("OPENROUTER_BASE_URL") ?? "https://openrouter.ai/api/v1",
+      ),
       apiKey: openrouterKey,
       fetch: openrouterFetch,
     });
@@ -135,7 +137,9 @@ export async function probeProviders(force = false): Promise<void> {
       };
       availability.set(
         "openrouter",
-        response.ok && !body.data?.is_management_key && !body.data?.is_provisioning_key,
+        response.ok &&
+          !body.data?.is_management_key &&
+          !body.data?.is_provisioning_key,
       );
     } catch {
       // Network trouble says nothing about the key: keep the last answer.
@@ -149,18 +153,27 @@ export function defaultModelId(): string | undefined {
   return options.find((option) => option.id === wanted)?.id ?? options[0]?.id;
 }
 
-const cache = new Map<string, ReturnType<ReturnType<typeof createOpenAI>["chat"]>>();
+const cache = new Map<
+  string,
+  ReturnType<ReturnType<typeof createOpenAI>["chat"]>
+>();
 
 /** The single factory: allowlisted `provider:model` → an OpenAI-compatible chat model. */
 export function resolveSyneliaModel(picked: string | undefined) {
   const options = modelOptions();
   const option =
-    options.find((candidate) => candidate.id === picked && candidate.available) ??
-    options.find((candidate) => candidate.id === defaultModelId());
-  if (!option) throw new Error("SYNELIA_MODELS lists no model of an enabled provider.");
+    options.find(
+      (candidate) => candidate.id === picked && candidate.available,
+    ) ?? options.find((candidate) => candidate.id === defaultModelId());
+  if (!option)
+    throw new Error("SYNELIA_MODELS lists no model of an enabled provider.");
   const cached = cache.get(option.id);
   console.log(
-    JSON.stringify({ type: "synelia-model", provider: option.provider, model: option.model }),
+    JSON.stringify({
+      type: "synelia-model",
+      provider: option.provider,
+      model: option.model,
+    }),
   );
   if (cached) return cached;
   const provider = syneliaProviders().get(option.provider) as Provider;
@@ -175,19 +188,26 @@ export function resolveSyneliaModel(picked: string | undefined) {
 }
 
 /** The "Synelia model" AG-UI context entry of this run, if the browser sent one. */
-export function pickedModel(requestContext?: { get(key: string): unknown }): string | undefined {
-  const agUi = requestContext?.get("ag-ui") as { context?: unknown } | undefined;
+export function pickedModel(requestContext?: {
+  get(key: string): unknown;
+}): string | undefined {
+  const agUi = requestContext?.get("ag-ui") as
+    | { context?: unknown }
+    | undefined;
   const entries = Array.isArray(agUi?.context) ? agUi.context : [];
   if (env("SYNELIA_DEBUG_CONTEXT") === "1") {
     console.log(
       JSON.stringify({
         type: "synelia-context",
-        descriptions: entries.map((entry: { description?: unknown }) => entry?.description),
+        descriptions: entries.map(
+          (entry: { description?: unknown }) => entry?.description,
+        ),
       }),
     );
   }
   const entry = entries.find(
-    (candidate: { description?: unknown }) => candidate?.description === "Synelia model",
+    (candidate: { description?: unknown }) =>
+      candidate?.description === "Synelia model",
   ) as { value?: unknown } | undefined;
   return typeof entry?.value === "string"
     ? entry.value.replace(/^"|"$/g, "").trim() || undefined

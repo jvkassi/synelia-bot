@@ -22,8 +22,12 @@ import {
   ɵGLOBAL_STORE,
 } from "@copilotkit/runtime/v2";
 import { defer, from, type Observable, switchMap } from "rxjs";
-import type { LocalIntelligence, LocalThreadSummary } from "./local-intelligence";
+import type {
+  LocalIntelligence,
+  LocalThreadSummary,
+} from "./local-intelligence";
 import { resolveModel, type SyneliaModelList } from "../synelia/models";
+import { pilotTools } from "../synelia/pilot-gate";
 import { requestUser } from "./request-user";
 
 type HistoricRun = {
@@ -33,12 +37,15 @@ type HistoricRun = {
   createdAt?: number;
 };
 type GlobalStore = {
-  peek(threadId: string): { historicRuns: HistoricRun[]; messagesSnapshot: Message[] } | undefined;
+  peek(
+    threadId: string,
+  ): { historicRuns: HistoricRun[]; messagesSnapshot: Message[] } | undefined;
   getOrCreate(threadId: string): unknown;
   appendRun(threadId: string, run: unknown): void;
 };
 
-const notFound = () => Object.assign(new Error("Thread not found."), { status: 404 });
+const notFound = () =>
+  Object.assign(new Error("Thread not found."), { status: 404 });
 
 export class PostgresAgentRunner extends InMemoryAgentRunner {
   readonly #store: LocalIntelligence;
@@ -77,9 +84,15 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
   /** Load the thread index at boot. Failure is logged, not fatal: the index fills as people talk. */
   async warm(): Promise<void> {
     try {
-      for (const thread of await this.#store.listAllThreads()) this.#index.set(thread.id, thread);
+      for (const thread of await this.#store.listAllThreads())
+        this.#index.set(thread.id, thread);
     } catch (error) {
-      console.error(JSON.stringify({ type: "synelia-runner-warm-failed", reason: String(error) }));
+      console.error(
+        JSON.stringify({
+          type: "synelia-runner-warm-failed",
+          reason: String(error),
+        }),
+      );
     }
   }
 
@@ -144,11 +157,21 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
       ),
     ).pipe(
       switchMap(() => {
+        // Synelia fork: the Bot never sees tools outside the pilot (agent computer, sandboxed UI),
+        // whatever the browser registered.
+        const tools = pilotTools(request.input.tools);
+        if (tools !== request.input.tools)
+          request = {
+            ...request,
+            input: { ...request.input, tools: tools ?? [] },
+          };
         const stream = super.run(request);
         const runId = request.input.runId;
         const persist = (status: string) => {
           const store = this.#global.peek(request.threadId);
-          const run = store?.historicRuns.find((candidate) => candidate.runId === runId);
+          const run = store?.historicRuns.find(
+            (candidate) => candidate.runId === runId,
+          );
           if (!run) return;
           void this.#models()
             .catch(() => undefined)
@@ -162,7 +185,9 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
                 messages: store?.messagesSnapshot ?? [],
                 createdAt: run.createdAt ?? Date.now(),
                 // A provider failure arrives as a RUN_ERROR event on a stream that still completes.
-                status: run.events.some((event) => event.type === "RUN_ERROR") ? "error" : status,
+                status: run.events.some((event) => event.type === "RUN_ERROR")
+                  ? "error"
+                  : status,
                 // The model that really answered: allowlist + availability + default fallback,
                 // the rule Mastra applies, never the browser's header as sent.
                 ...resolveModel(pickedModel(request), list),
@@ -175,14 +200,18 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
                   type: "synelia-run-persist-failed",
                   threadId: request.threadId,
                   runId,
-                  reason: error instanceof Error ? error.message : String(error),
+                  reason:
+                    error instanceof Error ? error.message : String(error),
                 }),
               ),
             );
         };
         // The stream is a ReplaySubject: a second subscriber sees the same events, and completes
         // after the in-memory store has appended the run, which is what `persist` reads.
-        stream.subscribe({ complete: () => persist("done"), error: () => persist("error") });
+        stream.subscribe({
+          complete: () => persist("done"),
+          error: () => persist("error"),
+        });
         return stream;
       }),
     );
@@ -190,7 +219,11 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
 
   override connect(request: AgentRunnerConnectRequest): Observable<BaseEvent> {
     return defer(() =>
-      from(this.#authorise(request.threadId).then(() => this.hydrate(request.threadId))),
+      from(
+        this.#authorise(request.threadId).then(() =>
+          this.hydrate(request.threadId),
+        ),
+      ),
     ).pipe(switchMap(() => super.connect(request)));
   }
 
@@ -206,7 +239,10 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
   override listThreads() {
     const user = requestUser.getStore();
     return [...this.#index.values()]
-      .filter((thread) => !thread.archived && (!user || thread.createdById === user.id))
+      .filter(
+        (thread) =>
+          !thread.archived && (!user || thread.createdById === user.id),
+      )
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
       .map((thread) => ({
         id: thread.id,
@@ -226,10 +262,15 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
 }
 
 /** The "Synelia model" context entry as the browser sent it (`provider:model`), unvalidated. */
-export function pickedModel(request: AgentRunnerRunRequest): string | undefined {
+export function pickedModel(
+  request: AgentRunnerRunRequest,
+): string | undefined {
   const entry = (request.input.context ?? []).find(
     (candidate) => candidate.description === "Synelia model",
   );
-  const value = typeof entry?.value === "string" ? entry.value.replace(/^"|"$/g, "").trim() : "";
+  const value =
+    typeof entry?.value === "string"
+      ? entry.value.replace(/^"|"$/g, "").trim()
+      : "";
   return value || undefined;
 }

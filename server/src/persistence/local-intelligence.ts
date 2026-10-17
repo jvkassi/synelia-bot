@@ -163,7 +163,10 @@ export class LocalIntelligence {
     throw new LocalIntelligenceError("Learning is not available locally.", 501);
   }
   async ɵconnectTrajectory(): Promise<never> {
-    throw new LocalIntelligenceError("Trajectories are not available locally.", 501);
+    throw new LocalIntelligenceError(
+      "Trajectories are not available locally.",
+      501,
+    );
   }
 
   // ---- memory: handled by memory/store.ts local tables ----------------------------------------
@@ -174,10 +177,16 @@ export class LocalIntelligence {
     return { memories: [] };
   }
   async createMemory(): Promise<never> {
-    throw new LocalIntelligenceError("Memory is stored in OpenBot tables locally.", 501);
+    throw new LocalIntelligenceError(
+      "Memory is stored in OpenBot tables locally.",
+      501,
+    );
   }
   async updateMemory(): Promise<never> {
-    throw new LocalIntelligenceError("Memory is stored in OpenBot tables locally.", 501);
+    throw new LocalIntelligenceError(
+      "Memory is stored in OpenBot tables locally.",
+      501,
+    );
   }
   async removeMemory(): Promise<void> {}
   async ɵsubscribeToThreads() {
@@ -231,7 +240,12 @@ export class LocalIntelligence {
     return rows.map(toSummary);
   }
 
-  async createThread(params: { threadId: string; userId: string; agentId: string; name?: string }) {
+  async createThread(params: {
+    threadId: string;
+    userId: string;
+    agentId: string;
+    name?: string;
+  }) {
     return (await this.getOrCreateThread(params)).thread;
   }
 
@@ -251,11 +265,13 @@ export class LocalIntelligence {
     const existing = await this.#row(params.threadId);
     if (!existing) throw new LocalIntelligenceError("Thread not found.", 404);
     if (existing.user_id === UNOWNED) {
-      await this.#sql`UPDATE synelia_thread SET user_id = ${params.userId} WHERE id = ${params.threadId}`;
+      await this
+        .#sql`UPDATE synelia_thread SET user_id = ${params.userId} WHERE id = ${params.threadId}`;
       existing.user_id = params.userId;
     }
     // Same answer as a missing thread: an id never discloses somebody else's conversation.
-    if (existing.user_id !== params.userId) throw new LocalIntelligenceError("Thread not found.", 404);
+    if (existing.user_id !== params.userId)
+      throw new LocalIntelligenceError("Thread not found.", 404);
     return { thread: toSummary(existing), created: false };
   }
 
@@ -300,13 +316,18 @@ export class LocalIntelligence {
     return summary;
   }
 
-  async archiveThread(params: { threadId: string; userId: string; agentId: string }) {
+  async archiveThread(params: {
+    threadId: string;
+    userId: string;
+    agentId: string;
+  }) {
     await this.updateThread({ ...params, updates: { archived: true } });
   }
 
   async deleteThread(params: { threadId: string; userId: string }) {
     await this.getThread(params);
-    await this.#sql`UPDATE synelia_thread SET deleted_at = now() WHERE id = ${params.threadId}`;
+    await this
+      .#sql`UPDATE synelia_thread SET deleted_at = now() WHERE id = ${params.threadId}`;
     this.#emit({ kind: "deleted", threadId: params.threadId });
   }
 
@@ -340,7 +361,8 @@ export class LocalIntelligence {
     const row = await this.#row(params.threadId);
     // A thread nobody has run yet reads as empty, like IntelligenceKnowingANewThread.
     if (!row) return { messages: [] };
-    if (row.user_id !== params.userId) throw new LocalIntelligenceError("Thread not found.", 404);
+    if (row.user_id !== params.userId)
+      throw new LocalIntelligenceError("Thread not found.", 404);
     const runs = (await this.#sql`
       SELECT messages FROM synelia_thread_run
       WHERE thread_id = ${params.threadId} AND jsonb_array_length(messages) > 0
@@ -350,7 +372,11 @@ export class LocalIntelligence {
 
   async getThreadEvents(params: { threadId: string }) {
     const runs = await this.loadRuns(params.threadId);
-    return { events: runs.flatMap((run) => run.events) as never[], decodeErrorRowIds: [], truncated: false };
+    return {
+      events: runs.flatMap((run) => run.events) as never[],
+      decodeErrorRowIds: [],
+      truncated: false,
+    };
   }
 
   async getThreadState() {
@@ -383,7 +409,12 @@ export class LocalIntelligence {
   }
 
   async saveRun(
-    run: StoredRun & { userId?: string; status: string; provider?: string; model?: string },
+    run: StoredRun & {
+      userId?: string;
+      status: string;
+      provider?: string;
+      model?: string;
+    },
   ) {
     await this.ready();
     // No owner known (a headless run that skipped the lock): keep the run under a placeholder owner
@@ -395,12 +426,13 @@ export class LocalIntelligence {
     // `::text::jsonb`: Bun binds a string parameter as a JSON string scalar when cast straight to
     // jsonb, which stored every journal as one quoted string.
     await this.#sql`
-      INSERT INTO synelia_thread_run (run_id, thread_id, agent_id, parent_run_id, status, provider, model, events, messages)
+      INSERT INTO synelia_thread_run (run_id, thread_id, agent_id, parent_run_id, status, provider, model, message_ids, events, messages)
       VALUES (${run.runId}, ${run.threadId}, ${run.agentId}, ${run.parentRunId}, ${run.status},
               ${run.provider ?? null}, ${run.model ?? null},
+              ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(assistantMessageIds(run.events))}::text::jsonb)),
               ${JSON.stringify(run.events)}::text::jsonb, ${JSON.stringify(run.messages)}::text::jsonb)
       ON CONFLICT (run_id) DO UPDATE SET events = EXCLUDED.events, messages = EXCLUDED.messages,
-        status = EXCLUDED.status`;
+        status = EXCLUDED.status, message_ids = EXCLUDED.message_ids`;
     // Title: set once, from the first user message of the first run that did not fail. A name that
     // is already there (an earlier title or an explicit rename) is never overwritten.
     const title = run.status === "error" ? null : threadTitle(run.messages);
@@ -426,16 +458,43 @@ export class LocalIntelligence {
     return rows[0];
   }
 
+  /**
+   * For the "model under each answer" badge: the LAST assistant message of every stored run of the
+   * thread → provider/model of that run. One owner-checked read per thread (404 for anybody else).
+   */
+  async threadMessageModels(params: { threadId: string; userId: string }) {
+    await this.getThread(params);
+    const rows = (await this.#sql`
+      SELECT message_ids[array_length(message_ids, 1)] AS message_id, provider, model
+      FROM synelia_thread_run
+      WHERE thread_id = ${params.threadId} AND array_length(message_ids, 1) > 0 AND model IS NOT NULL
+      ORDER BY seq`) as {
+      message_id: string;
+      provider: string | null;
+      model: string;
+    }[];
+    const map: Record<string, { provider: string | null; model: string }> = {};
+    for (const row of rows)
+      map[row.message_id] = { provider: row.provider, model: row.model };
+    return map;
+  }
+
   /** Provider and model of the run that wrote assistant message `messageId`, for its owner. */
   async messageModel(params: { messageId: string; userId: string }) {
     await this.ready();
-    const probe = JSON.stringify([{ type: "TEXT_MESSAGE_START", messageId: params.messageId }]);
+    const probe = JSON.stringify([
+      { type: "TEXT_MESSAGE_START", messageId: params.messageId },
+    ]);
     const rows = (await this.#sql`
       SELECT r.provider, r.model, r.status FROM synelia_thread_run r
       JOIN synelia_thread t ON t.id = r.thread_id
       WHERE t.user_id = ${params.userId} AND t.deleted_at IS NULL
-        AND r.events @> ${probe}::text::jsonb
-      ORDER BY r.seq DESC LIMIT 1`) as { provider: string | null; model: string | null; status: string }[];
+        AND (r.message_ids @> ARRAY[${params.messageId}]::text[] OR r.events @> ${probe}::text::jsonb)
+      ORDER BY r.seq DESC LIMIT 1`) as {
+      provider: string | null;
+      model: string | null;
+      status: string;
+    }[];
     return rows[0];
   }
 
@@ -466,7 +525,11 @@ export class LocalIntelligence {
     };
   }
 
-  async ɵrenewThreadLock(params: { threadId: string; runId: string; ttlSeconds: number }) {
+  async ɵrenewThreadLock(params: {
+    threadId: string;
+    runId: string;
+    ttlSeconds: number;
+  }) {
     await this.ready();
     const rows = (await this.#sql`
       UPDATE synelia_thread_lock SET expires_at = now() + make_interval(secs => ${params.ttlSeconds})
@@ -515,7 +578,11 @@ export function threadTitle(messages: unknown[]): string | null {
       ? first.content
       : Array.isArray(first?.content)
         ? first.content
-            .map((part) => (typeof (part as { text?: unknown }).text === "string" ? (part as { text: string }).text : ""))
+            .map((part) =>
+              typeof (part as { text?: unknown }).text === "string"
+                ? (part as { text: string }).text
+                : "",
+            )
             .join(" ")
         : "";
   const plain = raw
@@ -530,4 +597,19 @@ export function threadTitle(messages: unknown[]): string | null {
   const cut = plain.slice(0, 60);
   const space = cut.lastIndexOf(" ");
   return `${(space > 30 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+/** Assistant messageIds a run wrote, in first-seen order (START and CHUNK events both carry them). */
+export function assistantMessageIds(events: unknown[]): string[] {
+  const ids: string[] = [];
+  for (const event of events as { type?: string; messageId?: unknown }[]) {
+    if (
+      (event.type === "TEXT_MESSAGE_START" ||
+        event.type === "TEXT_MESSAGE_CHUNK") &&
+      typeof event.messageId === "string" &&
+      !ids.includes(event.messageId)
+    )
+      ids.push(event.messageId);
+  }
+  return ids;
 }

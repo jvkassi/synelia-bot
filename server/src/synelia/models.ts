@@ -10,7 +10,10 @@ export type SyneliaModelOption = {
   model: string;
   available?: boolean;
 };
-export type SyneliaModelList = { models: SyneliaModelOption[]; defaultModel: string | null };
+export type SyneliaModelList = {
+  models: SyneliaModelOption[];
+  defaultModel: string | null;
+};
 
 export function resolveModel(
   picked: string | undefined,
@@ -39,7 +42,10 @@ export function createModelListSource(
         signal: AbortSignal.timeout(5_000),
       });
       if (!response.ok) return cached?.list;
-      cached = { at: Date.now(), list: (await response.json()) as SyneliaModelList };
+      cached = {
+        at: Date.now(),
+        list: (await response.json()) as SyneliaModelList,
+      };
       return cached.list;
     } catch {
       return cached?.list;

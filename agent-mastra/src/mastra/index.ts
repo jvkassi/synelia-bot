@@ -23,7 +23,8 @@ import {
 } from "../../../shared/model-providers";
 import {
   defaultModelId,
-  modelOptions, probeProviders,
+  modelOptions,
+  probeProviders,
   pickedModel,
   resolveSyneliaModel,
 } from "./synelia-models";
@@ -193,7 +194,10 @@ export const mastra = new Mastra({
         method: "GET",
         handler: async (context) => {
           await probeProviders();
-          return context.json({ models: modelOptions(), defaultModel: defaultModelId() ?? null });
+          return context.json({
+            models: modelOptions(),
+            defaultModel: defaultModelId() ?? null,
+          });
         },
       }),
     ],

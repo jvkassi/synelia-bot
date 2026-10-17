@@ -48,7 +48,10 @@ import type { DeploymentConfig } from "./config";
 import { observeModelConnection } from "./desktop-connection-failure";
 import { desktopTelemetryProperties } from "./desktop-telemetry";
 import { observeIntelligenceAuthentication } from "./intelligence-client";
-import { type LocalIntelligence, localIntelligence } from "./persistence/local-intelligence";
+import {
+  type LocalIntelligence,
+  localIntelligence,
+} from "./persistence/local-intelligence";
 import { PostgresAgentRunner } from "./persistence/postgres-runner";
 import { requestUser } from "./persistence/request-user";
 import { RemoteLearnedSkillsMiddleware } from "./learning/remote";
@@ -1766,36 +1769,36 @@ export function mountCopilotRuntime(
   const intelligenceClient: CopilotKitIntelligence = local
     ? (local as unknown as CopilotKitIntelligence)
     : observeIntelligenceAuthentication(
-      new IntelligenceKnowingANewThread({
-        apiUrl: intelligence.apiUrl,
-        wsUrl: intelligence.gatewayWsUrl,
-        apiKey: intelligence.apiKey,
-        getLearningContainerId: async ({
-          agentId,
-          input,
-          user,
-        }): Promise<string | undefined> => {
-          if (!user)
-            throw new Error(
-              "Learning Thread assignment requires a verified user.",
-            );
-          return learning?.containerForThread({
+        new IntelligenceKnowingANewThread({
+          apiUrl: intelligence.apiUrl,
+          wsUrl: intelligence.gatewayWsUrl,
+          apiKey: intelligence.apiKey,
+          getLearningContainerId: async ({
             agentId,
-            threadId: input.threadId,
-            userId: user.id,
-          });
-        },
-      }),
-    );
+            input,
+            user,
+          }): Promise<string | undefined> => {
+            if (!user)
+              throw new Error(
+                "Learning Thread assignment requires a verified user.",
+              );
+            return learning?.containerForThread({
+              agentId,
+              threadId: input.threadId,
+              userId: user.id,
+            });
+          },
+        }),
+      );
 
   // Synelia fork: learned Skills are an Intelligence feature (LearningStore stub = none locally).
   const learning: LearningRuntime | undefined =
     learningSettings && !local
-    ? createLearningRuntime({
-        store: learningSettings,
-        client: intelligenceClient,
-      })
-    : undefined;
+      ? createLearningRuntime({
+          store: learningSettings,
+          client: intelligenceClient,
+        })
+      : undefined;
 
   const runtimeOptions = {
     // `mode` is inferred from the presence of `intelligence`; passing it is a type error.
@@ -1848,7 +1851,13 @@ export function mountCopilotRuntime(
 
   return {
     handler: postgresRunner
-      ? withRequestUser(runtimeHandler, postgresRunner, local as LocalIntelligence, identifyUser, basePath)
+      ? withRequestUser(
+          runtimeHandler,
+          postgresRunner,
+          local as LocalIntelligence,
+          identifyUser,
+          basePath,
+        )
       : runtimeHandler,
     /** Synelia fork: the durable runner (also used for headless turns). */
     postgresRunner,
@@ -1939,7 +1948,12 @@ function withRequestUser(
       // thread index is updated by the store's change event.
       const mutation = threadMutation.exec(context.req.path);
       const method = context.req.method;
-      if (mutation?.[1] && (method === "PATCH" || method === "DELETE" || (mutation[2] && method !== "GET"))) {
+      if (
+        mutation?.[1] &&
+        (method === "PATCH" ||
+          method === "DELETE" ||
+          (mutation[2] && method !== "GET"))
+      ) {
         const threadId = decodeURIComponent(mutation[1]);
         const params = { threadId, userId: user.id, agentId: "" };
         try {
@@ -1956,9 +1970,13 @@ function withRequestUser(
             archived?: unknown;
           };
           const updates: { name?: string; archived?: boolean } = {};
-          if (typeof body.name === "string" && body.name.trim()) updates.name = body.name.trim().slice(0, 200);
-          if (typeof body.archived === "boolean") updates.archived = body.archived;
-          return context.json({ thread: await store.updateThread({ ...params, updates }) });
+          if (typeof body.name === "string" && body.name.trim())
+            updates.name = body.name.trim().slice(0, 200);
+          if (typeof body.archived === "boolean")
+            updates.archived = body.archived;
+          return context.json({
+            thread: await store.updateThread({ ...params, updates }),
+          });
         } catch (error) {
           if ((error as { status?: number }).status === 404)
             return context.json({ error: "Thread not found." }, 404);
