@@ -99,6 +99,9 @@ const fr = {
       "Connexion interrompue, la réponse continue d’être générée. Rechargez la page pour l’afficher.",
     loading: "Chargement de la conversation",
     queued: "En attente",
+    /** The indicator between sending and the first token (1:1 and group transcripts). */
+    thinking: "Le modèle réfléchit…",
+    remove: "Retirer",
     removeQueued: (description: string) =>
       `Retirer le message en attente : ${description}`,
     attachment: "Pièce jointe",
@@ -108,6 +111,7 @@ const fr = {
     fileUnavailable: (filename: string) => `${filename} n'est pas disponible.`,
     open: (label: string) => `Ouvrir ${label}`,
     close: "Fermer",
+    closeDetails: "Fermer les détails",
     coworker: "Assistant de la conversation",
     computer: "Ordinateur",
     loadFailed: "Impossible de charger cette conversation.",
@@ -123,6 +127,7 @@ const fr = {
     callNeedsHttps:
       "Les appels vocaux nécessitent HTTPS (ou localhost) et un micro.",
     attach: "Joindre un fichier",
+    attachments: "Pièces jointes",
     moreOptionsUnavailable: "Autres options du message indisponibles",
   },
   newConversation: {

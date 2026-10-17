@@ -14,6 +14,7 @@ import {
   groupQueryOptions,
   sendGroupMessageMutationOptions,
 } from "@/lib/groups";
+import { ui } from "@/lib/i18n";
 import { markdownComponents } from "@/lib/markdown";
 import { newId } from "@/lib/new-id";
 import { ChannelAvatar } from "./avatar";
@@ -162,8 +163,9 @@ function GroupLine({
           <p
             className="tool-line-running text-sm text-muted-foreground"
             role="status"
+            aria-live="polite"
           >
-            Thinking
+            {ui.conversation.thinking}
           </p>
         ) : message.status === "waiting" ? (
           <p className="text-sm text-muted-foreground">

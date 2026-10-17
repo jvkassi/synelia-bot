@@ -188,8 +188,9 @@ function Thinking() {
       // `status` rather than `alert`: this is progress, not something that interrupts what somebody
       // is doing. The text says it, so a screen reader is told the same thing the shimmer implies.
       role="status"
+      aria-live="polite"
     >
-      Thinking
+      {ui.conversation.thinking}
     </p>
   );
 }
@@ -416,7 +417,7 @@ function Queued({
               onClick={onRemove}
               type="button"
             >
-              Remove
+              {ui.conversation.remove}
             </button>
           ) : null}
         </MessageFooter>

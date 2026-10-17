@@ -222,7 +222,8 @@ test("a turn that is only an attachment is still waited on", () => {
     { busy: true },
   );
 
-  expect(getByRole("status").textContent).toBe("Thinking");
+  expect(getByRole("status").textContent).toBe(ui.conversation.thinking);
+  expect(getByRole("status").getAttribute("aria-live")).toBe("polite");
 });
 
 test("a turn that is only an attachment anchors the scroller on itself", () => {
