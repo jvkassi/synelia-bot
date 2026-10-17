@@ -5,6 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { botLifecycleKeys } from "@/lib/bot-lifecycle/queries";
 import { client, tryClient } from "@/lib/client";
+import { ui } from "@/lib/i18n";
 import { type AgentChannel, type ChannelPage, channelKeys } from "./queries";
 
 /**
@@ -18,7 +19,8 @@ export function createChannelMutationOptions(queryClient: QueryClient) {
       const response = await client("/api/channels", {
         method: "POST",
         body: { agentIds },
-        fallback: "Could not start a channel",
+        // Synelia fork: French; the home page words the failure from its status (start-error.ts).
+        fallback: ui.home.startFailed,
       });
       return ((await response.json()) as { channel: AgentChannel }).channel;
     },

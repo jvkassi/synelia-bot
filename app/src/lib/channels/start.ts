@@ -10,6 +10,7 @@ import {
   sendGroupMessageMutationOptions,
 } from "@/lib/groups";
 import { newId } from "@/lib/new-id";
+import { perfMark } from "@/lib/synelia-perf";
 import {
   createChannelMutationOptions,
   deleteChannelMutationOptions,
@@ -84,6 +85,7 @@ export function useStartChannel() {
 
   const start = async (agentId: string, text: string) => {
     const channel = await createChannel.mutateAsync([agentId]);
+    perfMark("home:channel-created");
     queryClient.setQueryData(channelKeys.detail(channel.id), channel);
     stashFirstMessage(channel.id, text);
     await navigate({
@@ -91,6 +93,7 @@ export function useStartChannel() {
       replace: true,
       to: "/channel/$channelId",
     });
+    perfMark("home:navigated");
   };
 
   const startGroup = (agentIds: string[], text: string) =>

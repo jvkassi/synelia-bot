@@ -145,6 +145,17 @@ const fr = {
     startFailed: "Impossible de démarrer la conversation.",
     agentsUnavailable:
       "Les assistants n'ont pas pu être chargés : personne à qui envoyer ce message pour l'instant.",
+    /** Start failures (lib/channels/start-error.ts), chosen from the HTTP status and code. */
+    networkError: "Connexion impossible. Vérifiez votre réseau et réessayez.",
+    sessionExpired:
+      "Votre session a expiré. Rechargez la page pour vous reconnecter.",
+    accessDenied: "Accès refusé.",
+    serviceUnavailable:
+      "Le service est momentanément indisponible. Réessayez dans un instant.",
+    errorDetail: (status: number, code?: string) =>
+      `(erreur ${status}${code ? ` · ${code}` : ""})`,
+    /** Resends the message that failed to start, without reloading. */
+    retry: "Réessayer",
   },
   sidebar: {
     search: "Rechercher…",
@@ -242,6 +253,8 @@ const fr = {
     moreOptionsUnavailable: "Autres options du message indisponibles",
   },
   newConversation: {
+    /** Label of the recipient field (« To: » upstream). */
+    to: "À :",
     agentNotFound: "Assistant introuvable.",
     coworkersFailed: "Impossible de charger les assistants.",
     coworkerFailed: "Impossible de charger l'assistant.",

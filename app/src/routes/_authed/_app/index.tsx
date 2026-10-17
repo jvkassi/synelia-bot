@@ -5,6 +5,7 @@ import { AgentCard } from "@/components/agents/agent-card";
 import { Composer, toAgentOptions } from "@/components/channels/composer";
 import { noteSend, Thinking } from "@/components/channels/thinking";
 import { SidebarToggleBar } from "@/components/layout/sidebar-toggle";
+import { Button } from "@/components/ui/button";
 import {
   Carousel,
   CarouselContent,
@@ -21,9 +22,17 @@ import {
   routeMessage,
 } from "@/lib/channels/route";
 import { useStartChannel } from "@/lib/channels/start";
+import {
+  describeStartError,
+  reportStartError,
+} from "@/lib/channels/start-error";
 import { SyneliaModelPicker } from "@/lib/copilot/synelia-model";
 import { appConfig } from "@/lib/generated/application-config";
 import { pilot, ui } from "@/lib/i18n";
+import { perfMark } from "@/lib/synelia-perf";
+
+/** Synelia fork: what a home send needs to be tried again. */
+type HomeSend = { text: string; agentId?: string | null };
 
 export const Route = createFileRoute("/_authed/_app/")({
   component: RouteComponent,
@@ -33,7 +42,7 @@ function RouteComponent() {
   const {
     data: agents,
     isPending: loading,
-    isError: failed,
+    isError: agentsFailed,
   } = useQuery(agentListQueryOptions());
   const explore = agents?.filter(isSharedWithYou);
   const { start, startChosen, pending } = useStartChannel();
@@ -41,11 +50,85 @@ function RouteComponent() {
   /** Synelia fork: the message being started, shown at once while routing and creation run. */
   const [sending, setSending] = useState<string | null>(null);
 
+  /** Synelia fork: the message whose start failed, for « Réessayer » (no reload needed). */
+  const [failed, setFailed] = useState<HomeSend | null>(null);
+  const [retrying, setRetrying] = useState(false);
+
   /** Default recipient when the composer draft has no mention. */
   const fallback = defaultAgentProfile(
     agents,
     agents?.find((agent) => agent.visibility === "public"),
   );
+
+  /**
+   * One home send: route (unless `@`), create the channel, open it. Every failure resets the
+   * optimistic bubble and leaves the page ready for another send; nothing here survives it.
+   */
+  const send = async (message: HomeSend) => {
+    // A channel is pinned to one coworker for the life of its thread, so the coworker is chosen
+    // now, before it is created. An `@` is an explicit choice and is honoured as-is. With no `@`,
+    // the message is routed to the coworker it is for; if that routing cannot run, it falls back
+    // to the same default the composer used to always use.
+    setError(null);
+    setFailed(null);
+    setSending(message.text);
+    noteSend();
+    perfMark("home:submit");
+    let step = "route";
+    try {
+      if (message.agentId) {
+        // Recorded and started as one sequence, shared with `/channel/new`: the person already
+        // decided, and the trail has to say so wherever they decided it.
+        step = "start";
+        await startChosen(message.agentId, message.text);
+        return;
+      }
+      let agentId: string | undefined;
+      // Synelia fork: with a single Bot to choose from there is nothing to route, and asking the
+      // router cost ~3.5 s of blank screen before the conversation opened.
+      const candidates = agents?.length ?? 0;
+      if (pilot.hideBotsAndSkillsNav && candidates <= 1 && fallback)
+        agentId = fallback.id;
+      else
+        try {
+          agentId = (await routeMessage(message.text)).agentId;
+        } catch (caught) {
+          if (caught instanceof CoworkerRoutingRefusedError) throw caught;
+          // Swallowed on purpose (the default takes over), but no longer silently.
+          reportStartError("route", caught);
+          agentId = fallback?.id;
+        }
+      perfMark("home:routed");
+      if (!agentId) {
+        // Synelia fork: nobody to send it to; never leave the optimistic bubble hanging.
+        setSending(null);
+        setError(ui.home.startFailed);
+        return;
+      }
+      step = "start";
+      await start(agentId, message.text);
+    } catch (caught) {
+      if (!(caught instanceof CoworkerRoutingRefusedError))
+        reportStartError(step, caught);
+      setSending(null);
+      setError(describeStartError(caught));
+      // A refusal needs a different message (an `@`), so resending the same one is not offered.
+      if (!(caught instanceof CoworkerRoutingRefusedError)) setFailed(message);
+      throw caught;
+    }
+  };
+
+  const retry = async () => {
+    if (!failed || retrying) return;
+    setRetrying(true);
+    try {
+      await send(failed);
+    } catch {
+      // Already on screen through `send`'s own notice, with « Réessayer » offered again.
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   return (
     <>
@@ -77,50 +160,8 @@ function RouteComponent() {
             className="w-full max-w-2xl"
             disabled={!fallback}
             onSubmit={async (draft) => {
-              // A channel is pinned to one coworker for the life of its thread, so the coworker is
-              // chosen now, before it is created. An `@` is an explicit choice and is honoured as-is.
-              // With no `@`, the message is routed to the coworker it is for; if that routing cannot
-              // run, it falls back to the same default the composer used to always use.
-              setError(null);
-              setSending(draft.text);
-              noteSend();
-              try {
-                if (draft.agentId) {
-                  // Recorded and started as one sequence, shared with `/channel/new`: the person
-                  // already decided, and the trail has to say so wherever they decided it.
-                  await startChosen(draft.agentId, draft.text);
-                  return;
-                }
-                let agentId: string | undefined;
-                // Synelia fork: with a single Bot to choose from there is nothing to route, and
-                // asking the router cost ~3.5 s of blank screen before the conversation opened.
-                const candidates = agents?.length ?? 0;
-                if (pilot.hideBotsAndSkillsNav && candidates <= 1 && fallback)
-                  agentId = fallback.id;
-                else
-                  try {
-                    agentId = (await routeMessage(draft.text)).agentId;
-                  } catch (caught) {
-                    if (caught instanceof CoworkerRoutingRefusedError)
-                      throw caught;
-                    agentId = fallback?.id;
-                  }
-                if (!agentId) {
-                  // Synelia fork: nobody to send it to; never leave the optimistic bubble hanging.
-                  setSending(null);
-                  setError(ui.home.startFailed);
-                  return;
-                }
-                await start(agentId, draft.text);
-              } catch (caught) {
-                setSending(null);
-                setError(
-                  caught instanceof Error
-                    ? caught.message
-                    : ui.home.startFailed,
-                );
-                throw caught;
-              }
+              // Rethrown so the composer puts the words back; the notice and « Réessayer » are ours.
+              await send({ text: draft.text, agentId: draft.agentId });
             }}
             pending={pending}
           />
@@ -143,13 +184,22 @@ function RouteComponent() {
             {ui.pilotNotice}
           </p>
           {error ? (
-            <p
-              className="mt-2 w-full max-w-2xl text-sm text-destructive"
-              role="alert"
-            >
-              {error}
-            </p>
-          ) : failed && agents === undefined ? (
+            <div className="mt-2 flex w-full max-w-2xl items-center gap-3">
+              <p className="text-sm text-destructive" role="alert">
+                {error}
+              </p>
+              {failed ? (
+                <Button
+                  disabled={retrying || pending}
+                  onClick={() => void retry()}
+                  size="sm"
+                  variant="outline"
+                >
+                  {ui.home.retry}
+                </Button>
+              ) : null}
+            </div>
+          ) : agentsFailed && agents === undefined ? (
             // The composer above is `disabled={!fallback}`, and a failed query does not by
             // itself mean `fallback` is undefined: TanStack Query keeps its last good `data`
             // across a failed background refetch, and `!fallback` alone is also true of a query
@@ -226,7 +276,7 @@ function RouteComponent() {
                   ))}
                 </CarouselContent>
               </Carousel>
-            ) : failed && agents === undefined ? (
+            ) : agentsFailed && agents === undefined ? (
               // `agents === undefined` narrows this to "the query has never once returned
               // successfully" — not merely "the last request errored". `?.length` alone can't
               // tell that apart from a slice that loaded and is genuinely empty: TanStack Query
