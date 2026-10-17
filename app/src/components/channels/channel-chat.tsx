@@ -973,7 +973,7 @@ export function ChannelChat({
       // Both surfaces fall back to the same sentence, from the same place, so a person who uses
       // both is not told two different things about the same silence.
       onRunErrorEvent: ({ event }) => {
-        if (alreadyRunning(event?.message)) return;
+        if (alreadyRunning(event)) return;
         fail(stoppedReason(event?.message));
       },
       onRunFailed: ({ error }) => {

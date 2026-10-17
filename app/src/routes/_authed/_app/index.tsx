@@ -91,7 +91,12 @@ function RouteComponent() {
                       throw caught;
                     agentId = fallback?.id;
                   }
-                if (!agentId) return;
+                if (!agentId) {
+                  // Synelia fork: nobody to send it to; never leave the optimistic bubble hanging.
+                  setSending(null);
+                  setError(ui.home.startFailed);
+                  return;
+                }
                 await start(agentId, draft.text);
               } catch (caught) {
                 setSending(null);

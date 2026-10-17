@@ -66,3 +66,26 @@ test("idle thread: nothing", () => {
     replay: false,
   });
 });
+
+import { isAlreadyRunning } from "@/lib/copilot/stream-reattach";
+
+test("thread busy is recognised by its code or the runner's exact sentence, never a 409 in prose", () => {
+  expect(
+    isAlreadyRunning(
+      Object.assign(new Error("Thread is busy."), {
+        status: 409,
+        code: "thread_busy",
+      }),
+    ),
+  ).toBe(true);
+  expect(
+    isAlreadyRunning({ type: "RUN_ERROR", code: "thread_busy", message: "x" }),
+  ).toBe(true);
+  expect(isAlreadyRunning(new Error("Thread already running"))).toBe(true);
+  expect(
+    isAlreadyRunning(new Error("Provider refused the request (HTTP 409)")),
+  ).toBe(false);
+  expect(
+    isAlreadyRunning(Object.assign(new Error("conflict"), { status: 409 })),
+  ).toBe(false);
+});

@@ -201,4 +201,4 @@ export const pilot = {
   hideBotPage: PILOT_ON,
   /** Voice calls are outside the pilot (their API answers 404). */
   hideVoice: PILOT_ON,
-};
+} as const;

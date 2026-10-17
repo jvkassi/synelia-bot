@@ -24,6 +24,8 @@ class LocalIntelligenceError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** Synelia fork: machine-readable reason, e.g. `thread_busy`; also the HTTP body's `code`. */
+    readonly code?: string,
   ) {
     super(message);
     // The name the platform client gives its errors: toolkit/src/lease.ts `isLockConflict` reads it
@@ -550,7 +552,8 @@ export class LocalIntelligence {
         WHERE synelia_thread_lock.expires_at <= now()
            OR synelia_thread_lock.run_id = EXCLUDED.run_id
       RETURNING run_id`) as { run_id: string }[];
-    if (!rows[0]) throw new LocalIntelligenceError("Thread is busy.", 409);
+    if (!rows[0])
+      throw new LocalIntelligenceError("Thread is busy.", 409, "thread_busy");
     return {
       threadId: params.threadId,
       runId: params.runId,

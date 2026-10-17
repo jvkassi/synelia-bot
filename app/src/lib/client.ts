@@ -89,14 +89,19 @@ export async function client<T>(
      * The server's message is the useful one: it names the field or the permission that failed. The
      * fallback is only for the cases where it sent none, or sent something that is not JSON.
      */
-    const message = await response
+    const errorBody = await response
       .json()
-      .then((body: { error?: string }) => body.error)
+      .then((body: { error?: string; code?: string }) => body)
       .catch(() => undefined);
+    const message = errorBody?.error;
     // Synelia fork: the status rides on the error so the query client can skip retrying a 404.
     throw Object.assign(
       new Error(message ?? options.fallback ?? "That request failed."),
-      { status: response.status },
+      {
+        status: response.status,
+        // Synelia fork: the server's machine-readable reason (e.g. `thread_busy`), when it sent one.
+        ...(errorBody?.code ? { code: errorBody.code } : {}),
+      },
     );
   }
 

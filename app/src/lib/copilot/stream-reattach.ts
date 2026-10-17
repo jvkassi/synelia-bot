@@ -27,17 +27,21 @@ export function isStreamCut(error: unknown): boolean {
  * the page shows the running turn instead.
  */
 export function isAlreadyRunning(error: unknown): boolean {
+  if (error === null || error === undefined) return false;
+  // The explicit code from the server (409 body `{ error: "Thread is busy.", code: "thread_busy" }`,
+  // carried by `client` errors and by a RUN_ERROR event's `code`), or the runner's own exact
+  // sentences. Never a pattern on free text: a provider error mentioning "(HTTP 409)" is a failure.
+  const code = (error as { code?: unknown }).code;
+  if (code === "thread_busy") return true;
   const message =
     error instanceof Error
       ? error.message
       : typeof error === "string"
         ? error
-        : "";
-  const status = (error as { status?: number } | null)?.status;
-  return (
-    status === 409 ||
-    /\b409\b|already running|thread is locked|lock conflict/i.test(message)
-  );
+        : typeof (error as { message?: unknown }).message === "string"
+          ? (error as { message: string }).message
+          : "";
+  return message === "Thread is busy." || message === "Thread already running";
 }
 
 /** Keep one message per id (the last version wins, in first-seen position). */
