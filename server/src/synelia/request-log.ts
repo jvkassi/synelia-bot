@@ -47,6 +47,11 @@ export function requestLogLine(entry: {
   userId?: string;
   /** The client went away before the response finished (closed tab, network cut, navigation). */
   aborted?: boolean;
+  /** 4xx/5xx only: the body's own `code` / `error` strings (server wording, cut to 120 chars). */
+  code?: string;
+  error?: string;
+  /** Why requireUser refused (auth/guards.ts), when it did. */
+  deny?: { reason?: string; roleSource?: string };
 }): string {
   const path = loggedPath(entry.path);
   const threadId = threadIdFromPath(path);
@@ -54,13 +59,37 @@ export function requestLogLine(entry: {
     ts: entry.at.toISOString(),
     method: entry.method,
     path,
-    status: entry.status,
+    status: entry.aborted ? 499 : entry.status,
     durationMs: Math.round(entry.durationMs),
     ...(entry.userId ? { userId: entry.userId } : {}),
     ...(threadId ? { threadId } : {}),
     ...(isTestAccount(entry.userId) ? { test: true } : {}),
-    ...(entry.aborted ? { aborted: true } : {}),
+    ...(entry.aborted ? { aborted: true, sentStatus: entry.status } : {}),
+    ...(entry.code ? { code: entry.code.slice(0, 120) } : {}),
+    ...(entry.error ? { error: entry.error.slice(0, 120) } : {}),
+    ...(entry.deny
+      ? { denyReason: entry.deny.reason, roleSource: entry.deny.roleSource }
+      : {}),
   })}\n`;
+}
+
+/** `code` / `error` of a small JSON error body, read from a clone; never anything else. */
+async function errorFields(
+  response: Response,
+): Promise<{ code?: string; error?: string }> {
+  try {
+    if (!response.headers.get("content-type")?.includes("application/json"))
+      return {};
+    const length = Number(response.headers.get("content-length") ?? "0");
+    if (length > 4096) return {};
+    const body = (await response.clone().json()) as Record<string, unknown>;
+    return {
+      ...(typeof body.code === "string" ? { code: body.code } : {}),
+      ...(typeof body.error === "string" ? { error: body.error } : {}),
+    };
+  } catch {
+    return {};
+  }
 }
 
 const day = (at: Date) => at.toISOString().slice(0, 10);
@@ -92,15 +121,24 @@ export function createRequestLog(
       throw error;
     } finally {
       const at = new Date();
-      const actor = (context.var as { actor?: { id?: string; email?: string } })
-        .actor;
+      const vars = context.var as {
+        actor?: { id?: string; email?: string };
+        syneliaDeny?: { reason?: string; roleSource?: string; userId?: string };
+      };
+      const actor = vars.actor;
+      const status = thrown ? 500 : context.res.status;
+      const { code, error } =
+        !thrown && status >= 400 ? await errorFields(context.res) : {};
       const line = requestLogLine({
         at,
         method: context.req.method,
         path: context.req.path,
-        status: thrown ? 500 : context.res.status,
+        status,
         durationMs: performance.now() - started,
-        userId: actor?.id,
+        userId: actor?.id ?? vars.syneliaDeny?.userId,
+        code,
+        error,
+        deny: vars.syneliaDeny,
         aborted: context.req.raw.signal?.aborted === true,
       });
       ready ??= mkdir(dir, { recursive: true });

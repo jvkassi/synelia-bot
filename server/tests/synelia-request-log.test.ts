@@ -142,3 +142,62 @@ test("an error escaping the app (no onError) is logged as 500, not 200", async (
   ) as { status: number };
   expect(line.status).toBe(500);
 });
+
+test("4xx/5xx lines carry the body's code/error; aborted requests are 499; requireUser's reason", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "reqlog-"));
+  const app = new Hono();
+  app.use("/api/*", createRequestLog(dir));
+  app.get("/api/gate", (c) =>
+    c.json(
+      {
+        error: "Vous devez changer votre mot de passe.",
+        code: "password_change_required",
+      },
+      403,
+    ),
+  );
+  app.get("/api/denied", (c) => {
+    (c as unknown as { set: (k: string, v: unknown) => void }).set(
+      "syneliaDeny",
+      {
+        reason: "no_usable_role",
+        roleSource: "user.role",
+        userId: "u9",
+      },
+    );
+    return c.json({ error: "Authorization required." }, 403);
+  });
+  app.get("/api/ok", (c) => c.json({ error: "not an error line" }));
+  app.get("/api/slow", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    return new Response("late");
+  });
+  await app.request("/api/gate");
+  await app.request("/api/denied");
+  await app.request("/api/ok");
+  const controller = new AbortController();
+  const slow = app.request(
+    new Request("http://x/api/slow", { signal: controller.signal }),
+  );
+  controller.abort();
+  await slow.catch(() => undefined);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const [file] = await readdir(dir);
+  const lines = (await readFile(join(dir, file as string), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  const by = (path: string) => lines.find((line) => line.path === path);
+  expect(by("/api/gate")).toMatchObject({
+    status: 403,
+    code: "password_change_required",
+  });
+  expect(by("/api/denied")).toMatchObject({
+    status: 403,
+    denyReason: "no_usable_role",
+    roleSource: "user.role",
+    userId: "u9",
+  });
+  expect(by("/api/ok")?.error).toBeUndefined();
+  expect(by("/api/slow")).toMatchObject({ status: 499, aborted: true });
+});

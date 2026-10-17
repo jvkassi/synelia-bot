@@ -76,6 +76,14 @@ export function createRequireUser(
         : undefined;
 
     if (!role) {
+      // Synelia fork: why, for the request log only (no email, no token).
+      (
+        context as unknown as { set: (key: string, value: unknown) => void }
+      ).set("syneliaDeny", {
+        reason: "no_usable_role",
+        roleSource: session.user.role ? "user.role" : "user_roles",
+        userId: session.user.id,
+      });
       return context.json({ error: "Authorization required." }, 403);
     }
 
