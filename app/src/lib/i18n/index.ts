@@ -55,6 +55,12 @@ const fr = {
     placeholderData: "Analyste de données",
     placeholderSupport: "Agent support",
   },
+  /** Page shown when a route throws (router defaultErrorComponent). */
+  routeError: {
+    message: "Une erreur est survenue. Rechargez la page.",
+    showDetail: "Afficher le détail",
+    hideDetail: "Masquer le détail",
+  },
   /** Settings: menu, General (préférences) and Memory. */
   settings: {
     backToApp: "Retour à l'application",
