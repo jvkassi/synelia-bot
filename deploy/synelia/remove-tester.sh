@@ -3,6 +3,7 @@
 # basicauth entry, the app account (DELETE FROM users, cascades sessions/accounts) and the secrets
 # file; recreates only the synelia server and checks the other stacks did not move.
 set -euo pipefail
+echo "AVERTISSEMENT : ce script recrée le conteneur server synelia (coupure de quelques secondes pour tous). Fenêtre annoncée uniquement. Un admin ajouté par --role admin reste dans INITIAL_ADMIN_EMAILS (à retirer à la main)."
 [ $# -eq 1 ] || { echo "usage: $0 <email>" >&2; exit 2; }
 HOST=${HOST:-konnect}
 HERE=$(cd "$(dirname "$0")" && pwd)
