@@ -1,11 +1,10 @@
 import type { ActivityMessage, Message } from "@ag-ui/core";
-import { ui } from "@/lib/i18n";
-import { useModelList, useSyneliaModel } from "@/lib/copilot/synelia-model";
 import type { Attachment } from "@copilotkit/react-core/v2";
 import {
   useRenderActivityMessage,
   useRenderToolCall,
 } from "@copilotkit/react-core/v2";
+import { readConnectPrompt } from "@openbot/shared/connect-prompt";
 import {
   IconAlertTriangle,
   IconBox,
@@ -14,7 +13,6 @@ import {
   IconFile,
   IconX,
 } from "@tabler/icons-react";
-import { MessageModelLabel } from "@/lib/copilot/synelia-model";
 import { motion, useReducedMotion } from "motion/react";
 import {
   memo,
@@ -51,7 +49,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { attachmentUrl } from "@/lib/channels/attachments";
 import { readResponsibilityTurn } from "@/lib/channels/responsibility-turn";
 import { readFiring } from "@/lib/channels/routine-firing";
-import { splitChatOrigin } from "./chat-origin";
+import {
+  MessageModelLabel,
+  useModelList,
+  useSyneliaModel,
+} from "@/lib/copilot/synelia-model";
+import { ui } from "@/lib/i18n";
 import { markdownComponents } from "@/lib/markdown";
 import { EASE_OUT, ENTRANCE_SECONDS } from "@/lib/motion";
 import { readToolName } from "@/lib/plugins/tool-name";
@@ -62,22 +65,22 @@ import {
   toolResultFailed,
 } from "@/lib/plugins/tool-result";
 import { readTeamBotConsent } from "@/lib/team-bots";
-import { readConnectPrompt } from "@openbot/shared/connect-prompt";
 import { cn } from "@/lib/utils";
 import { VOICE_CHAT_ACTIVITY, type VoiceChatEntry } from "@/lib/voice/archive";
-import {
-  groupToolSteps,
-  ToolActivity,
-  type TranscriptItem,
-} from "./tool-activity";
 import {
   attachmentModality,
   type SentAttachment,
   toVisibleChatItems,
 } from "./chat-messages";
+import { splitChatOrigin } from "./chat-origin";
 import type { QueuedMessage } from "./composer";
 import { ConnectAppCard } from "./connect-app-card";
 import { TeamBotConsentCard } from "./team-bot-consent";
+import {
+  groupToolSteps,
+  ToolActivity,
+  type TranscriptItem,
+} from "./tool-activity";
 import { ToolRenderBoundary } from "./tool-boundary";
 import { ToolLine } from "./tool-line";
 import { VoiceChatCard } from "./voice-chat-card";
@@ -151,7 +154,7 @@ const RESTORING_ANSWER_LINES = [
 function RestoringTranscript() {
   return (
     // One announcement, with every bar hidden from it: nine empty shapes read aloud is worse.
-    <div aria-label="Loading this conversation" role="status">
+    <div aria-label={ui.conversation.loading} role="status">
       <div aria-hidden="true" className="flex justify-end pb-7">
         <Skeleton className="h-10 w-64 rounded-xl bg-muted/40 motion-reduce:animate-none" />
       </div>
@@ -204,6 +207,13 @@ function Thinking() {
  * and the conversation is sent back to the model on the next turn, so the Bot would then read its
  * own obituary as something it had written.
  */
+/** The browser's own wording for a request that never got an answer, across engines. */
+export function isNetworkFailure(reason: string): boolean {
+  return /^(TypeError:\s*)?(network ?error|failed to fetch|load failed|networkerror when attempting to fetch resource\.?)$/i.test(
+    reason.trim(),
+  );
+}
+
 function Stopped({ reason }: { reason: string }) {
   // Synelia fork: a provider failure (the patched Mastra bridge ends it with "(HTTP nnn)") gets a
   // plain sentence first and the technical text, prefixed with the provider, smaller underneath.
@@ -213,6 +223,19 @@ function Stopped({ reason }: { reason: string }) {
   const providerError = /\(HTTP \d{3}\)\s*$|^Erreur du fournisseur/.test(
     reason,
   );
+  // A dropped connection (fetch's "network error" / "Failed to fetch" TypeError) says what happened
+  // in French; the transport itself is untouched.
+  if (isNetworkFailure(reason)) {
+    return (
+      <p
+        className="text-destructive text-sm"
+        data-testid="transcript-stopped"
+        role="alert"
+      >
+        {ui.conversation.networkError}
+      </p>
+    );
+  }
   if (providerError) {
     const model = data?.models.find((entry) => entry.id === selected);
     const detail = model ? `${model.providerLabel} : ${reason}` : reason;
@@ -373,7 +396,7 @@ function Queued({
            * `status` rather than `alert`, matching the thinking line: a person who has just chosen
            * to queue something is not being interrupted by the news that it is queued.
            */}
-          <span role="status">Queued</span>
+          <span role="status">{ui.conversation.queued}</span>
           {onRemove ? (
             <button
               /*
@@ -386,7 +409,9 @@ function Queued({
                * `describeParked`. An attachment-only message named the label after an empty string
                * and read as "Remove queued message:", which is the same nothing three times over.
                */
-              aria-label={`Remove queued message: ${describeParked(text, files)}`}
+              aria-label={ui.conversation.removeQueued(
+                describeParked(text, files),
+              )}
               className="ml-2 underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
               onClick={onRemove}
               type="button"
@@ -1079,7 +1104,7 @@ function SentAttachmentTile({ attachment }: { attachment: SentAttachment }) {
         <div className="min-w-0">
           {/* `title` because the tile is fixed-width and a long name is cut, not wrapped. */}
           <p className="truncate font-medium text-sm" title={filename}>
-            {filename ?? "Untitled file"}
+            {filename ?? ui.conversation.untitledFile}
           </p>
           <p className="text-muted-foreground text-xs">Attachment</p>
         </div>
@@ -1090,7 +1115,11 @@ function SentAttachmentTile({ attachment }: { attachment: SentAttachment }) {
   return (
     <AttachmentLightbox filename={filename} url={url}>
       <img
-        alt={filename ? `Attachment: ${filename}` : "Attachment"}
+        alt={
+          filename
+            ? ui.conversation.attachmentNamed(filename)
+            : ui.conversation.attachment
+        }
         className="size-32 rounded-xl object-cover"
         onError={() => setFailedToLoad(true)}
         src={url}
@@ -1111,8 +1140,8 @@ function SentAttachmentTile({ attachment }: { attachment: SentAttachment }) {
  */
 function unavailableSentence(filename?: string): string {
   return filename
-    ? `${filename} is unavailable.`
-    : "This attachment is unavailable.";
+    ? ui.conversation.fileUnavailable(filename)
+    : ui.conversation.attachmentUnavailable;
 }
 
 /**
@@ -1172,7 +1201,7 @@ export function LightboxPicture({
 
   return (
     <img
-      alt={filename ?? "Attachment"}
+      alt={filename ?? ui.conversation.attachment}
       className="max-h-[88svh] max-w-[92vw] rounded-lg object-contain"
       onError={() => setFailedToLoad(true)}
       src={url}
@@ -1206,7 +1235,7 @@ function AttachmentLightbox({
   filename?: string;
   url: string;
 }) {
-  const label = filename ?? "Attachment";
+  const label = filename ?? ui.conversation.attachment;
   /*
    * Controlled only so that clicking the dark space around the picture closes it, the way every
    * lightbox a reader has used does. The popup covers the viewport (see below), so it — not the
@@ -1221,7 +1250,9 @@ function AttachmentLightbox({
         // tab to a raw image file is not the promise this makes. `block` so the tile is not sitting
         // on a text baseline with a stray gap under it.
         className="block cursor-zoom-in overflow-hidden rounded-xl"
-        render={<button aria-label={`Open ${label}`} type="button" />}
+        render={
+          <button aria-label={ui.conversation.open(label)} type="button" />
+        }
       >
         {children}
       </DialogTrigger>
@@ -1251,7 +1282,7 @@ function AttachmentLightbox({
         <DialogClose
           render={
             <button
-              aria-label="Close"
+              aria-label={ui.conversation.close}
               className="absolute top-4 right-4 grid size-9 place-items-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
               type="button"
             />

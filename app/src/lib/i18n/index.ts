@@ -103,6 +103,8 @@ const fr = {
     showCall: "Afficher l'appel vocal",
     startCall: "Démarrer un appel vocal",
     callAgent: "Appeler cet assistant",
+    callNeedsHttps:
+      "Les appels vocaux nécessitent HTTPS (ou localhost) et un micro.",
     attach: "Joindre un fichier",
     moreOptionsUnavailable: "Autres options du message indisponibles",
   },
@@ -110,6 +112,8 @@ const fr = {
     agentNotFound: "Assistant introuvable.",
     coworkersFailed: "Impossible de charger les assistants.",
     coworkerFailed: "Impossible de charger l'assistant.",
+    botUnavailable:
+      "Cet assistant ne vous est pas accessible. Il n'est peut-être pas publié, pas partagé avec vous, ou pas encore décrit.",
     remove: (name: string) => `Retirer ${name}`,
     startFailed: "Impossible de démarrer la conversation.",
   },
@@ -136,8 +140,6 @@ const fr = {
 } as const;
 
 export type UiStrings = Widen<typeof fr>;
-
-
 
 /** The strings in the active language. */
 export const ui: UiStrings = fr satisfies UiStrings;

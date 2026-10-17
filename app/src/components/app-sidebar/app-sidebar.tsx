@@ -7,7 +7,6 @@ import {
   IconSettings,
   IconShieldLock,
 } from "@tabler/icons-react";
-import { pilot, ui } from "@/lib/i18n";
 import {
   useInfiniteQuery,
   useMutation,
@@ -53,6 +52,7 @@ import {
 } from "@/lib/channels/queries";
 import { useChannelEvents } from "@/lib/channels/use-channel-events";
 import { appConfig } from "@/lib/generated/application-config";
+import { pilot, ui } from "@/lib/i18n";
 import { EASE_OUT, ENTRANCE_SECONDS } from "@/lib/motion";
 import { relativeTime } from "@/lib/relative-time";
 import {
@@ -350,45 +350,45 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           {/* Synelia fork: Bots and Skills pages are outside the pilot. */}
           {pilot.hideBotsAndSkillsNav ? null : (
             <>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              className="hover:bg-foreground/5 h-10"
-              render={(props) => (
-                <Link
-                  {...props}
-                  to="/bots"
-                  activeProps={{ className: "bg-foreground/5" }}
-                />
-              )}
-            >
-              <div className="size-[28px] flex items-center justify-center">
-                <IconBolt />
-              </div>
-              <span className="text-sm">Bots</span>
-              {/* What waits on you across every Bot; Bots lists them first. */}
-              <BotsNavBadge />
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            {/* Beside Bots rather than inside Admin: writing a skill is something anybody does. */}
-            <SidebarMenuButton
-              className="hover:bg-foreground/5 h-10"
-              render={(props) => (
-                <Link
-                  {...props}
-                  to="/skills"
-                  activeProps={{
-                    className: "bg-foreground/5",
-                  }}
-                />
-              )}
-            >
-              <div className="size-[28px] flex items-center justify-center">
-                <IconBox />
-              </div>
-              <span className="text-sm trackint-tight">Skills</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className="hover:bg-foreground/5 h-10"
+                  render={(props) => (
+                    <Link
+                      {...props}
+                      to="/bots"
+                      activeProps={{ className: "bg-foreground/5" }}
+                    />
+                  )}
+                >
+                  <div className="size-[28px] flex items-center justify-center">
+                    <IconBolt />
+                  </div>
+                  <span className="text-sm">Bots</span>
+                  {/* What waits on you across every Bot; Bots lists them first. */}
+                  <BotsNavBadge />
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                {/* Beside Bots rather than inside Admin: writing a skill is something anybody does. */}
+                <SidebarMenuButton
+                  className="hover:bg-foreground/5 h-10"
+                  render={(props) => (
+                    <Link
+                      {...props}
+                      to="/skills"
+                      activeProps={{
+                        className: "bg-foreground/5",
+                      }}
+                    />
+                  )}
+                >
+                  <div className="size-[28px] flex items-center justify-center">
+                    <IconBox />
+                  </div>
+                  <span className="text-sm trackint-tight">Skills</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </>
           )}
           <SidebarMenuItem>
@@ -416,7 +416,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     render={<Link {...adminLinkOptions} />}
                   >
                     <IconShieldLock />
-                    Admin
+                    {ui.account.admin}
                   </DropdownMenuItem>
                 ) : null}
                 <DropdownMenuItem
@@ -424,7 +424,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   render={<Link {...settingsLinkOptions} />}
                 >
                   <IconSettings />
-                  Settings
+                  {ui.account.settings}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   className={userMenuItemClassName}
@@ -433,7 +433,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   variant="destructive"
                 >
                   <IconLogout />
-                  Log out
+                  {ui.account.logOut}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

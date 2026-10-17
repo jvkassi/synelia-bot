@@ -1,6 +1,4 @@
 import type { Message } from "@ag-ui/core";
-import { ui } from "@/lib/i18n";
-import { SyneliaModelPicker } from "@/lib/copilot/synelia-model";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
@@ -31,6 +29,8 @@ import {
   agentQueryOptions,
 } from "@/lib/agents/queries";
 import { useStartChannel } from "@/lib/channels/start";
+import { SyneliaModelPicker } from "@/lib/copilot/synelia-model";
+import { ui } from "@/lib/i18n";
 import { useSkillCommands } from "@/lib/plugins/skill-commands";
 import { newId } from "../../../../lib/new-id";
 
@@ -87,7 +87,7 @@ function RouteComponent() {
   const urlAgentDetailFailed = needsUrlAgentDetail && detailError && !fetched;
   const loadError =
     rosterError && profiles === undefined
-      ? "Coworkers couldn't be loaded."
+      ? ui.newConversation.coworkersFailed
       : urlAgentDetailFailed
         ? /*
            * The server's 404 sentence (agents/routes.ts `mapStoreError`) means this person cannot see
@@ -95,8 +95,8 @@ function RouteComponent() {
            * other failure is a load that can be retried, and says so.
            */
           detailFailure?.message === AGENT_NOT_FOUND
-          ? "This Bot isn't available to you. It may be unpublished, not shared with you, or not described yet."
-          : "Coworker couldn't be loaded."
+          ? ui.newConversation.botUnavailable
+          : ui.newConversation.coworkerFailed
         : null;
   /** Bots picked in the To: field, in the order they will answer; the URL's Bot until one is picked. */
   const [picked, setPicked] = useState<AgentProfile[] | null>(null);
@@ -150,7 +150,7 @@ function RouteComponent() {
               <ComboboxChip
                 className="gap-1.5 pl-1"
                 key={profile.id}
-                removeLabel={`Remove ${profile.name}`}
+                removeLabel={ui.newConversation.remove(profile.name)}
               >
                 <ChannelAvatar participantIds={[profile.id]} size={16} />
                 {profile.name}
@@ -222,7 +222,7 @@ function RouteComponent() {
               setError(
                 caught instanceof Error
                   ? caught.message
-                  : "Could not start the group.",
+                  : ui.newConversation.startFailed,
               );
               throw caught;
             }

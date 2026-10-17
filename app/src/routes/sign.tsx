@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { ui } from "@/lib/i18n";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
@@ -9,12 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
+  authClient,
   providerName,
   signInWith,
   signInWithEmailDomain,
-  authClient,
 } from "@/lib/auth/client";
 import { appConfig } from "@/lib/generated/application-config";
+import { ui } from "@/lib/i18n";
 import {
   type AuthProviderId,
   authProvidersQueryOptions,
@@ -93,7 +93,7 @@ function SignScreen() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "No identity provider is registered for that address.",
+          : ui.signIn.noIdentityProvider,
       );
       setOpening(null);
     }
@@ -109,7 +109,7 @@ function SignScreen() {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : `Could not start ${providerName(provider)} sign-in.`,
+          : ui.signIn.providerFailed(providerName(provider)),
       );
       setOpening(null);
     }
@@ -194,7 +194,10 @@ function SignScreen() {
             </p>
           ) : null}
           {options?.passwordLogin ? (
-            <form className="mb-3 flex flex-col gap-2" onSubmit={handlePasswordSignIn}>
+            <form
+              className="mb-3 flex flex-col gap-2"
+              onSubmit={handlePasswordSignIn}
+            >
               <Input
                 autoComplete="username"
                 onChange={(event) => setLoginEmail(event.target.value)}
@@ -218,7 +221,9 @@ function SignScreen() {
           ) : null}
           {providers.length > 0 && !options?.ssoRequired ? (
             providerButtons
-          ) : options?.sso || options?.ssoRequired || options?.passwordLogin ? null : (
+          ) : options?.sso ||
+            options?.ssoRequired ||
+            options?.passwordLogin ? null : (
             <p className="text-center text-sm text-muted-foreground">
               {ui.signIn.noProvider}
             </p>
@@ -234,7 +239,9 @@ function SignScreen() {
               {providers.length > 0 ? (
                 <div className="mb-3 flex items-center gap-3">
                   <Separator className="flex-1" />
-                  <span className="text-muted-foreground text-xs">{ui.signIn.or}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {ui.signIn.or}
+                  </span>
                   <Separator className="flex-1" />
                 </div>
               ) : null}
