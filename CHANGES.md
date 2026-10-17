@@ -37,5 +37,6 @@ on konnect behind Traefik + basicauth, with a Mastra Bot answering through OpenR
 | `examples/synelia/*` (new) | Tenant package: Synelia Assistant (remote Mastra) + built-in General Assistant (via 9router). |
 | `deploy/synelia/docker-compose.yml` (new) | postgres (pgvector pg16), migrate, agent-mastra, server; internal network, no host ports, no docker.sock, no computer supervisor; mem/cpu limits; Traefik labels + basicauth; secrets only in chmod-600 env files (`secrets/router9.env` referenced via env_file). |
 | `.gitignore` | `agent-mastra/.mastra/` build output. |
+| `server/Dockerfile` | Copies `agent-computer/src/egress.ts`, imported by the server; upstream image failed to start without it. |
 
 Not done in phase 0: LISTEN/NOTIFY (not used), SSE resume via Last-Event-ID, multi-user/SSO, learning.
