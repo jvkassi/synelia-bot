@@ -1,4 +1,6 @@
 import type { Message } from "@ag-ui/core";
+import { ui } from "@/lib/i18n";
+import { SyneliaModelPicker } from "@/lib/copilot/synelia-model";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
@@ -161,8 +163,8 @@ function RouteComponent() {
               autoFocus={!chosen}
               placeholder={
                 selected.length
-                  ? "Add another Bot for a group…"
-                  : "Choose a Bot…"
+                  ? ui.conversation.addBot
+                  : ui.conversation.chooseBot
               }
             />
           </ComboboxChips>
@@ -172,7 +174,7 @@ function RouteComponent() {
             className="min-w-0 max-w-lg"
             sideOffset={12}
           >
-            <ComboboxEmpty>No Bots found.</ComboboxEmpty>
+            <ComboboxEmpty>{ui.conversation.noBots}</ComboboxEmpty>
             <ComboboxList>
               {(item: AgentProfile) => (
                 <ComboboxItem key={item.id} value={item} className="h-10">
@@ -186,6 +188,8 @@ function RouteComponent() {
             </ComboboxList>
           </ComboboxContent>
         </Combobox>
+        {/* Synelia fork: pick the model before the first message. */}
+        <SyneliaModelPicker />
       </div>
       <ConversationView
         // Choosing a coworker answers the "To:" field, so the message is what remains: the caret
@@ -238,7 +242,7 @@ function RouteComponent() {
             setError(
               caught instanceof Error
                 ? caught.message
-                : "Could not start the conversation.",
+                : ui.conversation.startFailed,
             );
             throw caught;
           }

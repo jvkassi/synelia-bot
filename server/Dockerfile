@@ -16,6 +16,8 @@ COPY package.json bun.lock ./
 # without it, in a stack trace that names esbuild rather than a missing file.
 COPY tsconfig.base.json tsconfig.base.json
 COPY bunfig.toml bunfig.toml
+# Synelia fork: dependency patches (bun patchedDependencies) must exist before install.
+COPY patches patches
 COPY app/package.json app/package.json
 COPY server/package.json server/package.json
 COPY worker/package.json worker/package.json

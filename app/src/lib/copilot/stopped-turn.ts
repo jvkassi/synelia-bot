@@ -1,4 +1,5 @@
 import { useAgent } from "@copilotkit/react-core/v2";
+import { ui } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 
 /**
@@ -29,7 +30,7 @@ export function stoppedReason(reported: unknown): string {
       : typeof reported === "string"
         ? reported
         : "";
-  return said.trim() || "The Bot stopped without saying why.";
+  return said.trim() || ui.conversation.stoppedWithoutReason;
 }
 
 /**

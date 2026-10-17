@@ -1,4 +1,5 @@
 import { IconSettings } from "@tabler/icons-react";
+import { ui } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
@@ -132,7 +133,7 @@ function RouteComponent() {
                 ease: EASE_OUT,
               }}
             >
-              {channel.data?.name ?? "Channel"}
+              {channel.data?.name ?? ui.conversation.fallbackTitle}
             </motion.span>
           </div>
           <div className="flex flex-row items-center gap-1.5">

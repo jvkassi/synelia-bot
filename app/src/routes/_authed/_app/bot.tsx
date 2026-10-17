@@ -1,4 +1,5 @@
 import { CopilotChat } from "@copilotkit/react-core/v2";
+import { ui } from "@/lib/i18n";
 import { IconPlus } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -192,7 +193,7 @@ function BotChat({ agentId, name }: { agentId: string; name: string }) {
               />
               <Button onClick={startNew} size="sm" variant="ghost">
                 <IconPlus />
-                New chat
+                {ui.conversation.newChat}
               </Button>
             </div>
           </div>

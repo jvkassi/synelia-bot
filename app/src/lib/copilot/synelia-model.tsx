@@ -7,6 +7,7 @@
  * `provider:model`; Mastra picks the model from it and the server records it on the run.
  */
 import { useAgentContext } from "@copilotkit/react-core/v2";
+import { ui } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
 import { client } from "@/lib/client";
@@ -78,18 +79,18 @@ export function SyneliaModelPicker() {
   }
   return (
     <select
-      aria-label="Modèle"
+      aria-label={ui.model.label}
       className="h-8 rounded-md border bg-background px-2 text-sm"
       data-testid="synelia-model-picker"
       onChange={(event) => storeModel(event.target.value)}
-      title="Modèle utilisé par le Bot"
+      title={ui.model.title}
       value={selected ?? ""}
     >
       {[...groups.entries()].map(([label, entries]) => (
         <optgroup key={label} label={label}>
           {entries.map((model) => (
             <option key={model.id} value={model.id}>
-              {`${model.model} · ${model.usage}${model.id === data?.defaultModel ? " (défaut)" : ""}`}
+              {`${model.model} · ${model.usage}${model.id === data?.defaultModel ? ` (${ui.model.default})` : ""}`}
             </option>
           ))}
         </optgroup>

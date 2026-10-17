@@ -7,6 +7,7 @@ import {
   IconSettings,
   IconShieldLock,
 } from "@tabler/icons-react";
+import { pilot, ui } from "@/lib/i18n";
 import {
   useInfiniteQuery,
   useMutation,
@@ -279,9 +280,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             <SidebarMenuItem>
               <InputGroup className="bg-background text-sm rounded-lg h-9">
                 <InputGroupInput
-                  aria-label="Search channels"
+                  aria-label={ui.sidebar.searchLabel}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search..."
+                  placeholder={ui.sidebar.search}
                   value={search}
                 />
                 <InputGroupAddon>
@@ -302,13 +303,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <EmptyHeader>
                     <EmptyTitle>
                       {channels.hasNextPage
-                        ? "No loaded channels match your search"
-                        : "No channels match your search"}
+                        ? ui.sidebar.noMatchLoaded
+                        : ui.sidebar.noMatch}
                     </EmptyTitle>
                     <EmptyDescription className="text-pretty">
                       {channels.hasNextPage
-                        ? "Load older conversations to search more of your history."
-                        : `Nothing here is named “${search.trim()}”, and nobody has said it recently either.`}
+                        ? ui.sidebar.loadOlder
+                        : ui.sidebar.nothingNamed(search.trim())}
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
@@ -318,10 +319,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <div className="py-4">
                 <Empty className="border border-dashed min-h-[40dvh]">
                   <EmptyHeader>
-                    <EmptyTitle>You don't have channels yet</EmptyTitle>
+                    <EmptyTitle>{ui.sidebar.empty}</EmptyTitle>
                     <EmptyDescription className="text-pretty">
-                      Start talking to agents and your channels will appear
-                      here.
+                      {ui.sidebar.emptyHint}
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
@@ -347,6 +347,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu className="gap-px">
+          {/* Synelia fork: Bots and Skills pages are outside the pilot. */}
+          {pilot.hideBotsAndSkillsNav ? null : (
+            <>
           <SidebarMenuItem>
             <SidebarMenuButton
               className="hover:bg-foreground/5 h-10"
@@ -386,6 +389,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               <span className="text-sm trackint-tight">Skills</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
+            </>
+          )}
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger

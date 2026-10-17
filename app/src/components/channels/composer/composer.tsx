@@ -3,6 +3,7 @@ import {
   type AttachmentsConfig,
   useAttachments,
 } from "@copilotkit/react-core/v2";
+import { ui } from "@/lib/i18n";
 import {
   IconArrowUp,
   IconPlayerStopFilled,
@@ -1559,7 +1560,7 @@ export function Composer({
                 onChange={handleChange}
                 onImagePaste={canAttach ? stagePastedImage : undefined}
                 onSubmit={submitDraft}
-                placeholder="Ask anything"
+                placeholder={ui.conversation.askAnything}
                 ref={promptAreaRef}
                 triggers={triggers}
                 value={value}
@@ -1616,7 +1617,7 @@ export function Composer({
               onChange={handleChange}
               onImagePaste={canAttach ? stagePastedImage : undefined}
               onSubmit={submitDraft}
-              placeholder="Ask anything"
+              placeholder={ui.conversation.askAnything}
               ref={promptAreaRef}
               triggers={triggers}
               value={value}

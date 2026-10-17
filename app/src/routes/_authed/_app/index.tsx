@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { pilot, ui } from "@/lib/i18n";
+import { SyneliaModelPicker } from "@/lib/copilot/synelia-model";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { AgentCard } from "@/components/agents/agent-card";
@@ -51,7 +53,7 @@ function RouteComponent() {
             {appConfig.brand.productName}
           </h2>
           <h1 className="text-2xl font-bold tracking-tight mt-1.5 text-center">
-            Start a new channel
+            {ui.home.title}
           </h1>
         </div>
         <div className="mt-8 w-full flex flex-col items-center">
@@ -86,7 +88,7 @@ function RouteComponent() {
                 setError(
                   caught instanceof Error
                     ? caught.message
-                    : "Could not start the conversation.",
+                    : ui.home.startFailed,
                 );
                 throw caught;
               }
@@ -97,10 +99,13 @@ function RouteComponent() {
             // Said out loud: a message that silently reaches somebody you did not choose is the
             // kind of surprise that costs trust the first time it happens.
             <p className="mt-2 w-full max-w-2xl text-xs text-muted-foreground text-center">
-              Sent to the coworker it is for. Type <code>@</code> to choose one
-              yourself.
+              {ui.home.routedHint}
             </p>
           ) : null}
+          {/* Synelia fork: the model is chosen before the first message too. */}
+          <div className="mt-3">
+            <SyneliaModelPicker />
+          </div>
           {error ? (
             <p
               className="mt-2 w-full max-w-2xl text-sm text-destructive"
@@ -120,8 +125,7 @@ function RouteComponent() {
               className="mt-2 w-full max-w-2xl text-sm text-destructive"
               role="alert"
             >
-              Your coworkers couldn't be loaded, so there's no one to send this
-              to yet.
+              {ui.home.agentsUnavailable}
             </p>
           ) : null}
         </div>
@@ -135,6 +139,8 @@ function RouteComponent() {
          * the fifth public Bot squeezed all five — the same failure `/agents` had just been fixed
          * for, still sitting here.
          */}
+        {/* Synelia fork: the agent catalogue is outside the pilot. */}
+        {pilot.hideExploreAgents ? null : (
         <div className="mt-10 w-full max-w-2xl">
           {/*
            * The heading is repeated in each arm rather than hoisted above this conditional:
@@ -219,6 +225,7 @@ function RouteComponent() {
             </>
           )}
         </div>
+        )}
       </div>
     </>
   );

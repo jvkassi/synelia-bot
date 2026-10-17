@@ -100,6 +100,10 @@ services:
       - traefik.http.routers.synelia-bot.tls.certresolver=leresolver
       - traefik.http.routers.synelia-bot.middlewares=synelia-bot-auth
       - traefik.http.middlewares.synelia-bot-auth.basicauth.users=${BASICAUTH_USERS:?set BASICAUTH_USERS in .env}
+      # One explicit realm for every path (pages, assets, API, SSE, WebSocket) so a browser asks once;
+      # the Basic header stops at Traefik and never reaches the app.
+      - traefik.http.middlewares.synelia-bot-auth.basicauth.realm=Synelia Bot
+      - traefik.http.middlewares.synelia-bot-auth.basicauth.removeheader=true
       - traefik.http.services.synelia-bot.loadbalancer.server.port=3001
 
 networks:

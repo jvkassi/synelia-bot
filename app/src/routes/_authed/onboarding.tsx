@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { pilot, ui } from "@/lib/i18n";
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import Avatar from "boring-avatars";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
@@ -32,7 +33,7 @@ function WelcomeStep() {
   return (
     <div className="w-full flex flex-col items-center justify-center">
       <h1 className="text-3xl font-semibold tracking-tight max-w-md text-center">
-        Welcome to {appConfig.brand.productName}
+        {ui.onboarding.welcome(appConfig.brand.productName)}
       </h1>
       <div className="h-32" />
       <AgentOrb size="72px" />
@@ -56,7 +57,7 @@ function WelcomeStep() {
           compact
           className="scale-90"
           editorClassName="text-base"
-          initialValue="Hand off tasks to your team of agents"
+          initialValue={ui.onboarding.composerPoster}
         />
       </div>
     </div>
@@ -150,11 +151,14 @@ function RosterStep() {
   );
 }
 
-const STEPS: Array<() => React.ReactNode> = [
-  () => <WelcomeStep />,
-  () => <ComputerUseStep />,
-  () => <RosterStep />,
-];
+// Synelia fork: the pilot has no computers and no agent catalogue, so only the welcome step.
+const STEPS: Array<() => React.ReactNode> = pilot.shortOnboarding
+  ? [() => <WelcomeStep />]
+  : [
+      () => <WelcomeStep />,
+      () => <ComputerUseStep />,
+      () => <RosterStep />,
+    ];
 
 /** A pane arrives from the side the journey is moving toward, and leaves out the other. */
 const variants = {
@@ -247,10 +251,10 @@ function RouteComponent() {
                   size="lg"
                 >
                   {complete.isPending
-                    ? "Saving…"
+                    ? ui.onboarding.saving
                     : last
-                      ? "Get started"
-                      : "Continue"}
+                      ? ui.onboarding.start
+                      : ui.onboarding.next}
                 </Button>
                 {step !== 0 && (
                   <Button
@@ -259,7 +263,7 @@ function RouteComponent() {
                     variant="secondary"
                     size="lg"
                   >
-                    Back
+                    {ui.onboarding.back}
                   </Button>
                 )}
               </motion.div>

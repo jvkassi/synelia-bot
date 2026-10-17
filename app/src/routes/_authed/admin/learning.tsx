@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useId, useState } from "react";
 import { PageSection, PageShell } from "@/components/layout/page-shell";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,11 @@ import type {
 } from "@openbot/shared/learning";
 
 export const Route = createFileRoute("/_authed/admin/learning")({
+  // Synelia fork: learning runs on CopilotKit Intelligence, which this deployment does not use. The
+  // route stays (easier upstream merges) and sends anybody who lands here to the admin home.
+  beforeLoad: () => {
+    throw redirect({ to: "/admin" });
+  },
   component: LearningPage,
 });
 const selectClass = "w-full rounded-md border bg-background px-3 py-2 text-sm";

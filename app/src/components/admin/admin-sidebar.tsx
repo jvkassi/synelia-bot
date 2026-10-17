@@ -82,11 +82,7 @@ const GROUPS: {
         icon: IconFileText,
         linkOptions: { to: "/admin/skills" },
       },
-      {
-        title: "Automatic Learning",
-        icon: IconFileText,
-        linkOptions: { to: "/admin/learning" },
-      },
+      // Synelia fork: Automatic Learning needs CopilotKit Intelligence; not linked here.
       {
         title: "UI Components",
         icon: IconLayoutGrid,

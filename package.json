@@ -42,5 +42,8 @@
   },
   "overrides": {
     "lodash-es": "4.18.0"
+  },
+  "patchedDependencies": {
+    "@ag-ui/mastra@1.1.6": "patches/@ag-ui%2Fmastra@1.1.6.patch"
   }
 }

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { ui } from "@/lib/i18n";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
 import { useState } from "react";
@@ -64,12 +65,12 @@ function SignScreen() {
         password: loginPassword,
       });
       if (result.error) {
-        setError("Adresse ou mot de passe incorrect.");
+        setError(ui.signIn.wrongCredentials);
         return;
       }
       window.location.assign("/");
     } catch {
-      setError("Connexion impossible pour le moment.");
+      setError(ui.signIn.unavailable);
     } finally {
       setSigningIn(false);
     }
@@ -137,8 +138,8 @@ function SignScreen() {
           {/* Centred against the button, not against the space left of the mark. */}
           <span className="flex-1 text-center">
             {opening === provider
-              ? `Opening ${providerName(provider)}…`
-              : `Continue with ${providerName(provider)}`}
+              ? ui.signIn.opening(providerName(provider))
+              : ui.signIn.continueWith(providerName(provider))}
           </span>
           {/* Balances the mark so the label sits in the middle of the button. */}
           <span aria-hidden="true" className="size-[18px]" />
@@ -180,7 +181,7 @@ function SignScreen() {
           transition={{ duration: ENTRANCE_SECONDS, ease: EASE_OUT }}
           variants={{ hidden, shown }}
         >
-          Sign in to {appConfig.brand.productName}
+          {ui.signIn.title(appConfig.brand.productName)}
         </motion.h1>
         <motion.div
           className="mt-8 w-full"
@@ -189,7 +190,7 @@ function SignScreen() {
         >
           {options?.ssoRequired ? (
             <p className="mb-3 text-center text-sm text-muted-foreground">
-              Your organization requires single sign-on.
+              {ui.signIn.ssoRequired}
             </p>
           ) : null}
           {options?.passwordLogin ? (
@@ -197,7 +198,7 @@ function SignScreen() {
               <Input
                 autoComplete="username"
                 onChange={(event) => setLoginEmail(event.target.value)}
-                placeholder="Adresse e-mail"
+                placeholder={ui.signIn.email}
                 required
                 type="email"
                 value={loginEmail}
@@ -205,13 +206,13 @@ function SignScreen() {
               <Input
                 autoComplete="current-password"
                 onChange={(event) => setLoginPassword(event.target.value)}
-                placeholder="Mot de passe"
+                placeholder={ui.signIn.password}
                 required
                 type="password"
                 value={loginPassword}
               />
               <Button disabled={signingIn} type="submit">
-                {signingIn ? "Connexion…" : "Se connecter"}
+                {signingIn ? ui.signIn.submitting : ui.signIn.submit}
               </Button>
             </form>
           ) : null}
@@ -219,7 +220,7 @@ function SignScreen() {
             providerButtons
           ) : options?.sso || options?.ssoRequired || options?.passwordLogin ? null : (
             <p className="text-center text-sm text-muted-foreground">
-              No sign-in provider is configured for this deployment.
+              {ui.signIn.noProvider}
             </p>
           )}
           {/*
@@ -233,14 +234,14 @@ function SignScreen() {
               {providers.length > 0 ? (
                 <div className="mb-3 flex items-center gap-3">
                   <Separator className="flex-1" />
-                  <span className="text-muted-foreground text-xs">or</span>
+                  <span className="text-muted-foreground text-xs">{ui.signIn.or}</span>
                   <Separator className="flex-1" />
                 </div>
               ) : null}
               <Input
                 autoComplete="email"
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@company.com"
+                placeholder={ui.signIn.companyEmail}
                 required
                 type="email"
                 value={email}
@@ -253,8 +254,8 @@ function SignScreen() {
                 variant="outline"
               >
                 {opening === "sso"
-                  ? "Opening…"
-                  : "Continue with your company account"}
+                  ? ui.signIn.opening()
+                  : ui.signIn.continueWithCompany}
               </Button>
             </form>
           ) : null}
@@ -262,7 +263,7 @@ function SignScreen() {
           {options?.ssoRequired && providers.length > 0 ? (
             <details className="mt-4 text-sm">
               <summary className="cursor-pointer text-center text-muted-foreground">
-                Administrator sign-in
+                {ui.signIn.adminSignIn}
               </summary>
               <div className="mt-3">{providerButtons}</div>
             </details>

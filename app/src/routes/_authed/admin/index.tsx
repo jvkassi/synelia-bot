@@ -100,13 +100,7 @@ const SECTIONS: {
         icon: IconFileText,
         linkOptions: { to: "/admin/skills" },
       },
-      {
-        title: "Automatic Learning",
-        description:
-          "Learn from completed conversations and review proposed skills.",
-        icon: IconFileText,
-        linkOptions: { to: "/admin/learning" },
-      },
+      // Synelia fork: Automatic Learning is a CopilotKit Intelligence feature, off in this deployment.
       {
         title: "UI Components",
         description: "Custom pieces a Bot can draw in a conversation.",
