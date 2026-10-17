@@ -155,3 +155,20 @@ test("pilot: GET /api/admin/enterprise/me passes for any signed-in user, compute
   expect((await app.request("/api/admin/enterprise/members")).status).toBe(404);
   expect((await app.request("/api/admin/enterprise")).status).toBe(404);
 });
+
+test("pilot: POST /api/agents/:id/declined (report_refusal) passes; other agent writes stay 404", () => {
+  expect(isPilotGated("POST", "/api/agents/synelia-assistant/declined")).toBe(
+    false,
+  );
+  expect(isPilotGated("GET", "/api/agents/synelia-assistant/declined")).toBe(
+    false,
+  ); // GET reads stay as before
+  expect(isPilotGated("PUT", "/api/agents/synelia-assistant/declined")).toBe(
+    true,
+  );
+  expect(isPilotGated("POST", "/api/agents/synelia-assistant/declined/x")).toBe(
+    true,
+  );
+  expect(isPilotGated("POST", "/api/agents/synelia-assistant")).toBe(true);
+  expect(isPilotGated("POST", "/api/agents")).toBe(true);
+});

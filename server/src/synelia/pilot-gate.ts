@@ -103,6 +103,7 @@ const PILOT_EMPTY_READS: { method: string; pattern: RegExp; body: unknown }[] =
 
 /** Read-only listing stays (the model picker and the transcript need the Bot names). */
 const AGENT_PATH = /^\/api\/agents(\/|$)/;
+const AGENT_DECLINED = /^\/api\/agents\/[^/]+\/declined$/;
 
 const under = (path: string, prefix: string) =>
   path === prefix || path.startsWith(`${prefix}/`);
@@ -123,6 +124,10 @@ export function isPilotGated(method: string, path: string): boolean {
         path === allowedPath,
     );
   if (PILOT_CLOSED_PREFIXES.some((prefix) => under(path, prefix))) return true;
+  // report_refusal's audit row (agents/routes.ts `/:agentId/declined`: requireUser, then the store
+  // answers 404 unless the caller may reach that Bot; writes one bot.declined audit event, nothing
+  // else). Opened exactly, POST only; every other agent write stays closed.
+  if (method === "POST" && AGENT_DECLINED.test(path)) return false;
   if (AGENT_PATH.test(path)) return method !== "GET" && method !== "HEAD";
   return !PILOT_ALLOWED_PREFIXES.some((prefix) => under(path, prefix));
 }
