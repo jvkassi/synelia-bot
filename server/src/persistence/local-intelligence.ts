@@ -379,6 +379,19 @@ export class LocalIntelligence {
     return rows[0];
   }
 
+  /** Provider and model of the run that wrote assistant message `messageId`, for its owner. */
+  async messageModel(params: { messageId: string; userId: string }) {
+    await this.ready();
+    const probe = JSON.stringify([{ type: "TEXT_MESSAGE_START", messageId: params.messageId }]);
+    const rows = (await this.#sql`
+      SELECT r.provider, r.model, r.status FROM synelia_thread_run r
+      JOIN synelia_thread t ON t.id = r.thread_id
+      WHERE t.user_id = ${params.userId} AND t.deleted_at IS NULL
+        AND r.events @> ${probe}::text::jsonb
+      ORDER BY r.seq DESC LIMIT 1`) as { provider: string | null; model: string | null; status: string }[];
+    return rows[0];
+  }
+
   // ---- thread locks ---------------------------------------------------------------------------
   async ɵacquireThreadLock(params: {
     threadId: string;

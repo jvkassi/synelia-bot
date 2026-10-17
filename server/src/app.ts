@@ -1939,6 +1939,17 @@ export function createApp(
     return context.json(run);
   });
 
+  app.get("/api/synelia/messages/:messageId/model", requireUser, async (context) => {
+    const local = config.runtime.intelligence.local;
+    if (!local) return context.json({ error: "Not available." }, 404);
+    const run = await localIntelligence(local.databaseUrl).messageModel({
+      messageId: context.req.param("messageId"),
+      userId: context.var.actor.id,
+    });
+    if (!run) return context.json({ error: "Message not found." }, 404);
+    return context.json(run);
+  });
+
   if (threadIdentity) {
     app.route(
       "/api/threads",

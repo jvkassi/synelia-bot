@@ -105,13 +105,11 @@ export function SyneliaModelPicker() {
  * Read from the run record the server keeps (`/api/synelia/runs/:runId`), so it is the same fact the
  * database holds. A run still streaming is not stored yet: the query retries until it is.
  */
-function RunModelLabel({ runId }: { runId: string }) {
+function ModelLabel({ path, cacheKey }: { path: string; cacheKey: string }) {
   const { data } = useQuery({
-    queryKey: ["synelia", "run", runId],
+    queryKey: ["synelia", "answer-model", cacheKey],
     queryFn: async () => {
-      const response = await fetch(`/api/synelia/runs/${encodeURIComponent(runId)}`, {
-        credentials: "include",
-      });
+      const response = await fetch(path, { credentials: "include" });
       if (!response.ok) throw new Error("not yet");
       return (await response.json()) as { provider: string | null; model: string | null; status: string };
     },
@@ -120,11 +118,26 @@ function RunModelLabel({ runId }: { runId: string }) {
     staleTime: Number.POSITIVE_INFINITY,
   });
   if (!data?.model) return null;
-  const providerLabel = data.provider === "router9" ? "9router" : data.provider === "openrouter" ? "OpenRouter" : data.provider;
+  const providerLabel =
+    data.provider === "router9" ? "9router" : data.provider === "openrouter" ? "OpenRouter" : data.provider;
   return (
     <div className="mt-1 text-xs text-muted-foreground" data-testid="synelia-run-model">
       {`${providerLabel} · ${data.model}`}
     </div>
+  );
+}
+
+function RunModelLabel({ runId }: { runId: string }) {
+  return <ModelLabel cacheKey={`run:${runId}`} path={`/api/synelia/runs/${encodeURIComponent(runId)}`} />;
+}
+
+/** Under an assistant message in OpenBot's own transcript (conversation pages). */
+export function MessageModelLabel({ messageId }: { messageId: string }) {
+  return (
+    <ModelLabel
+      cacheKey={`message:${messageId}`}
+      path={`/api/synelia/messages/${encodeURIComponent(messageId)}/model`}
+    />
   );
 }
 

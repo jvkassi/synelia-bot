@@ -35,8 +35,8 @@ on konnect behind Traefik + basicauth, with a Mastra Bot answering through OpenR
 | File | Why |
 |---|---|
 | `toolkit/src/headless-tools.ts` | `describeRunError`: RUN_ERROR carries the provider's own message (AI SDK `responseBody` / `message`, HTTP status) instead of `[object Object]`; never headers or request bodies. |
-| `server/src/persistence/local-intelligence.ts`, `server/src/app.ts` | `GET /api/synelia/runs/:runId` (owner-only) → provider/model/status of a stored run. |
-| `app/src/lib/copilot/synelia-model.tsx`, `app/src/lib/copilot/provider.tsx` | `renderCustomMessages` renderer: "provider · model" under the last assistant message of each run. |
+| `server/src/persistence/local-intelligence.ts`, `server/src/app.ts` | `GET /api/synelia/runs/:runId` and `GET /api/synelia/messages/:messageId/model` (owner-only) → provider/model/status of the stored run that wrote an answer. |
+| `app/src/lib/copilot/synelia-model.tsx`, `app/src/lib/copilot/provider.tsx`, `app/src/components/channels/chat-transcript.tsx` | "provider · model" under each answer (conversation transcript; `renderCustomMessages` for CopilotChat pages). |
 | `app/index.html` | Title "Synelia Bot". |
 
 ## Pilot UI (French, reduced surface)

@@ -12,6 +12,7 @@ import {
   IconFile,
   IconX,
 } from "@tabler/icons-react";
+import { MessageModelLabel } from "@/lib/copilot/synelia-model";
 import { motion, useReducedMotion } from "motion/react";
 import {
   memo,
@@ -622,11 +623,14 @@ function ResponsibilityFiring({
 const TranscriptMessage = memo(function TranscriptMessage({
   commandNames = "",
   delay,
+  messageId,
   role,
   text,
 }: {
   commandNames?: string;
   delay: number;
+  /** Synelia fork: for the "provider · model" line under an answer. */
+  messageId?: string;
   role: "user" | "assistant";
   text: string;
 }) {
@@ -712,6 +716,8 @@ const TranscriptMessage = memo(function TranscriptMessage({
               )}
             </BubbleContent>
           </Bubble>
+          {/* Synelia fork: which provider/model wrote this answer, from the stored run. */}
+          {!isUser && messageId ? <MessageModelLabel messageId={messageId} /> : null}
         </Arriving>
       </MessageContent>
     </MessageRow>
@@ -1710,6 +1716,7 @@ export function ChatTranscript({
                   <TranscriptMessage
                     commandNames={commandNames}
                     delay={delays.delayFor(item.id, index, items.length)}
+                    messageId={item.id}
                     role={item.role}
                     text={item.text}
                   />
