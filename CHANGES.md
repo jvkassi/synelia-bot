@@ -31,6 +31,14 @@ on konnect behind Traefik + basicauth, with a Mastra Bot answering through OpenR
 | `server/src/app.ts` | `/api/synelia/models` (signed-in only, proxies Mastra's list: ids + labels, never keys); `passwordLogin` capability. |
 | `app/src/lib/copilot/synelia-model.tsx` (new), `app/src/lib/copilot/provider.tsx`, `app/src/routes/_authed/_app/bot.tsx`, `app/src/routes/_authed/_app/channel/$channelId.tsx` | Model picker (grouped by provider, usage label, default marked), choice sent with every run. |
 
+## Errors and per-answer model
+| File | Why |
+|---|---|
+| `toolkit/src/headless-tools.ts` | `describeRunError`: RUN_ERROR carries the provider's own message (AI SDK `responseBody` / `message`, HTTP status) instead of `[object Object]`; never headers or request bodies. |
+| `server/src/persistence/local-intelligence.ts`, `server/src/app.ts` | `GET /api/synelia/runs/:runId` (owner-only) → provider/model/status of a stored run. |
+| `app/src/lib/copilot/synelia-model.tsx`, `app/src/lib/copilot/provider.tsx` | `renderCustomMessages` renderer: "provider · model" under the last assistant message of each run. |
+| `app/index.html` | Title "Synelia Bot". |
+
 ## Deployment
 | File | Why |
 |---|---|

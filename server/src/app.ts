@@ -1,4 +1,5 @@
 import type { Hono as HonoApp, MiddlewareHandler } from "hono";
+import { localIntelligence } from "./persistence/local-intelligence";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/bun";
@@ -1921,6 +1922,21 @@ export function createApp(
     } catch {
       return context.json({ error: "Model list unavailable." }, 502);
     }
+  });
+
+  /*
+   * Synelia fork: which provider/model answered a run, shown under each answer. Owner-only; a run
+   * that is still streaming (not yet stored) is a 404 and the app asks again.
+   */
+  app.get("/api/synelia/runs/:runId", requireUser, async (context) => {
+    const local = config.runtime.intelligence.local;
+    if (!local) return context.json({ error: "Not available." }, 404);
+    const run = await localIntelligence(local.databaseUrl).runModel({
+      runId: context.req.param("runId"),
+      userId: context.var.actor.id,
+    });
+    if (!run) return context.json({ error: "Run not found." }, 404);
+    return context.json(run);
   });
 
   if (threadIdentity) {

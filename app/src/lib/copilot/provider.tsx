@@ -6,7 +6,7 @@ import { a2uiProviderOptions } from "./a2ui";
 import { SignInTool } from "./sign-in-tool";
 import "./a2ui.css";
 import { ActiveBotProvider } from "./active-bot";
-import { SyneliaModelContext } from "./synelia-model";
+import { SyneliaModelContext, syneliaRunModelRenderer } from "./synelia-model";
 import { BotTools } from "./bot-tools";
 import { ComputerTools } from "./computer-tools";
 import { EscalationTool } from "./escalation-tool";
@@ -37,6 +37,8 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
     <CopilotKitProvider
       runtimeUrl="/api/copilotkit"
       credentials="include"
+      // Synelia fork: "provider · model" under each answer.
+      renderCustomMessages={[syneliaRunModelRenderer as never]}
       {...a2uiProviderOptions(capabilities?.generativeUi)}
       /*
        * Passed only when this deployment actually has the capability, and this is the load-bearing

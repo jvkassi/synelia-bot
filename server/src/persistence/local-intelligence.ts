@@ -365,6 +365,20 @@ export class LocalIntelligence {
       UPDATE synelia_thread SET updated_at = now(), last_run_at = now() WHERE id = ${run.threadId}`;
   }
 
+  /** Provider and model a run asked for, if the run belongs to `userId`. For "model on answer". */
+  async runModel(params: { runId: string; userId: string }) {
+    await this.ready();
+    const rows = (await this.#sql`
+      SELECT r.provider, r.model, r.status FROM synelia_thread_run r
+      JOIN synelia_thread t ON t.id = r.thread_id
+      WHERE r.run_id = ${params.runId} AND t.user_id = ${params.userId} AND t.deleted_at IS NULL`) as {
+      provider: string | null;
+      model: string | null;
+      status: string;
+    }[];
+    return rows[0];
+  }
+
   // ---- thread locks ---------------------------------------------------------------------------
   async ɵacquireThreadLock(params: {
     threadId: string;

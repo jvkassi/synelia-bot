@@ -313,7 +313,9 @@ export class HeadlessToolsMiddleware extends Middleware {
           subscriber.next({
             type: EventType.RUN_ERROR,
             code: "OPENBOT_HEADLESS_TOOL_ERROR",
-            message: error instanceof Error ? error.message : String(error),
+            // Synelia fork: a remote Bot's failure often arrives as a plain object (an AI SDK
+            // APICallError serialised by the bridge), which String() turns into "[object Object]".
+            message: describeRunError(error),
           });
           subscriber.complete();
         },
@@ -336,5 +338,46 @@ class InvocationTransport extends AbstractAgent {
   }
   run(input: RunAgentInput) {
     return this.transport.run(input);
+  }
+}
+
+/**
+ * Synelia fork: a sentence for a failed run, whatever shape the failure arrived in.
+ *
+ * Prefers the provider's own words (`responseBody.error.message`), then any `message`, then a
+ * nested `error`, and only falls back to a short JSON rendering. Never includes headers or
+ * request bodies, which is where a credential could be.
+ */
+export function describeRunError(error: unknown, depth = 0): string {
+  if (typeof error === "string") return error;
+  if (error === null || error === undefined || depth > 3) return "The Bot stopped without saying why.";
+  if (typeof error !== "object") return String(error);
+  const record = error as Record<string, unknown>;
+  const status = typeof record.statusCode === "number" ? ` (HTTP ${record.statusCode})` : "";
+  if (typeof record.responseBody === "string") {
+    try {
+      const body = JSON.parse(record.responseBody) as { error?: { message?: unknown } | string; message?: unknown };
+      const said =
+        typeof body.error === "string"
+          ? body.error
+          : typeof body.error?.message === "string"
+            ? body.error.message
+            : typeof body.message === "string"
+              ? body.message
+              : undefined;
+      if (said) return `The model provider refused the request: ${said}${status}`;
+    } catch {
+      // Not JSON: fall through to the message.
+    }
+  }
+  if (typeof record.message === "string" && record.message.trim()) {
+    return `${record.message}${status}`;
+  }
+  if ("error" in record && record.error !== error) return describeRunError(record.error, depth + 1);
+  if ("cause" in record && record.cause !== error) return describeRunError(record.cause, depth + 1);
+  try {
+    return JSON.stringify(error).slice(0, 300);
+  } catch {
+    return "The Bot stopped without saying why.";
   }
 }

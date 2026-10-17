@@ -97,3 +97,54 @@ export function SyneliaModelPicker() {
     </select>
   );
 }
+
+/**
+ * Under the last assistant message of each run: which provider/model answered it.
+ *
+ * Read from the run record the server keeps (`/api/synelia/runs/:runId`), so it is the same fact the
+ * database holds. A run still streaming is not stored yet: the query retries until it is.
+ */
+function RunModelLabel({ runId }: { runId: string }) {
+  const { data } = useQuery({
+    queryKey: ["synelia", "run", runId],
+    queryFn: async () => {
+      const response = await fetch(`/api/synelia/runs/${encodeURIComponent(runId)}`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("not yet");
+      return (await response.json()) as { provider: string | null; model: string | null; status: string };
+    },
+    retry: 8,
+    retryDelay: 2_000,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  if (!data?.model) return null;
+  const providerLabel = data.provider === "router9" ? "9router" : data.provider === "openrouter" ? "OpenRouter" : data.provider;
+  return (
+    <div className="mt-1 text-xs text-muted-foreground" data-testid="synelia-run-model">
+      {`${providerLabel} · ${data.model}`}
+    </div>
+  );
+}
+
+export const syneliaRunModelRenderer = {
+  render: ({
+    message,
+    position,
+    runId,
+    messageIndexInRun,
+    numberOfMessagesInRun,
+  }: {
+    message: { role: string };
+    position: string;
+    runId: string;
+    messageIndexInRun: number;
+    numberOfMessagesInRun: number;
+  }) =>
+    position === "after" &&
+    message.role === "assistant" &&
+    runId &&
+    messageIndexInRun === numberOfMessagesInRun - 1 ? (
+      <RunModelLabel runId={runId} />
+    ) : null,
+};
