@@ -305,7 +305,11 @@ test("channel-chat reads the RUN_ERROR code before the wording, and the stored l
     /onRunErrorEvent:[\s\S]*?withRetryable\(\s*codedReason\(extra\?\.code, null\) \?\? stoppedReason\(event\?\.message\),\s*extra\?\.retryable \?\? extra\?\.metadata\?\.retryable,/,
   );
   // A retry adds nothing to the thread: no user message, no skill rows, no activity report.
-  expect(chat).toMatch(/if \(!retry\) \{\s*target\.addMessage\(/);
+  // (The user message id is captured first — `addedUserId` — so a cut before RUN_STARTED can
+  // remove the unsent message; the add itself still happens only when `!retry`.)
+  expect(chat).toMatch(
+    /if \(!retry\) \{\s*(addedUserId = newId\(\);\s*)?target\.addMessage\(/,
+  );
   expect(chat).toMatch(
     /for \(const instruction of retry \? \[\] : skillInstructions\)/,
   );
