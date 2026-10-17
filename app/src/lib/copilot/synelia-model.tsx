@@ -198,6 +198,9 @@ const ThreadModelsContext = createContext<ThreadModelsState>({
   running: false,
 });
 
+/** Second read of the badge map after a run ends, once the server has stored it. */
+export const THREAD_MODELS_SETTLE_MS = 2_000;
+
 const threadModelsKey = (threadId?: string) => [
   "synelia",
   "thread-models",
@@ -212,10 +215,18 @@ export function SyneliaThreadModels({
   const queryClient = useQueryClient();
   const wasRunning = useRef(running);
   useEffect(() => {
-    if (wasRunning.current && !running)
-      void queryClient.invalidateQueries({
-        queryKey: threadModelsKey(threadId),
-      });
+    if (wasRunning.current && !running) {
+      const refresh = () =>
+        void queryClient.invalidateQueries({
+          queryKey: threadModelsKey(threadId),
+        });
+      refresh();
+      // The server stores the run (and its model) AFTER the stream ends, asynchronously
+      // (postgres-runner.ts `persist`): a read right at the end can miss it. Asked once more.
+      const again = setTimeout(refresh, THREAD_MODELS_SETTLE_MS);
+      wasRunning.current = running;
+      return () => clearTimeout(again);
+    }
     wasRunning.current = running;
   }, [running, threadId, queryClient]);
   return (
@@ -235,13 +246,20 @@ function useThreadModels() {
         `/api/synelia/threads/${encodeURIComponent(threadId ?? "")}/models`,
         { credentials: "include" },
       );
-      if (!response.ok) return {};
+      // Thrown, not `{}`: an empty map cached with an infinite staleTime hid every label of the
+      // thread until the next run ended (e.g. a reload that met a transient error).
+      if (!response.ok)
+        throw Object.assign(new Error("thread models"), {
+          status: response.status,
+        });
       return (await response.json()) as Record<
         string,
         { provider: string | null; model: string; label?: string | null }
       >;
     },
+    // A successful map stays until a run ends; a failed read is asked again on the next mount.
     staleTime: Number.POSITIVE_INFINITY,
+    retry: 2,
   });
 }
 
