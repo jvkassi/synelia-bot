@@ -175,6 +175,26 @@ export function alternativeModel(
  */
 const NO_RETRY_PREFIX = "synelia:no-retry:";
 
+/** True for a turn the provider refused by code (`provider_refusal`), retryable mark or not. */
+export function isRefusalReason(reason: string | null): boolean {
+  if (reason === null) return false;
+  const bare = reason.startsWith(NO_RETRY_PREFIX)
+    ? reason.slice(NO_RETRY_PREFIX.length)
+    : reason;
+  return bare === `${CODE_PREFIX}provider_refusal`;
+}
+
+/**
+ * TEMPORARY FALLBACK for a server that does not send `provider_refusal` yet: Anthropic's own refusal,
+ * which reaches the chat as an ordinary answer that FINISHED. Anchored to its opening sentence, so a
+ * normal answer that merely mentions the Usage Policy is never hidden.
+ */
+export function isAnthropicRefusalText(text: string): boolean {
+  return /^\s*This request (?:triggered restrictions on violative\b|was blocked under Anthropic['’]s Usage Policy)/.test(
+    text,
+  );
+}
+
 /** `reason`, marked not retryable when the server said `retryable: false` (only `false` counts). */
 export function withRetryable(
   reason: string | null,

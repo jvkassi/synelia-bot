@@ -11,7 +11,9 @@ import {
   alternativeModel,
   codedReason,
   EMPTY_RUN,
+  isAnthropicRefusalText,
   isProviderRefusal,
+  isRefusalReason,
   sessionExpiredReason,
   stopNotice,
   withRetryable,
@@ -246,7 +248,7 @@ test("channel-chat raises the empty-run notice only for a run that FINISHED with
     /onRunFinishedEvent:[\s\S]*?if \(!wasOurs\) return;\s*runFinishedHere\.current = true;/,
   );
   expect(source).toMatch(
-    /!wasCut &&\s*turnFailure\.current === null &&\s*runFinishedHere\.current &&\s*endedWithoutAnswer\(target\.messages\)\s*\)\s*\{\s*setRunError\(EMPTY_RUN\);/,
+    /!wasCut &&\s*!refusedAsText &&\s*turnFailure\.current === null &&\s*runFinishedHere\.current &&\s*endedWithoutAnswer\(target\.messages\)\s*\)\s*\{\s*setRunError\(EMPTY_RUN\);/,
   );
   // Reset for every turn, so an earlier run's finish never marks this one.
   expect(source).toMatch(
@@ -448,4 +450,30 @@ test("withRetryable: only `false` removes « Réessayer »; refusal and expired-
       null,
     ).text,
   ).toBe(ui.home.sessionExpired);
+});
+
+test("Anthropic refusal fallback is anchored to the opening sentence; isRefusalReason sees through the retry mark", () => {
+  expect(
+    isAnthropicRefusalText(
+      "This request triggered restrictions on violative cyber content and was blocked under Anthropic's Usage Policy.",
+    ),
+  ).toBe(true);
+  expect(
+    isAnthropicRefusalText(
+      "  This request was blocked under Anthropic’s Usage Policy.",
+    ),
+  ).toBe(true);
+  expect(
+    isAnthropicRefusalText(
+      "Voici la réponse. This request was blocked under Anthropic's Usage Policy.",
+    ),
+  ).toBe(false);
+  expect(
+    isAnthropicRefusalText("See Anthropic's Usage Policy for details."),
+  ).toBe(false);
+  const refusal = codedReason("provider_refusal", null);
+  expect(isRefusalReason(refusal)).toBe(true);
+  expect(isRefusalReason(withRetryable(refusal, false))).toBe(true);
+  expect(isRefusalReason(codedReason("run_stalled", null))).toBe(false);
+  expect(isRefusalReason(null)).toBe(false);
 });

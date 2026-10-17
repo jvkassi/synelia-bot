@@ -40,6 +40,8 @@ import { retryKeepCount } from "@/lib/copilot/retry-turn";
 import {
   codedReason,
   EMPTY_RUN,
+  isAnthropicRefusalText,
+  isRefusalReason,
   sessionExpiredReason,
   withRetryable,
 } from "@/lib/copilot/stop-notice";
@@ -954,6 +956,28 @@ export function ChannelChat({
      * transcript kept the turn.
      */
     /*
+     * Synelia fork: a REFUSED run leaves no answer behind, only the French refusal notice. The
+     * assistant output born in that run (whatever streamed before the `provider_refusal` RUN_ERROR,
+     * or Anthropic's English refusal text on a server that still finishes the run normally) is
+     * removed from the transcript. Born in the run = not in the thread just before it started.
+     */
+    const bornInRun = (message: { id: string; role: string }) =>
+      message.role !== "user" && !idsBeforeRun.current?.has(message.id);
+    let refusedAsText = false;
+    if (!wasCut && turnFailure.current === null && runFinishedHere.current) {
+      const said = target.messages
+        .filter((message) => message.role === "assistant" && bornInRun(message))
+        .map(messageText)
+        .filter(Boolean);
+      refusedAsText =
+        said.length === 1 && isAnthropicRefusalText(said[0] ?? "");
+    }
+    if (refusedAsText || isRefusalReason(turnFailure.current)) {
+      const kept = target.messages.filter((message) => !bornInRun(message));
+      if (kept.length !== target.messages.length) target.setMessages(kept);
+      if (refusedAsText) setRunError(codedReason("provider_refusal", null));
+    }
+    /*
      * Synelia fork: the run ended cleanly but answered nothing and the person's message is still
      * last. That is the server's idempotent resend (`isAlreadyAnswered` in postgres-runner.ts:
      * RUN_STARTED + RUN_FINISHED, nothing between): the answer exists, this tab just never saw it.
@@ -961,6 +985,7 @@ export function ChannelChat({
      */
     if (
       !wasCut &&
+      !refusedAsText &&
       turnFailure.current === null &&
       endedWithoutAnswer(target.messages)
     ) {
@@ -985,6 +1010,7 @@ export function ChannelChat({
      */
     if (
       !wasCut &&
+      !refusedAsText &&
       turnFailure.current === null &&
       runFinishedHere.current &&
       endedWithoutAnswer(target.messages)

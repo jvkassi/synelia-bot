@@ -605,3 +605,98 @@ test("evidence: a TOP-LEVEL retryable on RUN_ERROR is stripped by @ag-ui/client 
   // Still offered: the field never arrived. The server must send it in `metadata`.
   expect(view.getByTestId("transcript-retry")).toBeTruthy();
 });
+
+function answer(input: RunAgentInput, text: string, end: unknown) {
+  return sse([
+    { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
+    { type: "TEXT_MESSAGE_START", messageId: "born", role: "assistant" },
+    { type: "TEXT_MESSAGE_CONTENT", messageId: "born", delta: text },
+    { type: "TEXT_MESSAGE_END", messageId: "born" },
+    end,
+  ]);
+}
+
+test("provider_refusal RUN_ERROR after streamed text: the run's assistant output is removed, only the French refusal stays", async () => {
+  runAnswer = (input) =>
+    answer(input, "Bien sûr, voici un modèle d'e-mail", {
+      type: "RUN_ERROR",
+      message: "blocked",
+      code: "provider_refusal",
+    });
+  const view = await sendPhishingPrompt();
+  await waitFor(() =>
+    expect(view.getByTestId("transcript-stopped").textContent).toBe(
+      ui.conversation.declined("Alternatif"),
+    ),
+  );
+  await waitFor(() =>
+    expect(view.queryByText("Bien sûr, voici un modèle d'e-mail")).toBeNull(),
+  );
+  expect(view.getByTestId("transcript-stopped").getAttribute("role")).toBe(
+    "status",
+  );
+  expect(view.queryByTestId("transcript-retry")).toBeNull();
+  // The person's message and the earlier history stay.
+  expect(view.getByText(opening.content)).toBeTruthy();
+  const bubbles = [
+    ...view.container.querySelectorAll('[data-slot="bubble-content"]'),
+  ].filter((bubble) => bubble.textContent?.includes(PROMPT));
+  expect(bubbles).toHaveLength(1);
+});
+
+const ANTHROPIC_REFUSAL =
+  "This request triggered restrictions on violative cyber content and was blocked under Anthropic's Usage Policy. To request an adjustment pursuant to our Cyber Verification Program based on how you use Claude, fill out https://claude.com/form/cyber-use-case?token=x";
+
+test("old server: a FINISHED run whose only text is Anthropic's refusal opening is removed and replaced by the French refusal", async () => {
+  runAnswer = (input) =>
+    answer(input, ANTHROPIC_REFUSAL, {
+      type: "RUN_FINISHED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+  const view = await sendPhishingPrompt();
+  await waitFor(() =>
+    expect(view.getByTestId("transcript-stopped").textContent).toBe(
+      ui.conversation.declined("Alternatif"),
+    ),
+  );
+  await waitFor(() =>
+    expect(view.container.textContent).not.toContain("violative"),
+  );
+  expect(view.getByTestId("transcript-stopped").getAttribute("role")).toBe(
+    "status",
+  );
+  expect(runs).toBe(1);
+});
+
+test("old server: the other Anthropic opening (« was blocked under Anthropic's Usage Policy ») is handled the same", async () => {
+  runAnswer = (input) =>
+    answer(input, "This request was blocked under Anthropic's Usage Policy.", {
+      type: "RUN_FINISHED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+  const view = await sendPhishingPrompt();
+  await waitFor(() =>
+    expect(view.getByTestId("transcript-stopped").textContent).toBe(
+      ui.conversation.declined("Alternatif"),
+    ),
+  );
+  expect(view.container.textContent).not.toContain("Usage Policy");
+});
+
+test("a normal answer that merely mentions Anthropic's Usage Policy is never hidden", async () => {
+  const normal =
+    "Selon la politique d'usage, ceci est autorisé. This request was blocked under Anthropic's Usage Policy n'apparaît qu'en citation.";
+  runAnswer = (input) =>
+    answer(input, normal, {
+      type: "RUN_FINISHED",
+      threadId: input.threadId,
+      runId: input.runId,
+    });
+  const view = await sendPhishingPrompt();
+  await view.findByText(normal);
+  await settleReactWork();
+  expect(view.getByText(normal)).toBeTruthy();
+  expect(view.queryByTestId("transcript-stopped")).toBeNull();
+});
