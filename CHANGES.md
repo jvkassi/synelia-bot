@@ -68,15 +68,15 @@ on konnect behind Traefik + basicauth, with a Mastra Bot answering through OpenR
 ## Gate ouverture 5 utilisateurs
 | # | Critère | Statut | Preuve |
 |---|---|---|---|
-| 1 | acquire même runId ×2 OK, autre runId 409 ; renew sur verrou perdu lève | OK — COMMIT_HASH | `synelia-persistence.integration.test.ts` › "acquire with the same runId twice…", "renew on a lost lock throws…" |
-| 2 | `thread_run.model` = modèle qui a réellement répondu après fallback | OK — COMMIT_HASH | `resolveModel (gate 2…)` (5 tests) + vérif DB après run prod |
-| 3 | B reçoit 404 sur threads/runs de A ; API Bots/Skills/ordinateur directe 404 | OK — COMMIT_HASH | `e2e.sh ownership`, `e2e.sh gate`, `synelia-pilot-gate.test.ts`, "other user: rename/delete answer 404" |
-| 4 | rename/archive/delete mettent à jour `#index` | OK — COMMIT_HASH | "index updated immediately, not at the next run" |
+| 1 | acquire même runId ×2 OK, autre runId 409 ; renew sur verrou perdu lève | OK — 28f3c42 | `synelia-persistence.integration.test.ts` › "acquire with the same runId twice…", "renew on a lost lock throws…" |
+| 2 | `thread_run.model` = modèle qui a réellement répondu après fallback | OK — 28f3c42 | `resolveModel (gate 2…)` (5 tests) + vérif DB après run prod |
+| 3 | B reçoit 404 sur threads/runs de A ; API Bots/Skills/ordinateur directe 404 | OK — 28f3c42 | `e2e.sh ownership`, `e2e.sh gate`, `synelia-pilot-gate.test.ts`, "other user: rename/delete answer 404" |
+| 4 | rename/archive/delete mettent à jour `#index` | OK — 28f3c42 | "index updated immediately, not at the next run" |
 | 5 | mots de passe tournés, credentials.txt supprimé, branche poussée sur remote privé | OUVERT | — |
-| 6 | erreurs sans fuite (requestBodyValues + clé sk- absents du RUN_ERROR et de la DB) | OK — COMMIT_HASH | `synelia-error-text.test.ts` (formatter + helper du patch exécuté) |
-| 7 | badge fiable (run >20 s, badge sans reload, pas de polling par message) | PARTIEL — COMMIT_HASH | requête unique par thread, invalidée en fin de run ; test navigateur >20 s à faire (Chief) |
+| 6 | erreurs sans fuite (requestBodyValues + clé sk- absents du RUN_ERROR et de la DB) | OK — 28f3c42 | `synelia-error-text.test.ts` (formatter + helper du patch exécuté) |
+| 7 | badge fiable (run >20 s, badge sans reload, pas de polling par message) | PARTIEL — 28f3c42 | requête unique par thread, invalidée en fin de run ; test navigateur >20 s à faire (Chief) |
 | 8 | CI front verte (format:check, 6 tests cassés, lang=fr, pas d'anglais login/composer/sidebar/picker) | OUVERT (Frontend Expert) | — |
-| 9 | déploiement refusé si arbre sale ; DEPLOYED_COMMIT depuis arbre propre | OK — COMMIT_HASH | `deploy/synelia/deploy.sh` |
+| 9 | déploiement refusé si arbre sale ; DEPLOYED_COMMIT depuis arbre propre | OK — 28f3c42 | `deploy/synelia/deploy.sh` |
 
 ## Deployment
 | File | Why |
