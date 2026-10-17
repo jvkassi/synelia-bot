@@ -364,10 +364,11 @@ test("sessionExpiredReason: 401, masked 403 (header or the server's 401 body), n
       extra,
     );
   const expired = {
-    text: ui.home.sessionExpired,
+    text: "Votre session a expiré. Reconnectez-vous pour continuer.",
     role: "alert" as const,
     technical: false,
     retry: false,
+    signIn: true as const,
   };
   const r401 = sessionExpiredReason(httpError(401, { error: "x" }));
   expect(stopNotice(r401 ?? "", "Alternatif")).toEqual(expired);
@@ -476,4 +477,29 @@ test("Anthropic refusal fallback is anchored to the opening sentence; isRefusalR
   expect(isRefusalReason(withRetryable(refusal, false))).toBe(true);
   expect(isRefusalReason(codedReason("run_stalled", null))).toBe(false);
   expect(isRefusalReason(null)).toBe(false);
+});
+
+test('sessionExpiredReason reads payload.code === "session_expired" first, whatever the status or body', () => {
+  const expired = sessionExpiredReason(
+    Object.assign(new Error("HTTP 401: {}"), { status: 401 }),
+  );
+  for (const status of [401, 403, 400]) {
+    expect(
+      sessionExpiredReason(
+        Object.assign(new Error(`HTTP ${status}: {}`), {
+          status,
+          payload: { code: "session_expired", error: "anything at all" },
+        }),
+      ),
+    ).toBe(expired);
+  }
+  // Another code on a 403 is not this.
+  expect(
+    sessionExpiredReason(
+      Object.assign(new Error("HTTP 403: {}"), {
+        status: 403,
+        payload: { code: "password_change_required", error: "x" },
+      }),
+    ),
+  ).toBe(null);
 });

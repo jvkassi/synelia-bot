@@ -24,7 +24,8 @@ import {
 } from "react";
 import { Streamdown } from "streamdown";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { SIGN_IN_PATH } from "@/lib/auth/sign-in-path";
 import {
   Dialog,
   DialogClose,
@@ -242,6 +243,20 @@ function Stopped({
       {notice.text}
     </p>
   );
+  if (notice.signIn)
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        {text}
+        {/* A full page load on purpose: see SIGN_IN_PATH. */}
+        <a
+          className={buttonVariants({ size: "sm", variant: "outline" })}
+          data-testid="transcript-sign-in"
+          href={SIGN_IN_PATH}
+        >
+          {ui.conversation.signInAgain}
+        </a>
+      </div>
+    );
   if (!notice.retry || !onRetry) return text;
   return (
     <div className="flex flex-wrap items-center gap-3">

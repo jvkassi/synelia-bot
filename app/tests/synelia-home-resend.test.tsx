@@ -95,7 +95,7 @@ async function send(view: ReturnType<typeof renderHome>, text: string) {
   return user;
 }
 
-type Mode = "ok" | "proxy-502";
+type Mode = "ok" | "proxy-502" | "expired-401" | "expired-code";
 
 function installFetch(state: { mode: Mode; starts: string[][] }) {
   global.fetch = Object.assign(
@@ -115,6 +115,17 @@ function installFetch(state: { mode: Mode; starts: string[][] }) {
             status: 502,
             headers: { "content-type": "text/plain" },
           });
+        if (state.mode === "expired-401")
+          return Response.json(
+            { error: "Authentication required." },
+            { status: 401 },
+          );
+        // Synelia: the masked 401 (403 + x-synelia-status) with the server's stable code.
+        if (state.mode === "expired-code")
+          return Response.json(
+            { error: "Authentication required.", code: "session_expired" },
+            { status: 403, headers: { "x-synelia-status": "401" } },
+          );
         const body = JSON.parse(String(init.body)) as { agentIds: string[] };
         state.starts.push(body.agentIds);
         const n = state.starts.length;
@@ -201,6 +212,23 @@ test("a failed start leaves the composer able to send again by itself", async ()
   await waitFor(() => expect(state.starts).toHaveLength(1));
 });
 
+for (const mode of ["expired-401", "expired-code"] as const) {
+  test(`home start refused for an expired session (${mode}): the session sentence, « Se reconnecter » to /sign, no Réessayer`, async () => {
+    console.warn = () => undefined;
+    const state = { mode: mode as Mode, starts: [] as string[][] };
+    installFetch(state);
+    const view = renderHome(makeQueryClient());
+    await send(view, "prompt c");
+    const alert = await view.findByRole("alert");
+    expect(alert.textContent).toContain(
+      "Votre session a expiré. Reconnectez-vous pour continuer.",
+    );
+    const link = view.getByRole("link", { name: "Se reconnecter" });
+    expect(link.getAttribute("href")).toBe("/sign");
+    expect(view.queryByRole("button", { name: ui.home.retry })).toBeNull();
+  });
+}
+
 test("describeStartError words each failure from its status and code", () => {
   const http = (status: number, code?: string) =>
     Object.assign(new Error("Impossible de démarrer la conversation."), {
@@ -224,6 +252,10 @@ test("describeStartError words each failure from its status and code", () => {
   );
   expect(describeStartError(http(401))).toBe(
     `${ui.home.sessionExpired} (erreur 401)`,
+  );
+  // The server's stable code wins over the (masked) status.
+  expect(describeStartError(http(403, "session_expired"))).toBe(
+    `${ui.home.sessionExpired} (erreur 403 · session_expired)`,
   );
   expect(describeStartError(new TypeError("Failed to fetch"))).toBe(
     ui.home.networkError,

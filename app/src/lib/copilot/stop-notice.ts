@@ -31,6 +31,8 @@ export type StopNotice = {
    * already-finished message with an empty run) nor while the run may still be going server-side.
    */
   retry: boolean;
+  /** Synelia fork: the session is gone; the notice links to the sign-in screen. */
+  signIn?: true;
 };
 
 /**
@@ -106,15 +108,20 @@ export function sessionExpiredReason(error: unknown): string | null {
         ? Number(statusFromMessage)
         : undefined;
   const expired = `${CODE_PREFIX}session_expired`;
+  const payload =
+    typeof failure.payload === "object" && failure.payload !== null
+      ? (failure.payload as { code?: unknown; error?: unknown })
+      : undefined;
+  // The server's stable code first: it survives the 401 → 403 masking (the body is untouched).
+  if (payload?.code === "session_expired") return expired;
   if (status === 401) return expired;
   if (status !== 403) return null;
   const headers = failure.headers ?? failure.response?.headers;
   if (headers?.get?.("x-synelia-status") === "401") return expired;
-  const said =
-    typeof failure.payload === "object" && failure.payload !== null
-      ? (failure.payload as { error?: unknown }).error
-      : undefined;
-  return typeof said === "string" && SERVER_401_BODIES.has(said)
+  // TEMPORARY FALLBACK: the server's English 401 bodies, until every 401 carries
+  // `code: "session_expired"`. Delete once it does.
+  return typeof payload?.error === "string" &&
+    SERVER_401_BODIES.has(payload.error)
     ? expired
     : null;
 }
@@ -248,10 +255,11 @@ export function stopNotice(
     // Signed out: say so, and no « Réessayer » (it would be refused the same way).
     if (code === "session_expired")
       return {
-        text: ui.home.sessionExpired,
+        text: ui.conversation.sessionExpired,
         role: "alert",
         technical: false,
         retry: false,
+        signIn: true,
       };
     return failed(false);
   }

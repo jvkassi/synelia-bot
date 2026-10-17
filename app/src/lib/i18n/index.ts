@@ -147,8 +147,9 @@ const fr = {
       "Les assistants n'ont pas pu être chargés : personne à qui envoyer ce message pour l'instant.",
     /** Start failures (lib/channels/start-error.ts), chosen from the HTTP status and code. */
     networkError: "Connexion impossible. Vérifiez votre réseau et réessayez.",
-    sessionExpired:
-      "Votre session a expiré. Rechargez la page pour vous reconnecter.",
+    sessionExpired: "Votre session a expiré. Reconnectez-vous pour continuer.",
+    /** Link to the sign-in screen next to `sessionExpired`. */
+    signInAgain: "Se reconnecter",
     accessDenied: "Accès refusé.",
     serviceUnavailable:
       "Le service est momentanément indisponible. Réessayez dans un instant.",
@@ -214,6 +215,8 @@ const fr = {
         : "Je ne peux pas répondre à cette demande. Reformulez-la, ou essayez un autre modèle en haut de la conversation.",
     /** Any other failure of the run (stall included); offered with « Réessayer ». */
     runFailed: "La réponse n'a pas pu aboutir.",
+    sessionExpired: "Votre session a expiré. Reconnectez-vous pour continuer.",
+    signInAgain: "Se reconnecter",
     runFailedNoRetry:
       "La réponse n'a pas pu aboutir. Écrivez un nouveau message pour reprendre.",
     /** Runs the failed turn again on the message already sent. */

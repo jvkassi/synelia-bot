@@ -446,6 +446,13 @@ function httpRefusal(
 test("HTTP 401 on the run: the session-expired sentence, no « Réessayer »", async () => {
   runAnswer = httpRefusal(401, { error: "Sign in to use this deployment." });
   const view = await sendPhishingPrompt();
+  const link = (await view.findByRole("link", {
+    name: "Se reconnecter",
+  })) as HTMLAnchorElement;
+  expect(link.getAttribute("href")).toBe("/sign");
+  expect(view.getByTestId("transcript-stopped").textContent).toBe(
+    "Votre session a expiré. Reconnectez-vous pour continuer.",
+  );
   await waitFor(() =>
     expect(view.getByTestId("transcript-stopped").textContent).toBe(
       ui.home.sessionExpired,
@@ -699,4 +706,22 @@ test("a normal answer that merely mentions Anthropic's Usage Policy is never hid
   await settleReactWork();
   expect(view.getByText(normal)).toBeTruthy();
   expect(view.queryByTestId("transcript-stopped")).toBeNull();
+});
+
+test("masked 401 carrying code session_expired (unknown body): recognised by the code, with « Se reconnecter »", async () => {
+  runAnswer = httpRefusal(
+    403,
+    { error: "Corps inattendu", code: "session_expired" },
+    { "x-synelia-status": "401" },
+  );
+  const view = await sendPhishingPrompt();
+  await waitFor(() =>
+    expect(view.getByTestId("transcript-stopped").textContent).toBe(
+      ui.conversation.sessionExpired,
+    ),
+  );
+  expect(
+    view.getByRole("link", { name: "Se reconnecter" }).getAttribute("href"),
+  ).toBe("/sign");
+  expect(view.queryByTestId("transcript-retry")).toBeNull();
 });

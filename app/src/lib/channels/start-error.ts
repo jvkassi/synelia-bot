@@ -31,6 +31,15 @@ function isNetworkFailure(error: unknown, failure: Failure): boolean {
   );
 }
 
+/**
+ * Synelia fork: the session is gone. The server's `code: "session_expired"` first (it survives the
+ * 401 → 403 masking), then a plain 401. The home page then links to the sign-in screen.
+ */
+export function isSessionExpired(error: unknown): boolean {
+  const { status, code } = failureOf(error);
+  return code === "session_expired" || status === 401;
+}
+
 export function describeStartError(error: unknown): string {
   if (error instanceof CoworkerRoutingRefusedError) return error.message;
   const failure = failureOf(error);
@@ -38,7 +47,7 @@ export function describeStartError(error: unknown): string {
   const { status, code } = failure;
   if (status === undefined) return ui.home.startFailed;
   const detail = ui.home.errorDetail(status, code);
-  if (status === 401) return `${ui.home.sessionExpired} ${detail}`;
+  if (isSessionExpired(error)) return `${ui.home.sessionExpired} ${detail}`;
   if (status === 403)
     return code === "password_change_required"
       ? ui.auth.changePasswordRequired

@@ -5,7 +5,7 @@ import { AgentCard } from "@/components/agents/agent-card";
 import { Composer, toAgentOptions } from "@/components/channels/composer";
 import { noteSend, Thinking } from "@/components/channels/thinking";
 import { SidebarToggleBar } from "@/components/layout/sidebar-toggle";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Carousel,
   CarouselContent,
@@ -17,6 +17,7 @@ import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { defaultAgentProfile } from "@/lib/agents/default-agent";
 import { agentListQueryOptions, isSharedWithYou } from "@/lib/agents/queries";
+import { SIGN_IN_PATH } from "@/lib/auth/sign-in-path";
 import {
   CoworkerRoutingRefusedError,
   routeMessage,
@@ -24,6 +25,7 @@ import {
 import { useStartChannel } from "@/lib/channels/start";
 import {
   describeStartError,
+  isSessionExpired,
   reportStartError,
 } from "@/lib/channels/start-error";
 import { SyneliaModelPicker } from "@/lib/copilot/synelia-model";
@@ -47,6 +49,8 @@ function RouteComponent() {
   const explore = agents?.filter(isSharedWithYou);
   const { start, startChosen, pending } = useStartChannel();
   const [error, setError] = useState<string | null>(null);
+  // Synelia fork: the start failed because the session is gone: link to sign-in, no resend.
+  const [sessionLost, setSessionLost] = useState(false);
   /** Synelia fork: the message being started, shown at once while routing and creation run. */
   const [sending, setSending] = useState<string | null>(null);
 
@@ -70,6 +74,7 @@ function RouteComponent() {
     // the message is routed to the coworker it is for; if that routing cannot run, it falls back
     // to the same default the composer used to always use.
     setError(null);
+    setSessionLost(false);
     setFailed(null);
     setSending(message.text);
     noteSend();
@@ -112,8 +117,12 @@ function RouteComponent() {
         reportStartError(step, caught);
       setSending(null);
       setError(describeStartError(caught));
-      // A refusal needs a different message (an `@`), so resending the same one is not offered.
-      if (!(caught instanceof CoworkerRoutingRefusedError)) setFailed(message);
+      const expired = isSessionExpired(caught);
+      setSessionLost(expired);
+      // A refusal needs a different message (an `@`), so resending the same one is not offered;
+      // nor after an expired session, which a resend would hit again.
+      if (!(caught instanceof CoworkerRoutingRefusedError) && !expired)
+        setFailed(message);
       throw caught;
     }
   };
@@ -188,7 +197,16 @@ function RouteComponent() {
               <p className="text-sm text-destructive" role="alert">
                 {error}
               </p>
-              {failed ? (
+              {sessionLost ? (
+                // A full page load on purpose: see SIGN_IN_PATH.
+                <a
+                  className={buttonVariants({ size: "sm", variant: "outline" })}
+                  data-testid="home-sign-in"
+                  href={SIGN_IN_PATH}
+                >
+                  {ui.conversation.signInAgain}
+                </a>
+              ) : failed ? (
                 <Button
                   disabled={retrying || pending}
                   onClick={() => void retry()}
