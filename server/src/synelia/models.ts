@@ -22,7 +22,10 @@ export function resolveModel(
   picked: string | undefined,
   list: SyneliaModelList | undefined,
 ): { provider?: string; model?: string } {
-  if (!list) return {};
+  // Synelia fork: the list unreachable at save time (Mastra slow) must not leave the run without a
+  // model. Fall back to the allowlisted id the browser picked (`provider:model`); the default is
+  // unknown here, so nothing is invented when nothing was picked.
+  if (!list) return splitModelId(picked);
   const usable = list.models.filter((option) => option.available !== false);
   const option =
     usable.find((candidate) => candidate.id === picked) ??
@@ -90,4 +93,13 @@ export function labelFor(
     (option) =>
       option.provider === entry.provider && option.model === entry.model,
   )?.label;
+}
+
+/** `router9:gemini/gemini-3.8-flash` -> { provider: "router9", model: "gemini/gemini-3.8-flash" }. */
+export function splitModelId(
+  id: string | undefined,
+): { provider?: string; model?: string } {
+  const colon = id?.indexOf(":") ?? -1;
+  if (!id || colon <= 0 || colon === id.length - 1) return {};
+  return { provider: id.slice(0, colon), model: id.slice(colon + 1) };
 }

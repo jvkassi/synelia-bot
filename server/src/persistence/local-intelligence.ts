@@ -472,7 +472,10 @@ export class LocalIntelligence {
               ARRAY(SELECT jsonb_array_elements_text(${JSON.stringify(assistantMessageIds(run.events))}::text::jsonb)),
               ${JSON.stringify(run.events)}::text::jsonb, ${JSON.stringify(run.messages)}::text::jsonb)
       ON CONFLICT (run_id) DO UPDATE SET events = EXCLUDED.events, messages = EXCLUDED.messages,
-        status = EXCLUDED.status, message_ids = EXCLUDED.message_ids`;
+        status = EXCLUDED.status, message_ids = EXCLUDED.message_ids,
+        provider = COALESCE(EXCLUDED.provider, synelia_thread_run.provider),
+        model = COALESCE(EXCLUDED.model, synelia_thread_run.model)`;
+    // (Synelia fork: a re-save never erases the provider/model an earlier save recorded.)
     // Title: set once, from the first user message of the first run that did not fail. A name that
     // is already there (an earlier title or an explicit rename) is never overwritten.
     const title = run.status === "error" ? null : threadTitle(run.messages);
