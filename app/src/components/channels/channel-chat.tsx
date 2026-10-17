@@ -36,6 +36,7 @@ import { observeApprovalAgent } from "@/lib/copilot/approval-context";
 import { ConversationProvider } from "@/lib/copilot/conversation";
 import { afterMs, joinWithin } from "@/lib/copilot/join-thread";
 import { repairUnansweredToolCalls } from "@/lib/copilot/repair-history";
+import { EMPTY_RUN } from "@/lib/copilot/stop-notice";
 import { stoppedReason } from "@/lib/copilot/stopped-turn";
 import {
   dedupeById,
@@ -642,6 +643,11 @@ export function ChannelChat({
    * handle that `copilotkit.runAgent` does not hand back.
    */
   const turnFailure = useRef<string | null>(null);
+  /**
+   * Synelia fork: this turn's run reached RUN_FINISHED (not RUN_ERROR, not a Stop, not the
+   * `thread_busy` refusal). With nothing in it, that is a provider refusal: see `EMPTY_RUN`.
+   */
+  const runFinishedHere = useRef(false);
   const assistantMessagesBeforeRun = useRef<Set<string>>(new Set());
 
   /*
@@ -772,6 +778,7 @@ export function ChannelChat({
         .map((message) => message.id),
     );
     awaitingReply.current = true;
+    runFinishedHere.current = false;
 
     /*
      * THE SKILL GOES IN FRONT OF THE MESSAGE, AS A SYSTEM TURN. A `/` chip is one token in the
@@ -949,6 +956,21 @@ export function ChannelChat({
           if (target.messages !== before) target.setMessages(before);
         });
     }
+    /*
+     * Synelia fork: still nothing after that replay. The run finished cleanly and said nothing,
+     * which on this stack is a provider refusal (content filter / Anthropic `refusal`: no content,
+     * and the bridge emits a bare RUN_FINISHED). Without this the turn ended in silence: the
+     * Thinking indicator went away and nothing replaced it. Not a failure of the send: the words
+     * were delivered, so nothing is restored and `say` resolves.
+     */
+    if (
+      !wasCut &&
+      turnFailure.current === null &&
+      runFinishedHere.current &&
+      endedWithoutAnswer(target.messages)
+    ) {
+      setRunError(EMPTY_RUN);
+    }
     if (turnFailure.current !== null) {
       throw new Error(turnFailure.current);
     }
@@ -1044,6 +1066,7 @@ export function ChannelChat({
         const wasOurs = awaitingReply.current;
         awaitingReply.current = false;
         if (!wasOurs) return;
+        runFinishedHere.current = true;
 
         const reply = [...agent.messages]
           .reverse()

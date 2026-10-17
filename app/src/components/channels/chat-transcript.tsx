@@ -51,6 +51,7 @@ import { apiFetch } from "@/lib/api-fetch";
 import { attachmentUrl } from "@/lib/channels/attachments";
 import { readResponsibilityTurn } from "@/lib/channels/responsibility-turn";
 import { readFiring } from "@/lib/channels/routine-firing";
+import { alternativeModel, stopNotice } from "@/lib/copilot/stop-notice";
 import {
   MessageModelLabel,
   useModelList,
@@ -203,64 +204,33 @@ function RestoringTranscript() {
  * and the conversation is sent back to the model on the next turn, so the Bot would then read its
  * own obituary as something it had written.
  */
-/** The browser's own wording for a request that never got an answer, across engines. */
-export function isNetworkFailure(reason: string): boolean {
-  return /^(TypeError:\s*)?(network ?error|failed to fetch|load failed|networkerror when attempting to fetch resource\.?)$/i.test(
-    reason.trim(),
-  );
-}
-
 function Stopped({ reason }: { reason: string }) {
-  // Synelia fork: a provider failure (the patched Mastra bridge ends it with "(HTTP nnn)") gets a
-  // plain sentence first and the technical text, prefixed with the provider, smaller underneath.
-  // The run row keeps the technical text only.
+  // Synelia fork: never the raw reason. A provider refusal (content filter, moderation, or a run
+  // that finished empty) says so in French and suggests another model; a provider error, a stall
+  // or anything unrecognised gets a French sentence too. The technical text goes to the console
+  // (the run row keeps it server-side); see lib/copilot/stop-notice.ts.
   const { data } = useModelList();
   const selected = useSyneliaModel();
-  const providerError = /\(HTTP \d{3}\)\s*$|^Erreur du fournisseur/.test(
-    reason,
-  );
-  // A dropped connection (fetch's "network error" / "Failed to fetch" TypeError) says what happened
-  // in French; the transport itself is untouched.
-  if (isNetworkFailure(reason)) {
-    return (
-      <p
-        className="text-destructive text-sm"
-        data-testid="transcript-stopped"
-        role="alert"
-      >
-        {ui.conversation.networkError}
-      </p>
-    );
-  }
-  if (providerError) {
-    const model = data?.models.find((entry) => entry.id === selected);
-    const detail = model
-      ? `${model.label ?? model.providerLabel} : ${reason}`
-      : reason;
-    return (
-      <div data-testid="transcript-stopped" role="alert">
-        <p className="text-destructive text-sm">
-          {ui.conversation.modelUnavailable}
-        </p>
-        <p
-          className="text-muted-foreground text-xs"
-          data-testid="transcript-stopped-detail"
-        >
-          {detail}
-        </p>
-      </div>
-    );
-  }
+  const notice = stopNotice(reason, alternativeModel(data?.models, selected));
+  useEffect(() => {
+    if (notice.technical) console.warn("[synelia] turn ended:", reason);
+  }, [notice.technical, reason]);
   return (
     <p
-      className="text-destructive text-sm"
+      className={cn(
+        "text-sm",
+        notice.role === "alert" ? "text-destructive" : "text-muted-foreground",
+      )}
       data-testid="transcript-stopped"
-      role="alert"
+      role={notice.role}
     >
-      {reason}
+      {notice.text}
     </p>
   );
 }
+
+/** Kept exported from here for its existing callers and tests. */
+export { isNetworkFailure } from "@/lib/copilot/stop-notice";
 
 /**
  * A file staged on the composer, described the way a sent one is.
