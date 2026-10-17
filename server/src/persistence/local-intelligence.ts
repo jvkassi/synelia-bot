@@ -20,7 +20,11 @@
 import type { BaseEvent } from "@ag-ui/client";
 import { SQL } from "bun";
 import { addressOf } from "../db/client";
-import { computeRetryable, EFFECTFUL_TOOLS } from "../synelia/run-refusal";
+import {
+  computeRetryable,
+  EFFECTFUL_TOOLS,
+  replayEvents,
+} from "../synelia/run-refusal";
 import { LOCAL_PERSISTENCE_DDL } from "./schema";
 
 class LocalIntelligenceError extends Error {
@@ -455,17 +459,49 @@ export class LocalIntelligence {
     if (!row) return { messages: [] };
     if (row.user_id !== params.userId)
       throw new LocalIntelligenceError("Thread not found.", 404);
-    const runs = (await this.#sql`
-      SELECT messages FROM synelia_thread_run
-      WHERE thread_id = ${params.threadId} AND jsonb_array_length(messages) > 0
-      ORDER BY seq DESC LIMIT 1`) as { messages: unknown }[];
-    return { messages: jsonArray(runs[0]?.messages) as never[] };
+    // Synelia fork (item 3): the latest message snapshot carries the whole conversation, INCLUDING
+    // the assistant text of a superseded error run or a provider_refusal run. That text is dropped on
+    // reload (THE SINGLE REPLAY RULE, replayEvents) so a reconnecting browser never sees the English
+    // refusal; it must not reach the MODEL next turn either. So the same rule gates this read: an
+    // assistant message whose id replayEvents drops is removed from the returned snapshot. The user's
+    // own messages and surviving answers are untouched.
+    const runs = await this.loadRuns(params.threadId);
+    if (runs.length === 0) return { messages: [] };
+    const snapshotRun = [...runs]
+      .reverse()
+      .find((run) => (run.messages?.length ?? 0) > 0);
+    const messages = (snapshotRun?.messages ?? []) as {
+      id?: unknown;
+      role?: unknown;
+    }[];
+    const kept = new Set(
+      assistantMessageIds(replayEvents(runs, EFFECTFUL_TOOLS)),
+    );
+    const dropped = new Set(
+      assistantMessageIds(runs.flatMap((run) => run.events)).filter(
+        (id) => !kept.has(id),
+      ),
+    );
+    return {
+      messages: messages.filter(
+        (message) =>
+          !(
+            message.role === "assistant" &&
+            typeof message.id === "string" &&
+            dropped.has(message.id)
+          ),
+      ) as never[],
+    };
   }
 
   async getThreadEvents(params: { threadId: string }) {
     const runs = await this.loadRuns(params.threadId);
+    // Synelia fork (item 3): THE SINGLE REPLAY RULE (replayEvents) also gates the event read, so a
+    // superseded error run's or a provider_refusal run's assistant output is dropped here exactly as
+    // it is on connect() reload — the model's next turn is built from these events and must not carry
+    // the hidden English refusal.
     return {
-      events: runs.flatMap((run) => run.events) as never[],
+      events: replayEvents(runs, EFFECTFUL_TOOLS) as never[],
       decodeErrorRowIds: [],
       truncated: false,
     };

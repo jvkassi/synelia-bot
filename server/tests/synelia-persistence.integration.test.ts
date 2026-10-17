@@ -456,6 +456,136 @@ db("lastRunError carries the stable code (reload after a refusal)", () => {
   });
 });
 
+db("getThreadMessages / getThreadEvents go through replayEvents (item 3)", () => {
+  // describe.skip still runs this body: no DB url, no client.
+  const store = url ? open() : (undefined as unknown as LocalIntelligence);
+
+  test("a provider_refusal run's assistant message is removed from the snapshot and its text from the events", async () => {
+    const threadId = id();
+    const userMessageId = id();
+    const assistantMessageId = id();
+    await store.saveRun({
+      runId: id(),
+      threadId,
+      agentId: "a",
+      parentRunId: null,
+      events: [
+        { type: "RUN_STARTED", threadId, runId: "r1" },
+        {
+          type: "TEXT_MESSAGE_START",
+          messageId: assistantMessageId,
+          role: "assistant",
+        },
+        {
+          type: "TEXT_MESSAGE_CONTENT",
+          messageId: assistantMessageId,
+          delta: "This request was blocked under policy.",
+        },
+        { type: "TEXT_MESSAGE_END", messageId: assistantMessageId },
+        {
+          type: "RUN_ERROR",
+          threadId,
+          runId: "r1",
+          message: "content_filter",
+          code: "provider_refusal",
+        },
+      ],
+      createdAt: Date.now(),
+      // The snapshot the runtime stored carries BOTH messages (the model wrote the refusal as text).
+      messages: [
+        { id: userMessageId, role: "user", content: "demande" },
+        {
+          id: assistantMessageId,
+          role: "assistant",
+          content: "This request was blocked under policy.",
+        },
+      ],
+      status: "error",
+      userId: "u1",
+    } as never);
+
+    // getThreadMessages: the refusal assistant message is gone, the user's own message stays.
+    const { messages } = await store.getThreadMessages({ threadId, userId: "u1" });
+    expect(messages.map((m) => (m as { id?: string }).id)).toEqual([
+      userMessageId,
+    ]);
+    expect(
+      messages.some((m) => (m as { role?: string }).role === "assistant"),
+    ).toBe(false);
+
+    // getThreadEvents: no assistant text survives (the notice comes from the RUN_ERROR code).
+    const { events } = await store.getThreadEvents({ threadId });
+    expect(
+      events.some((e) => (e as { type?: string }).type?.startsWith("TEXT_MESSAGE")),
+    ).toBe(false);
+    expect(
+      events.some((e) => (e as { type?: string }).type === "RUN_ERROR"),
+    ).toBe(true);
+  });
+
+  test("a superseded error run's text is dropped but the retry's answer and user message survive", async () => {
+    const threadId = id();
+    const userMessageId = id();
+    const brokenId = id();
+    const answerId = id();
+    await store.saveRun({
+      runId: id(),
+      threadId,
+      agentId: "a",
+      parentRunId: null,
+      events: [
+        { type: "RUN_STARTED", threadId, runId: "r1" },
+        { type: "TEXT_MESSAGE_START", messageId: brokenId, role: "assistant" },
+        { type: "TEXT_MESSAGE_CONTENT", messageId: brokenId, delta: "partial" },
+        {
+          type: "RUN_ERROR",
+          threadId,
+          runId: "r1",
+          message: "boom",
+          code: "provider_unavailable",
+        },
+      ],
+      createdAt: Date.now(),
+      messages: [{ id: userMessageId, role: "user", content: "demande" }],
+      status: "error",
+      userId: "u1",
+    } as never);
+    await store.saveRun({
+      runId: id(),
+      threadId,
+      agentId: "a",
+      parentRunId: null,
+      events: [
+        { type: "RUN_STARTED", threadId, runId: "r2" },
+        { type: "TEXT_MESSAGE_START", messageId: answerId, role: "assistant" },
+        { type: "TEXT_MESSAGE_CONTENT", messageId: answerId, delta: "la vraie réponse" },
+        { type: "TEXT_MESSAGE_END", messageId: answerId },
+        { type: "RUN_FINISHED", threadId, runId: "r2" },
+      ],
+      createdAt: Date.now() + 1,
+      messages: [
+        { id: userMessageId, role: "user", content: "demande" },
+        { id: answerId, role: "assistant", content: "la vraie réponse" },
+      ],
+      status: "done",
+      userId: "u1",
+    } as never);
+
+    const { messages } = await store.getThreadMessages({ threadId, userId: "u1" });
+    expect(messages.map((m) => (m as { id?: string }).id)).toEqual([
+      userMessageId,
+      answerId,
+    ]);
+    const { events } = await store.getThreadEvents({ threadId });
+    const text = events
+      .filter((e) => (e as { type?: string }).type === "TEXT_MESSAGE_CONTENT")
+      .map((e) => (e as { delta?: string }).delta ?? "")
+      .join(" ");
+    expect(text).toContain("vraie réponse");
+    expect(text).not.toContain("partial");
+  });
+});
+
 db(
   "connect replay: single rule (retryable + suppression), full chain through persistence",
   () => {
