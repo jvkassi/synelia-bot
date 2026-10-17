@@ -1106,7 +1106,9 @@ function SentAttachmentTile({ attachment }: { attachment: SentAttachment }) {
           <p className="truncate font-medium text-sm" title={filename}>
             {filename ?? ui.conversation.untitledFile}
           </p>
-          <p className="text-muted-foreground text-xs">Attachment</p>
+          <p className="text-muted-foreground text-xs">
+            {ui.conversation.attachment}
+          </p>
         </div>
       </div>
     );

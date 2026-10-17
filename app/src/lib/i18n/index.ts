@@ -66,6 +66,20 @@ const fr = {
     loadOlder:
       "Chargez les conversations plus anciennes pour chercher plus loin.",
     nothingNamed: (term: string) => `Rien ne s'appelle « ${term} ».`,
+    olderFailed: "Impossible de charger les conversations plus anciennes.",
+    loadingOlder: "Chargement des conversations plus anciennes…",
+    retryOlder: "Réessayer de charger les conversations plus anciennes",
+    loadOlderButton: "Charger les conversations plus anciennes",
+    untitled: "Nouvelle conversation",
+    pin: "Épingler la conversation",
+    unpin: "Désépingler la conversation",
+    delete: "Supprimer la conversation…",
+    deleteTitle: (name: string) => `Supprimer ${name} ?`,
+    deleteDescription:
+      "La conversation n'apparaîtra plus pour aucun de ses participants.",
+    cancel: "Annuler",
+    deleting: "Suppression…",
+    confirmDelete: "Supprimer",
   },
   conversation: {
     fallbackTitle: "Conversation",

@@ -24,6 +24,7 @@ import {
 import type { MessageListEmphasis } from "@/lib/settings/message-list";
 import { useTypedReveal } from "@/lib/typed-reveal";
 import { ChannelItemContent } from "./channel-item-content";
+import { ui } from "@/lib/i18n";
 
 /**
  * Memoized roster row. `use-channel-events` preserves unchanged row identity, and
@@ -68,7 +69,7 @@ export const Channel = memo(function Channel({
   });
   /* Types in only on arrival; an already-named row draws it outright. */
   const revealed = useTypedReveal(summary);
-  const threadTitle = revealed.text || lastMessage || "New conversation";
+  const threadTitle = revealed.text || lastMessage || ui.sidebar.untitled;
   const setPinned = useMutation(setChannelPinnedMutationOptions(queryClient));
   const deleteChannel = useMutation(deleteChannelMutationOptions(queryClient));
   const [confirming, setConfirming] = useState(false);
@@ -125,7 +126,7 @@ export const Channel = memo(function Channel({
             <ChannelItemContent
               participantIds={participantIds}
               name={name}
-              title={summary || lastMessage || "New conversation"}
+              title={summary || lastMessage || ui.sidebar.untitled}
               displayedTitle={threadTitle}
               lastMessageAt={lastMessageAt}
               emphasis={emphasis}
@@ -147,7 +148,7 @@ export const Channel = memo(function Channel({
             }}
           >
             {pinned ? <IconPinnedOff /> : <IconPin />}
-            {pinned ? "Unpin channel" : "Pin channel"}
+            {pinned ? ui.sidebar.unpin : ui.sidebar.pin}
           </ContextMenuItem>
           <ContextMenuItem
             variant="destructive"
@@ -158,7 +159,7 @@ export const Channel = memo(function Channel({
             }}
           >
             <IconTrash />
-            Delete channel…
+            {ui.sidebar.delete}
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
@@ -175,9 +176,9 @@ export const Channel = memo(function Channel({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete {name}?</DialogTitle>
+            <DialogTitle>{ui.sidebar.deleteTitle(name)}</DialogTitle>
             <DialogDescription>
-              The conversation will no longer appear for anyone in it.
+              {ui.sidebar.deleteDescription}
             </DialogDescription>
           </DialogHeader>
           {deleteChannel.error ? (
@@ -191,7 +192,7 @@ export const Channel = memo(function Channel({
               size="sm"
               variant="ghost"
             >
-              Cancel
+              {ui.sidebar.cancel}
             </Button>
             <Button
               disabled={deleteChannel.isPending}
@@ -201,7 +202,9 @@ export const Channel = memo(function Channel({
               size="sm"
               variant="destructive"
             >
-              {deleteChannel.isPending ? "Deleting…" : "Delete"}
+              {deleteChannel.isPending
+                ? ui.sidebar.deleting
+                : ui.sidebar.confirmDelete}
             </Button>
           </DialogFooter>
         </DialogContent>
