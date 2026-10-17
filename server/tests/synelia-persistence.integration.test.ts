@@ -321,3 +321,80 @@ describe("hidden QA model (admin only)", () => {
     expect(isHiddenModel("synelia-test:anything", undefined)).toBe(true);
   });
 });
+
+db("lastRunError carries the stable code (reload after a refusal)", () => {
+  // describe.skip still runs this body: no DB url, no client.
+  const store = url ? open() : (undefined as unknown as LocalIntelligence);
+  const saveError = (
+    threadId: string,
+    events: unknown[],
+    userId = "u1",
+  ) =>
+    store.saveRun({
+      runId: id(),
+      threadId,
+      agentId: "a",
+      parentRunId: null,
+      events,
+      createdAt: Date.now(),
+      messages: [{ id: id(), role: "user", content: "demande" }],
+      status: "error",
+      provider: "router9",
+      model: "cc/claude-sonnet-5-5",
+      userId,
+    } as never);
+
+  test("a persisted provider_refusal run returns message AND code after reload", async () => {
+    const threadId = id();
+    // What adjustPersistedRun writes for a silent refusal: RUN_ERROR, no RUN_FINISHED.
+    await saveError(threadId, [
+      { type: "RUN_STARTED", threadId, runId: "x" },
+      {
+        type: "RUN_ERROR",
+        threadId,
+        runId: "x",
+        message: "content_filter",
+        code: "provider_refusal",
+      },
+    ]);
+    const last = await store.lastRunError({ threadId, userId: "u1" });
+    expect(last?.code).toBe("provider_refusal");
+    expect(last?.message).toBe("content_filter");
+    expect(last?.provider).toBe("router9");
+  });
+
+  test("a stall run returns the watchdog's code", async () => {
+    const threadId = id();
+    await saveError(threadId, [
+      { type: "RUN_STARTED", threadId, runId: "x" },
+      {
+        type: "RUN_ERROR",
+        threadId,
+        runId: "x",
+        message: "Bot stopped responding. Nothing arrived from it for a minute",
+        code: "AGENT_STREAM_STALLED",
+      },
+    ]);
+    const last = await store.lastRunError({ threadId, userId: "u1" });
+    expect(last?.code).toBe("AGENT_STREAM_STALLED");
+  });
+
+  test("another user cannot read the error", async () => {
+    const threadId = id();
+    await saveError(threadId, [
+      {
+        type: "RUN_ERROR",
+        threadId,
+        runId: "x",
+        message: "content_filter",
+        code: "provider_refusal",
+      },
+    ]);
+    expect(
+      await store
+        .lastRunError({ threadId, userId: "someone-else" })
+        .then(() => "ok")
+        .catch((error) => (error as { status?: number }).status),
+    ).toBe(404);
+  });
+});

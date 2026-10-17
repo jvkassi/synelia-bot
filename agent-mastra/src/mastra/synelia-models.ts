@@ -23,9 +23,30 @@ export const agentRequestArrival = new AsyncLocalStorage<number>();
  * only (never the body): since the agent request arrived (agent build, memory, tool schemas),
  * response headers (TTFB) and first body chunk.
  */
+/**
+ * Synelia fork: the last `finish_reason` seen in a streamed Chat Completions body, read from the SSE
+ * frames by name only. NEVER the content: this reads the token after `"finish_reason":`, nothing
+ * around it, so no prompt or answer text can reach the log. A provider that blocks a request ends
+ * the completion with `content_filter` (or Anthropic `refusal`); a normal answer ends with `stop` or
+ * `tool_calls`. Undefined when the stream carried none (e.g. an error body).
+ */
+export function scanFinishReason(
+  text: string,
+  previous?: string,
+): string | undefined {
+  let last = previous;
+  const pattern = /"finish_reason"\s*:\s*(?:"([^"]+)"|null)/g;
+  for (const match of text.matchAll(pattern)) {
+    if (match[1]) last = match[1];
+  }
+  return last;
+}
+
 export function timedFetch(
   providerId: string,
   inner: typeof fetch,
+  /** The model id, logged beside the call so a refusal names which model produced it. */
+  model?: string,
 ): typeof fetch {
   const wrapped = async (input: RequestInfo | URL, init?: RequestInit) => {
     const arrived = agentRequestArrival.getStore();
@@ -37,6 +58,7 @@ export function timedFetch(
         `synelia_timing ${JSON.stringify({
           kind: "provider_call",
           provider: providerId,
+          ...(model ? { model } : {}),
           requestBytes,
           sinceAgentRequestMs:
             arrived === undefined ? undefined : Math.round(start - arrived),
@@ -50,6 +72,8 @@ export function timedFetch(
       return response;
     }
     let first = true;
+    let finishReason: string | undefined;
+    const decoder = new TextDecoder();
     const body = response.body.pipeThrough(
       new TransformStream({
         transform(chunk, controller) {
@@ -61,7 +85,16 @@ export function timedFetch(
               firstChunkMs: Math.round(performance.now() - start),
             });
           }
+          // Decode only to read the finish_reason token; the bytes pass through untouched.
+          finishReason = scanFinishReason(
+            decoder.decode(chunk, { stream: true }),
+            finishReason,
+          );
           controller.enqueue(chunk);
+        },
+        flush() {
+          // One line per call carrying the provider's own finish reason (never content).
+          log({ status: response.status, finishReason });
         },
       }),
     );
@@ -341,6 +374,7 @@ export function resolveSyneliaModel(picked: string | undefined) {
         provider.fetch ?? fetch,
         requestExtras(option.provider, option.model),
       ),
+      option.model,
     ),
   }).chat(option.model);
   cache.set(option.id, model);

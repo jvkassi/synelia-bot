@@ -29,6 +29,7 @@ import {
 } from "../synelia/models";
 import { pilotTools } from "../synelia/pilot-gate";
 import { logRunTiming } from "../synelia/request-log";
+import { adjustPersistedRun, finishClass } from "../synelia/run-refusal";
 import type {
   LocalIntelligence,
   LocalThreadSummary,
@@ -249,6 +250,9 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
             (candidate) => candidate.runId === runId,
           );
           if (!run) return;
+          // Synelia fork: a RUN_ERROR carries a stable code, and a finish with no text and no tool
+          // call becomes a provider_refusal RUN_ERROR, so a reload still shows the French notice.
+          const adjusted = adjustPersistedRun(run.events);
           void this.#models()
             .catch(() => undefined)
             .then((list) =>
@@ -257,13 +261,13 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
                 threadId: request.threadId,
                 agentId,
                 parentRunId: run.parentRunId ?? null,
-                events: run.events,
+                events: adjusted.events,
                 messages: store?.messagesSnapshot ?? [],
                 createdAt: run.createdAt ?? Date.now(),
-                // A provider failure arrives as a RUN_ERROR event on a stream that still completes.
-                status: run.events.some((event) => event.type === "RUN_ERROR")
-                  ? "error"
-                  : status,
+                // A provider failure (or a silent refusal, adjusted above) stores as error; a stream
+                // that threw does too even when its events do not say so.
+                status:
+                  status === "error" ? "error" : adjusted.status,
                 // The model that really answered: allowlist + availability + default fallback,
                 // the rule Mastra applies, never the browser's header as sent.
                 ...resolveModel(pickedModel(request), list),
@@ -290,13 +294,27 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
         });
         let firstEventAt: number | undefined;
         let firstTextAt: number | undefined;
+        // Synelia fork: the provider half of the requested `provider:model`, logged next to the
+        // outcome. The derived finish class (stop / tool_call / provider_refusal / an error code)
+        // is read from the recorded events at completion; the raw provider finish_reason is logged
+        // at the provider boundary (agent-mastra timedFetch), never here.
+        const requestedModel = pickedModel(request);
+        const requestedProvider = requestedModel?.includes(":")
+          ? requestedModel.slice(0, requestedModel.indexOf(":"))
+          : undefined;
         const timing = (outcome: string) =>
           logRunTiming({
             threadId: request.threadId,
             runId,
             userId: user?.id,
             outcome,
-            model: pickedModel(request),
+            model: requestedModel,
+            provider: requestedProvider,
+            finishReason: finishClass(
+              this.#global.peek(request.threadId)?.historicRuns.find(
+                (candidate) => candidate.runId === runId,
+              )?.events ?? [],
+            ),
             // arrival -> runner.run(): auth, role, CopilotKit runtime request handling
             routeMs: runCalledAt - arrivedAt,
             // runner.run() -> agent call: ownership, hydrate, QA-model check

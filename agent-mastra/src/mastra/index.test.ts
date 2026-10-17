@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildOpenBotInstructions, openbotBaseInstructions } from "./index";
+import {
+  buildOpenBotInstructions,
+  isSyneliaPilot,
+  openbotBaseInstructions,
+  SYNELIA_PILOT_INSTRUCTION,
+} from "./index";
 
 type ModelCase = {
   name: string;
@@ -231,6 +236,58 @@ describe("OpenBot Mastra receiver instructions", () => {
         requestContext: requestContextWith("not ag-ui context entries"),
       }),
     ).toBe(openbotBaseInstructions);
+  });
+});
+
+describe("Synelia French pilot instruction", () => {
+  const previous = process.env.SYNELIA_MODELS_MODE;
+  const set = (value: string | undefined) => {
+    if (value === undefined) delete process.env.SYNELIA_MODELS_MODE;
+    else process.env.SYNELIA_MODELS_MODE = value;
+  };
+
+  test("the pilot adds « Réponds toujours en français, y compris pour refuser. » to the prompt", () => {
+    set("on");
+    try {
+      expect(isSyneliaPilot()).toBe(true);
+      expect(SYNELIA_PILOT_INSTRUCTION).toBe(
+        "Réponds toujours en français, y compris pour refuser.",
+      );
+      // On a bare call it sits right after the base instruction.
+      expect(buildOpenBotInstructions()).toBe(
+        [openbotBaseInstructions, SYNELIA_PILOT_INSTRUCTION].join("\n\n"),
+      );
+      // With a standing role it keeps receiver order: base, pilot line, then the role.
+      expect(
+        buildOpenBotInstructions({
+          requestContext: requestContextWith([
+            {
+              description: "OpenBot standing role",
+              value: "Follow company policy.",
+            },
+          ]),
+        }),
+      ).toBe(
+        [
+          openbotBaseInstructions,
+          SYNELIA_PILOT_INSTRUCTION,
+          "Follow company policy.",
+        ].join("\n\n"),
+      );
+    } finally {
+      set(previous);
+    }
+  });
+
+  test("off the pilot, the French line is not added", () => {
+    set(undefined);
+    try {
+      expect(isSyneliaPilot()).toBe(false);
+      expect(buildOpenBotInstructions()).toBe(openbotBaseInstructions);
+      expect(buildOpenBotInstructions()).not.toContain(SYNELIA_PILOT_INSTRUCTION);
+    } finally {
+      set(previous);
+    }
   });
 });
 

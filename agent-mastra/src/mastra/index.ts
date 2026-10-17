@@ -91,6 +91,21 @@ if (!port.ok) throw new Error(port.reason);
 export const openbotBaseInstructions =
   "Answer the question you are asked, briefly and correctly.";
 
+/**
+ * Synelia fork (French pilot): the one line added to the system prompt when SYNELIA_MODELS_MODE is
+ * on. The testers write French and must be answered in French even when the Bot declines, so a
+ * refusal never reaches the screen in English (the empty/filtered case is turned into a French
+ * notice elsewhere; this covers the refusal the model writes itself). See
+ * server/src/synelia/run-refusal.ts and app/src/lib/copilot/stop-notice.ts.
+ */
+export const SYNELIA_PILOT_INSTRUCTION =
+  "Réponds toujours en français, y compris pour refuser.";
+
+/** True when this process runs the Synelia pilot (model picked per run from the allowlist). */
+export function isSyneliaPilot(): boolean {
+  return process.env.SYNELIA_MODELS_MODE === "on";
+}
+
 const OPENBOT_CONTEXT_DESCRIPTIONS = [
   "OpenBot standing role",
   "OpenBot granted tools guidance",
@@ -138,8 +153,12 @@ export function buildOpenBotInstructions({
         .map((entry) => entry.value.trim()),
   );
 
-  if (openbotInstructions.length === 0) return openbotBaseInstructions;
-  return [openbotBaseInstructions, ...openbotInstructions].join("\n\n");
+  const pilot = isSyneliaPilot() ? [SYNELIA_PILOT_INSTRUCTION] : [];
+  if (openbotInstructions.length === 0 && pilot.length === 0)
+    return openbotBaseInstructions;
+  return [openbotBaseInstructions, ...pilot, ...openbotInstructions].join(
+    "\n\n",
+  );
 }
 
 const openbot = new Agent({

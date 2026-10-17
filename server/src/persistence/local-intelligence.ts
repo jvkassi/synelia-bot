@@ -427,12 +427,15 @@ export class LocalIntelligence {
     if (last?.status !== "error") return null;
     const event = jsonArray(last.events).find(
       (candidate) => (candidate as { type?: string }).type === "RUN_ERROR",
-    ) as { message?: unknown } | undefined;
+    ) as { message?: unknown; code?: unknown } | undefined;
     return {
       runId: last.run_id,
       provider: last.provider,
       model: last.model,
       message: typeof event?.message === "string" ? event.message : null,
+      // Synelia fork: the stable error code (provider_refusal, provider_unavailable, a stall code).
+      // The front maps it to French and prefers it over reading the English message.
+      code: typeof event?.code === "string" ? event.code : null,
     };
   }
 
