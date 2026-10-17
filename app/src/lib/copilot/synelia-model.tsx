@@ -403,9 +403,11 @@ export function threadStatusView(
     known:
       data === undefined
         ? undefined
-        : typeof data.known === "boolean"
-          ? data.known
-          : true,
+        : data === null
+          ? false
+          : typeof data.known === "boolean"
+            ? data.known
+            : true,
     error: endsOnUserMessage
       ? withRetryable(
           codedReason(data?.lastError?.code, data?.lastError?.message),
