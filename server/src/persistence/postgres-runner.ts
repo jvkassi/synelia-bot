@@ -1,0 +1,223 @@
+/**
+ * Synelia phase 0: the open (MIT) CopilotKit runner, made durable in Postgres.
+ *
+ * Replaces `IntelligenceAgentRunner` (which streams through Intelligence's WebSocket gateway). The
+ * runtime runs in plain SSE mode; this runner keeps CopilotKit's own `InMemoryAgentRunner` for the
+ * live part (streaming, connect/replay of an in-flight run, stop) and adds:
+ *
+ *  1. every finished run's compacted AG-UI events, message snapshot and requested provider/model go
+ *     to `synelia_thread_run`;
+ *  2. a thread not in memory (new process, evicted) is rehydrated from Postgres before `connect`,
+ *     `run`, or the thread REST endpoints read it, so a reload or a restart still shows history;
+ *  3. owner checks: a thread belongs to the person who first ran it.
+ *
+ * `listThreads()` is filtered to the requesting person (the in-memory default lists everyone's) and
+ * `clearThreads()` is a no-op, because a browser must not be able to wipe durable history.
+ */
+import type { BaseEvent, Message } from "@ag-ui/client";
+import {
+  type AgentRunnerConnectRequest,
+  type AgentRunnerRunRequest,
+  InMemoryAgentRunner,
+  ɵGLOBAL_STORE,
+} from "@copilotkit/runtime/v2";
+import { defer, from, type Observable, switchMap } from "rxjs";
+import type { LocalIntelligence, LocalThreadSummary } from "./local-intelligence";
+import { requestUser } from "./request-user";
+
+type HistoricRun = {
+  runId: string;
+  events: BaseEvent[];
+  parentRunId?: string | null;
+  createdAt?: number;
+};
+type GlobalStore = {
+  peek(threadId: string): { historicRuns: HistoricRun[]; messagesSnapshot: Message[] } | undefined;
+  getOrCreate(threadId: string): unknown;
+  appendRun(threadId: string, run: unknown): void;
+};
+
+const notFound = () => Object.assign(new Error("Thread not found."), { status: 404 });
+
+export class PostgresAgentRunner extends InMemoryAgentRunner {
+  readonly #store: LocalIntelligence;
+  readonly #hydrated = new Map<string, Promise<void>>();
+  /** Thread index mirrored in memory, because the runtime's listThreads() is synchronous. */
+  readonly #index = new Map<string, LocalThreadSummary>();
+  readonly #global = ɵGLOBAL_STORE as unknown as GlobalStore;
+
+  constructor(store: LocalIntelligence) {
+    super({ maxThreads: 500, maxRunsPerThread: 200 });
+    this.#store = store;
+  }
+
+  /** Load the thread index at boot. Failure is logged, not fatal: the index fills as people talk. */
+  async warm(): Promise<void> {
+    try {
+      for (const thread of await this.#store.listAllThreads()) this.#index.set(thread.id, thread);
+    } catch (error) {
+      console.error(JSON.stringify({ type: "synelia-runner-warm-failed", reason: String(error) }));
+    }
+  }
+
+  /** Make sure a thread's history is in memory. Idempotent and concurrent-safe per thread. */
+  hydrate(threadId: string): Promise<void> {
+    const existing = this.#hydrated.get(threadId);
+    if (existing) return existing;
+    const loading = (async () => {
+      const inMemory = this.#global.peek(threadId);
+      if (inMemory && inMemory.historicRuns.length > 0) return;
+      const runs = await this.#store.loadRuns(threadId);
+      if (runs.length === 0) return;
+      this.#global.getOrCreate(threadId);
+      const last = runs.length - 1;
+      runs.forEach((run, position) => {
+        this.#global.appendRun(threadId, {
+          threadId,
+          runId: run.runId,
+          agentId: run.agentId,
+          parentRunId: run.parentRunId,
+          events: run.events,
+          // Only the latest snapshot matters; the store keeps one per thread.
+          messages: position === last ? run.messages : [],
+          createdAt: run.createdAt,
+        });
+      });
+    })().catch((error) => {
+      this.#hydrated.delete(threadId);
+      throw error;
+    });
+    this.#hydrated.set(threadId, loading);
+    return loading;
+  }
+
+  async #authorise(threadId: string): Promise<void> {
+    const user = requestUser.getStore();
+    if (!user) return;
+    const owner = await this.#store.ownerOf(threadId);
+    if (owner && owner !== user.id) throw notFound();
+  }
+
+  override run(request: AgentRunnerRunRequest): Observable<BaseEvent> {
+    const user = requestUser.getStore();
+    const agentId = request.agent.agentId ?? "default";
+    return defer(() =>
+      from(
+        (async () => {
+          if (user) {
+            const owner = await this.#store.ownerOf(request.threadId);
+            if (owner && owner !== user.id) throw notFound();
+            if (!owner) {
+              const { thread } = await this.#store.getOrCreateThread({
+                threadId: request.threadId,
+                userId: user.id,
+                agentId,
+              });
+              this.#index.set(thread.id, thread);
+            }
+          }
+          await this.hydrate(request.threadId);
+        })(),
+      ),
+    ).pipe(
+      switchMap(() => {
+        const stream = super.run(request);
+        const runId = request.input.runId;
+        const persist = (status: string) => {
+          const store = this.#global.peek(request.threadId);
+          const run = store?.historicRuns.find((candidate) => candidate.runId === runId);
+          if (!run) return;
+          void this.#store
+            .saveRun({
+              runId,
+              threadId: request.threadId,
+              agentId,
+              parentRunId: run.parentRunId ?? null,
+              events: run.events,
+              messages: store?.messagesSnapshot ?? [],
+              createdAt: run.createdAt ?? Date.now(),
+              status,
+              ...modelOf(request),
+              ...(user ? { userId: user.id } : {}),
+            })
+            .then(() => {
+              const known = this.#index.get(request.threadId);
+              const now = new Date().toISOString();
+              this.#index.set(request.threadId, {
+                id: request.threadId,
+                name: known?.name ?? null,
+                agentId,
+                createdById: known?.createdById ?? user?.id ?? "",
+                organizationId: "",
+                archived: known?.archived ?? false,
+                createdAt: known?.createdAt ?? now,
+                updatedAt: now,
+                lastRunAt: now,
+              });
+            })
+            .catch((error) =>
+              console.error(
+                JSON.stringify({
+                  type: "synelia-run-persist-failed",
+                  threadId: request.threadId,
+                  runId,
+                  reason: error instanceof Error ? error.message : String(error),
+                }),
+              ),
+            );
+        };
+        // The stream is a ReplaySubject: a second subscriber sees the same events, and completes
+        // after the in-memory store has appended the run, which is what `persist` reads.
+        stream.subscribe({ complete: () => persist("done"), error: () => persist("error") });
+        return stream;
+      }),
+    );
+  }
+
+  override connect(request: AgentRunnerConnectRequest): Observable<BaseEvent> {
+    return defer(() =>
+      from(this.#authorise(request.threadId).then(() => this.hydrate(request.threadId))),
+    ).pipe(switchMap(() => super.connect(request)));
+  }
+
+  /** Called by the request middleware before the runtime's synchronous thread endpoints. */
+  async prepareThreadRead(threadId: string): Promise<boolean> {
+    const user = requestUser.getStore();
+    const owner = await this.#store.ownerOf(threadId);
+    if (user && owner && owner !== user.id) return false;
+    await this.hydrate(threadId);
+    return true;
+  }
+
+  override listThreads() {
+    const user = requestUser.getStore();
+    return [...this.#index.values()]
+      .filter((thread) => !thread.archived && (!user || thread.createdById === user.id))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .map((thread) => ({
+        id: thread.id,
+        name: thread.name,
+        agentId: thread.agentId,
+        organizationId: "" as const,
+        createdById: "" as const,
+        archived: false as const,
+        createdAt: thread.createdAt,
+        updatedAt: thread.updatedAt,
+      }));
+  }
+
+  override clearThreads(): void {
+    // Durable history is not wiped by a page load. Deliberately a no-op.
+  }
+}
+
+/** Provider and model the run asked for, from the "Synelia model" context entry (`provider:model`). */
+function modelOf(request: AgentRunnerRunRequest): { provider?: string; model?: string } {
+  const entry = (request.input.context ?? []).find(
+    (candidate) => candidate.description === "Synelia model",
+  );
+  const value = typeof entry?.value === "string" ? entry.value.replace(/^"|"$/g, "").trim() : "";
+  const colon = value.indexOf(":");
+  if (colon <= 0) return {};
+  return { provider: value.slice(0, colon), model: value.slice(colon + 1) };
+}

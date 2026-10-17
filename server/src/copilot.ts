@@ -6,6 +6,7 @@ import {
   CopilotRuntime,
 } from "@copilotkit/runtime/v2";
 import { createCopilotHonoHandler } from "@copilotkit/runtime/v2/hono";
+import { Hono } from "hono";
 import { PROVENANCE_GUIDANCE } from "@openbot/shared/bot-prompt";
 import { defaultModelFor } from "@openbot/shared/model-providers";
 import {
@@ -46,6 +47,9 @@ import type { DeploymentConfig } from "./config";
 import { observeModelConnection } from "./desktop-connection-failure";
 import { desktopTelemetryProperties } from "./desktop-telemetry";
 import { observeIntelligenceAuthentication } from "./intelligence-client";
+import { localIntelligence } from "./persistence/local-intelligence";
+import { PostgresAgentRunner } from "./persistence/postgres-runner";
+import { requestUser } from "./persistence/request-user";
 import { RemoteLearnedSkillsMiddleware } from "./learning/remote";
 import {
   type AcquireLearnedSkills,
@@ -1743,8 +1747,16 @@ export function mountCopilotRuntime(
    * One client, used by the runtime and by anything reading a thread beside it, so a hop reads the
    * history a person's run would read rather than a second view of it that could disagree.
    */
-  const intelligenceClient: CopilotKitIntelligence =
-    observeIntelligenceAuthentication(
+  // Synelia fork: in `postgres` mode the client is the local stand-in and the runner is ours.
+  const local = intelligence.local
+    ? localIntelligence(intelligence.local.databaseUrl)
+    : undefined;
+  const postgresRunner = local ? new PostgresAgentRunner(local) : undefined;
+  if (postgresRunner) void local?.ready().then(() => postgresRunner.warm());
+
+  const intelligenceClient: CopilotKitIntelligence = local
+    ? (local as unknown as CopilotKitIntelligence)
+    : observeIntelligenceAuthentication(
       new IntelligenceKnowingANewThread({
         apiUrl: intelligence.apiUrl,
         wsUrl: intelligence.gatewayWsUrl,
@@ -1767,14 +1779,16 @@ export function mountCopilotRuntime(
       }),
     );
 
-  const learning: LearningRuntime | undefined = learningSettings
+  // Synelia fork: learned Skills are an Intelligence feature (LearningStore stub = none locally).
+  const learning: LearningRuntime | undefined =
+    learningSettings && !local
     ? createLearningRuntime({
         store: learningSettings,
         client: intelligenceClient,
       })
     : undefined;
 
-  const runtime = new CopilotRuntime({
+  const runtimeOptions = {
     // `mode` is inferred from the presence of `intelligence`; passing it is a type error.
     //
     // identifyUser is NOT optional in practice. Threads and memory are scoped to the user it
@@ -1783,8 +1797,13 @@ export function mountCopilotRuntime(
     identifyUser,
     // The subclass, not the base: a thread nobody has run yet reads as empty rather than as a 500.
     // See IntelligenceKnowingANewThread.
-    intelligence: intelligenceClient,
-    licenseToken: intelligence.licenseToken,
+    // Synelia fork: no Intelligence in `postgres` mode; the open SSE runtime with our runner.
+    ...(postgresRunner
+      ? { runner: postgresRunner }
+      : {
+          intelligence: intelligenceClient,
+          licenseToken: intelligence.licenseToken,
+        }),
     // Carried on the events the runtime already sends, so OpenBot's traffic is separable from any
     // other deployment's. Adds no events of its own.
     telemetryProperties: {
@@ -1814,10 +1833,16 @@ export function mountCopilotRuntime(
     // `identifyUser` is the Intelligence projection of the same person `identifyActor` returns:
     // one resolver decides both whose threads these are and whose coworkers exist.
     agents: createRequestAgents(identifyActor, resolver) as never,
-  });
+  };
+  const runtime = new CopilotRuntime(runtimeOptions as never);
+  const runtimeHandler = createCopilotHonoHandler({ runtime, basePath });
 
   return {
-    handler: createCopilotHonoHandler({ runtime, basePath }),
+    handler: postgresRunner
+      ? withRequestUser(runtimeHandler, postgresRunner, identifyUser, basePath)
+      : runtimeHandler,
+    /** Synelia fork: the durable runner (also used for headless turns). */
+    postgresRunner,
     learning,
     /**
      * How to reach the platform's runner, exactly as the runtime reaches it.
@@ -1864,4 +1889,50 @@ export function mountCopilotRuntime(
       return read.messages;
     },
   };
+}
+
+/**
+ * Synelia fork: put the signed-in person in front of the open runtime.
+ *
+ * In SSE mode the runtime never tells the runner who is asking, so this middleware resolves the
+ * person once per request (the same `identifyUser` Intelligence mode uses), carries them to
+ * `PostgresAgentRunner` through AsyncLocalStorage, and rehydrates a thread from Postgres before the
+ * runtime's synchronous thread endpoints read it. Anything but `/info` without a person is a 401,
+ * because a thread must belong to somebody.
+ */
+function withRequestUser(
+  inner: ReturnType<typeof createCopilotHonoHandler>,
+  runner: PostgresAgentRunner,
+  identifyUser: IdentifyUser,
+  basePath: string,
+) {
+  const wrapper = new Hono();
+  const prefix = basePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const threadRead = new RegExp(
+    `^${prefix}/threads/([^/]+)/(messages|events|state)$`,
+  );
+  wrapper.use(`${basePath}/*`, async (context, next) => {
+    let user: { id: string; name: string } | undefined;
+    try {
+      user = await identifyUser(context.req.raw);
+    } catch {
+      user = undefined;
+    }
+    if (!user?.id) {
+      if (context.req.path.endsWith("/info")) return next();
+      return context.json({ error: "Sign in to use this deployment." }, 401);
+    }
+    return requestUser.run(user, async () => {
+      const match = threadRead.exec(context.req.path);
+      if (match?.[1]) {
+        const allowed = await runner.prepareThreadRead(
+          decodeURIComponent(match[1]),
+        );
+        if (!allowed) return context.json({ error: "Thread not found." }, 404);
+      }
+      await next();
+    });
+  });
+  wrapper.route("/", inner);
+  return wrapper;
 }

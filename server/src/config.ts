@@ -20,7 +20,11 @@ import { type VoiceConfig, voiceConfig } from "./voice/config";
 import { type WebBotAuth, webBotAuthFromEnv } from "./web-bot-auth";
 
 export type RuntimeCapabilities = {
-  mode: "intelligence";
+  /**
+   * Synelia fork: `postgres` runs the open CopilotKit runtime (SSE) with threads, runs and locks in
+   * this deployment's own Postgres (server/src/persistence). `intelligence` is upstream's mode.
+   */
+  mode: "intelligence" | "postgres";
   durableHistory: true;
   intelligence: IntelligenceSettings;
 };
@@ -33,6 +37,8 @@ export type RuntimeCapabilities = {
  * of its own. A deployment that still holds one keeps passing it; nothing here requires it.
  */
 export type IntelligenceSettings = {
+  /** Synelia fork: set in `postgres` mode. Every Intelligence client is then the local stand-in. */
+  local?: { databaseUrl: string };
   apiUrl: string;
   gatewayWsUrl: string;
   apiKey: string;
@@ -117,6 +123,11 @@ export type AuthConfig = {
   microsoft?: OAuthClient & { tenantId: string };
   /** Okta is an OIDC provider rather than a named one, so it is identified by its issuer. */
   okta?: OAuthClient & { issuer: string };
+  /**
+   * Synelia fork: email + password sign-in (Better Auth `emailAndPassword`), sign-up disabled.
+   * Accounts are created by an operator (OPENBOT_BOOTSTRAP_USER_* at boot). Phase 0 only; SSO later.
+   */
+  password?: boolean;
 };
 
 /**
@@ -770,7 +781,8 @@ function authConfig(
   const secret = optional(environment, "BETTER_AUTH_SECRET");
   const baseUrl = url(environment, "BETTER_AUTH_URL");
 
-  if (!google && !microsoft && !okta) {
+  const password = optional(environment, "OPENBOT_PASSWORD_LOGIN") === "true";
+  if (!google && !microsoft && !okta && !password) {
     if (secret || baseUrl) {
       throw new Error(
         "BETTER_AUTH_SECRET or BETTER_AUTH_URL is set but no identity provider is. Configure GOOGLE_OAUTH_*, MICROSOFT_OAUTH_* or OKTA_OAUTH_*, or unset both",
@@ -869,6 +881,7 @@ function authConfig(
   }
 
   return {
+    ...(password ? { password: true } : {}),
     baseUrl,
     secret,
     trustedOrigins: commaSeparated(environment, "TRUSTED_ORIGINS").length
@@ -946,6 +959,33 @@ function oktaAuth(
  * deployment sets one, which is what a self-hosted Intelligence with its own licence needs.
  */
 function runtimeCapabilities(environment: Environment): RuntimeCapabilities {
+  /*
+   * Synelia fork: OPENBOT_PERSISTENCE=postgres replaces Intelligence with this deployment's own
+   * Postgres. No INTELLIGENCE_* variable is read, and none may be set, so a half-migrated .env is
+   * refused instead of silently talking to a hosted service.
+   */
+  if (optional(environment, "OPENBOT_PERSISTENCE") === "postgres") {
+    const stray = [
+      "INTELLIGENCE_API_URL",
+      "INTELLIGENCE_GATEWAY_WS_URL",
+      "INTELLIGENCE_API_KEY",
+    ].filter((name) => optional(environment, name));
+    if (stray.length > 0) {
+      throw new Error(
+        `OPENBOT_PERSISTENCE=postgres does not use CopilotKit Intelligence; remove ${stray.join(", ")}.`,
+      );
+    }
+    return {
+      mode: "postgres",
+      durableHistory: true,
+      intelligence: {
+        local: { databaseUrl: required(environment, "DATABASE_URL") },
+        apiUrl: "local://postgres",
+        gatewayWsUrl: "",
+        apiKey: "",
+      },
+    };
+  }
   const settings = {
     apiUrl: url(environment, "INTELLIGENCE_API_URL"),
     gatewayWsUrl: url(environment, "INTELLIGENCE_GATEWAY_WS_URL"),

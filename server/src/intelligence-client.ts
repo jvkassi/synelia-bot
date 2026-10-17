@@ -1,5 +1,6 @@
 import { CopilotKitIntelligence } from "@copilotkit/runtime/v2";
 import type { IntelligenceSettings } from "./config";
+import { localIntelligence } from "./persistence/local-intelligence";
 import {
   clearDesktopConnectionFailure,
   recordDesktopConnectionFailure,
@@ -72,6 +73,12 @@ export function observeIntelligenceAuthentication<
 export function createIntelligenceClient(
   settings: IntelligenceSettings,
 ): CopilotKitIntelligence {
+  // Synelia fork: in `postgres` mode every "Intelligence client" is the Postgres stand-in.
+  if (settings.local) {
+    return localIntelligence(
+      settings.local.databaseUrl,
+    ) as unknown as CopilotKitIntelligence;
+  }
   return observeIntelligenceAuthentication(
     new CopilotKitIntelligence({
       apiUrl: settings.apiUrl,
