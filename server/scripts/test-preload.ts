@@ -25,6 +25,10 @@
 import { mock } from "bun:test";
 import "eventsource";
 
+// Synelia fork: the upstream suites exercise the surfaces the pilot hides (plugins, tool callbacks,
+// bot grants...). Off by default under test; the pilot gate's own tests pass the flag explicitly.
+process.env.SYNELIA_PILOT ??= "0";
+
 mock.module("@ai-sdk/google-vertex", () => ({
   createVertex: () => () => {
     throw new Error(

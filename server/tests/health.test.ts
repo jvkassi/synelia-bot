@@ -49,6 +49,8 @@ describe("runtime capabilities", () => {
       selfHostBanner: true,
       transcription: false,
       voice: false,
+      // Synelia fork: email/password sign-in, off unless OPENBOT_PASSWORD_LOGIN=true.
+      passwordLogin: false,
       // Names only. The sign-in screen reads this to know which buttons to draw.
       authProviders: ["google"],
       // A boolean, not a list: naming the registered providers would tell anybody who loads the
@@ -76,6 +78,8 @@ describe("runtime capabilities", () => {
       "transcription",
       "voice",
       "authProviders",
+      // Synelia fork: email/password sign-in availability (auth/index.ts).
+      "passwordLogin",
       "ssoConfigured",
       "ssoRequired",
     ]);
