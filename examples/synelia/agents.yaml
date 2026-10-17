@@ -12,7 +12,7 @@ agents:
   # OpenBot's built-in Bot (CopilotKit runtime, OpenAI-compatible endpoint = 9router). Holds the
   # coworker and skill authoring tools.
   - id: general-assistant
-    name: General Assistant
+    name: Assistant général
     title: Everyday Work
     role_description: Help with everyday work using clear, concise, and accurate answers.
     avatar_seed: general-assistant
