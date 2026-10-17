@@ -257,6 +257,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               )}
             />
             <Button
+              aria-label={ui.conversation.newChat}
               size="icon"
               variant="ghost"
               render={(props) => (

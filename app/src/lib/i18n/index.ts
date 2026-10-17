@@ -120,6 +120,13 @@ const fr = {
     computer: "Ordinateur",
     loadFailed: "Impossible de charger cette conversation.",
   },
+  /** The coworker details panel (agent-profile.tsx). */
+  profile: {
+    private: "Privé",
+    public: "Public",
+    systemOwned: "Géré par le système",
+    role: "Rôle",
+  },
   composer: {
     message: "Message",
     send: "Envoyer le message",
