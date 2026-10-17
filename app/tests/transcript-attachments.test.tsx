@@ -132,6 +132,7 @@ function renderTranscript(
   messages: readonly Message[],
   props: {
     busy?: boolean;
+    serverRunning?: boolean;
     onRemoveQueued?: (id: string) => void;
     queued?: readonly QueuedMessage[];
   } = {},
@@ -224,6 +225,18 @@ test("a turn that is only an attachment is still waited on", () => {
 
   expect(getByRole("status").textContent).toBe(ui.conversation.thinking);
   expect(getByRole("status").getAttribute("aria-live")).toBe("polite");
+});
+
+test("synelia: a run still going on the server after a reload uses the neutral Thinking indicator", () => {
+  const { getByRole, queryByRole } = renderTranscript(
+    [userMessage([imagePart(attachmentUrl("att-image"), "shot.png")])],
+    { serverRunning: true },
+  );
+  const status = getByRole("status");
+  expect(status.textContent).toBe(ui.conversation.thinking);
+  expect(status.getAttribute("aria-live")).toBe("polite");
+  expect(status.className).toContain("tool-line-running");
+  expect(queryByRole("alert")).toBeNull();
 });
 
 test("a turn that is only an attachment anchors the scroller on itself", () => {

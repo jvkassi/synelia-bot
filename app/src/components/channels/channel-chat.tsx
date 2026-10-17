@@ -545,10 +545,13 @@ export function ChannelChat({
   const storedRunError =
     threadStatus.error ??
     (threadStatus.activeRunId
-      ? ui.conversation.thinking
+      ? null
       : threadStatus.interrupted
         ? ui.conversation.runInterrupted
         : null);
+  // Drawn as the neutral Thinking indicator (shimmer, role=status), not the alert of `stopped`.
+  const serverRunning =
+    Boolean(threadStatus.activeRunId) && !threadStatus.error;
   const sawActiveRun = useRef(false);
   useEffect(() => {
     if (threadStatus.activeRunId) {
@@ -1180,6 +1183,7 @@ export function ChannelChat({
                * run before closing it; see server/src/channels/stall-guard.ts.
                */
               stopped={runError ?? storedRunError ?? undefined}
+              serverRunning={serverRunning && !runError}
             />
             {/* Synelia fork: the pilot data rule stays visible under the composer. */}
             <p

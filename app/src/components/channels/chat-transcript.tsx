@@ -107,6 +107,11 @@ type ChatTranscriptProps = {
    * be told, and only the thing that ended the turn knows which one happened.
    */
   stopped?: string;
+  /**
+   * Synelia fork: the server is still writing a turn this page did not start (reload mid-run).
+   * Drawn with the same neutral Thinking indicator, never the alert style of `stopped`.
+   */
+  serverRunning?: boolean;
 };
 
 /** One shared empty array, so a screen without a queue does not hand down a new one per render. */
@@ -1588,6 +1593,7 @@ export function ChatTranscript({
   queued = EMPTY_QUEUE,
   restoring = false,
   stopped,
+  serverRunning = false,
 }: ChatTranscriptProps) {
   /*
    * NOT MEMOISED, AND THAT IS DELIBERATE. `useMemo` keyed on `messages` looks obviously right and
@@ -1724,7 +1730,7 @@ export function ChatTranscript({
             <div className="contents [&>*]:order-1">
               {stopped ? (
                 <Stopped reason={stopped} />
-              ) : waitingOnFirstToken ? (
+              ) : waitingOnFirstToken || serverRunning ? (
                 <Thinking />
               ) : null}
               {queued.map((message) => (

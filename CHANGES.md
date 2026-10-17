@@ -127,3 +127,32 @@ Not done in phase 0: LISTEN/NOTIFY (not used), SSE resume via Last-Event-ID, mul
 **Checklist ouverture** : `SYNELIA_TEST_MODEL=off` sur une instance réellement ouverte (laissé actif sur konnect pour la QA ; le modèle reste masqué aux non-admins, fail-closed).
 
 **Phase 1** : écrire `thread_event` au fil de l'eau (pas seulement en fin de run) pour qu'un redémarrage serveur ne perde plus le tour en cours.
+
+## Incident 2026-10-17 PILOT=0 (~16 s)
+
+**Chronologie (UTC)**
+- 12:36:33 : une commande de comparaison PILOT=0/1 ajoute `SYNELIA_PILOT=0` dans `/srv/synelia-bot/.env.server` **de la prod**, puis redémarre `server`. L'audit montre que le serveur est reparti à 12:36:36 (`audit_events` `computer.policy_loaded`).
+- ~12:36:49 : commande interrompue, ligne retirée, `.env.server` remis en chmod 600, `server` redémarré. L'audit montre un redémarrage à 12:36:50.
+- Juste après : `e2e.sh gate` PASS, puis de nouveau PASS au déploiement 6e61a23 (garde post-déploiement).
+
+**Cause** : la comparaison était faite directement sur l'instance de prod, avant la consigne « jamais sur la prod ».
+
+**Audit (lecture seule, fenêtre 12:36:00–12:37:30)**
+- **Traefik : access log NON activé.**
+  - Commande : `docker inspect traefik-traefik-1 --format '{{json .Args}}'`. Pas de `--accesslog`, seulement `--log.level=DEBUG`. Pas de fichier d'accès dans `/var/lib/dokku/data/traefik` (seulement `acme.json`).
+  - **Ni méthode, ni chemin, ni statut, ni IP par requête n'existent donc.** L'absence de trace ne prouve pas l'absence de requête.
+- **Traefik DEBUG :** `docker logs traefik-traefik-1 --since 2026-10-17T12:36:00Z --until 2026-10-17T12:37:30Z | grep 'Authentication succeeded'`.
+  - Le middleware `synelia-bot-auth@docker` a validé **4 requêtes** entre 12:36:33 et 12:36:49 : 12:36:36, 12:36:38 ×2, 12:36:44.
+  - 0 échec d'authentification basic-auth dans la fenêtre.
+  - Le basic-auth est resté actif pendant l'incident : il est porté par Traefik, indépendant de SYNELIA_PILOT.
+- **Logs `server` / `agent-mastra` :** `docker compose logs <svc> --since … --until …` ne renvoie **rien**. Les conteneurs ont été recréés par les redémarrages (12:36:50) et le déploiement de 12:48, donc les logs de la fenêtre sont **perdus**.
+- **Base :** comptage `created_at` dans la fenêtre sur toutes les tables publiques (bloc DO).
+  - `synelia_thread_run` = 0, `synelia_thread` = 0, aucune ligne d'outil, d'approbation, de routine, d'ordinateur ou de bot.
+  - 6 `audit_events` : 2 `session.signed_in` du compte de test (12:36:21 et 12:37:03, hors fenêtre de 16 s) et 4 événements de démarrage serveur (`computer.*_loaded`).
+  - 2 `sessions` : connexions e2e du compte de test, hors fenêtre de 16 s.
+  - **Aucun appel d'outil hors des 15 outils autorisés** n'est enregistré : aucun run n'existe dans la fenêtre.
+- **Conclusion bornée :** aucun run ni écriture en base pendant la fenêtre. 4 requêtes authentifiées ont été servies sans qu'on puisse en connaître le chemin.
+
+**Remédiation / règles**
+- Toute expérience de configuration (PILOT, modèles, flags) se fait uniquement sur une instance locale ou éphémère, jamais sur synelia-bot.labs.synelia.tech.
+- À décider : activer l'access log Traefik pour le routeur synelia (format JSON, sans en-têtes d'authentification). Cela touche la stack Traefik partagée, donc pas fait ici.
