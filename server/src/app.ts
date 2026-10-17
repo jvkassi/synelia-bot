@@ -136,7 +136,11 @@ import {
   visibleModels,
 } from "./synelia/models";
 import { createPasswordChangeGate } from "./synelia/password-change-gate";
-import { createPilotGate, pilotEnabled } from "./synelia/pilot-gate";
+import {
+  createPilotGate,
+  createPilotPathGuard,
+  pilotEnabled,
+} from "./synelia/pilot-gate";
 import { createRequestLog } from "./synelia/request-log";
 import { createTeamBotRoutes } from "./team-bots/routes";
 import type { TeamBots } from "./team-bots/team-bots";
@@ -461,6 +465,8 @@ export function createApp(
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
   // Synelia fork: first, so /api/auth/* (sign-in, 401s) is logged too. No bodies.
+  // Synelia fork: `//api/...`, `/API/...` and dot segments never reach a route (pilot).
+  app.use("*", createPilotPathGuard());
   app.use("/api/*", createRequestLog());
   mountDesktopConnectionFailure(app, desktopHostToken);
   mountProviderOAuthProxy(app, modelProviderProxy);

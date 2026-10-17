@@ -141,6 +141,31 @@ export function pilotEmptyRead(
   );
 }
 
+/**
+ * Non-canonical API paths are refused before any route (pilot only): a double slash, an upper-case
+ * `/API`, or a dot segment. Hono matches `/api/*` case-sensitively and literally, so `/API/admin/x`
+ * or `//api/admin/x` would skip the `/api/*` gates; the app never builds such URLs.
+ */
+export function isNonCanonicalApiPath(path: string): boolean {
+  const lower = path.toLowerCase();
+  if (!/^\/+api(\/|$)/.test(lower) && !lower.includes("/api/")) return false;
+  if (path.includes("//")) return true;
+  if (!path.startsWith("/api/") && lower.startsWith("/api")) return true;
+  return /(^|\/)\.{1,2}(\/|$)/.test(path);
+}
+
+export function createPilotPathGuard(
+  enabled = pilotEnabled(),
+): MiddlewareHandler {
+  return async (context, next) => {
+    if (enabled && isNonCanonicalApiPath(context.req.path)) {
+      console.warn("pilot_blocked non-canonical /api path");
+      return context.json({ error: "Not found" }, 404);
+    }
+    await next();
+  };
+}
+
 export function createPilotGate(enabled = pilotEnabled()): MiddlewareHandler {
   return async (context, next) => {
     if (enabled) {

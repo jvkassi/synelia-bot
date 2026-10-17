@@ -172,3 +172,31 @@ test("pilot: POST /api/agents/:id/declined (report_refusal) passes; other agent 
   expect(isPilotGated("POST", "/api/agents/synelia-assistant")).toBe(true);
   expect(isPilotGated("POST", "/api/agents")).toBe(true);
 });
+
+test("pilot: path tricks under /api/admin never reach a handler", async () => {
+  const { createPilotPathGuard } = await import("../src/synelia/pilot-gate");
+  const app = new Hono();
+  // Same order as app.ts: path guard on every path, then the /api/* gate, then routes.
+  app.use("*", createPilotPathGuard(true));
+  app.use("/api/*", createPilotGate(true));
+  app.all("*", (c) => c.text("HANDLER"));
+  for (const path of [
+    "//api/admin/credentials",
+    "/api/admin/people/",
+    "/API/admin/credentials",
+    "/Api/admin/people",
+    "/api/admin/%63redentials",
+    "/api/admin/people/../credentials",
+    "/api/admin/people/./",
+    "/api/admin/people%2f..%2fcredentials",
+    "/api//admin/people",
+  ]) {
+    const response = await app.request(`http://x${path}`);
+    expect([path, response.status]).toEqual([path, 404]);
+  }
+  expect((await app.request("http://x/api/admin/people?search=a")).status).toBe(
+    200,
+  );
+  expect((await app.request("http://x/assets/app.js")).status).toBe(200);
+  expect((await app.request("http://x/")).status).toBe(200);
+});
