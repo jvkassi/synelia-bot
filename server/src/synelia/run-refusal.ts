@@ -88,6 +88,30 @@ export function finishClass(events: readonly BaseEvent[]): string {
 }
 
 /**
+ * THE SINGLE REFUSAL DECISION, shared by the live stream and persistence so they never diverge.
+ * Returns why a FINISHED run is actually a silent provider refusal, or undefined when it is a real
+ * answer:
+ *  - "empty_finish": finished with no text and no tool call.
+ *  - "usage0": finished with text, no tool call, usage PRESENT == 0, on an allowlisted provider+model
+ *    (off by default; see usage0Refusal). A run already carrying a RUN_ERROR is never a candidate.
+ * Pure and total.
+ */
+export function refusalReason(
+  events: readonly BaseEvent[],
+  context: { provider?: string; model?: string } = {},
+  allowlist: ReadonlySet<string> = usage0Allowlist(),
+): "empty_finish" | "usage0" | undefined {
+  const list = events as readonly Eventish[];
+  const hasFinished = list.some((event) => event.type === "RUN_FINISHED");
+  const hasError = list.some((event) => event.type === "RUN_ERROR");
+  const hasText = list.some((event) => TEXT_TYPES.has(event.type ?? ""));
+  const hasTool = list.some((event) => TOOL_TYPES.has(event.type ?? ""));
+  if (hasFinished && !hasError && !hasText && !hasTool) return "empty_finish";
+  if (usage0Refusal(events, context, allowlist)) return "usage0";
+  return undefined;
+}
+
+/**
  * Adjust a finished run's events before they are persisted, and say what status to store.
  *
  *  - A run that FINISHED with no text and no tool call is a silent provider refusal: its
@@ -115,14 +139,9 @@ export function adjustPersistedRun(
   status: "done" | "error";
 } {
   const list = events as readonly Eventish[];
-  const hasFinished = list.some((event) => event.type === "RUN_FINISHED");
-  const hasError = list.some((event) => event.type === "RUN_ERROR");
-  const hasText = list.some((event) => TEXT_TYPES.has(event.type ?? ""));
-  const hasTool = list.some((event) => TOOL_TYPES.has(event.type ?? ""));
-
-  const emptyRefusal = hasFinished && !hasError && !hasText && !hasTool;
-  const usage0 = !emptyRefusal && usage0Refusal(events, context, allowlist);
-  const reason = emptyRefusal ? "empty_finish" : usage0 ? "usage0" : undefined;
+  // THE ONE DECISION. The live stream (postgres-runner run()) and this persisted adjustment both call
+  // refusalReason with the same resolved provider/model, so they can never diverge.
+  const reason = refusalReason(events, context, allowlist);
 
   let next = events.map((event) => {
     const value = event as Eventish;
@@ -146,7 +165,7 @@ export function adjustPersistedRun(
               : {}),
             message: "content_filter",
             code: SYNELIA_ERROR_CODES.providerRefusal,
-            metadata: { reason },
+            metadata: { reason, retryable: computeRetryable(events) },
           } as BaseEvent)
         : event,
     );

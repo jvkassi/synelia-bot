@@ -21,7 +21,15 @@ import {
   InMemoryAgentRunner,
   ɵGLOBAL_STORE,
 } from "@copilotkit/runtime/v2";
-import { defer, from, map, type Observable, of, switchMap } from "rxjs";
+import {
+  concatMap,
+  defer,
+  from,
+  map,
+  type Observable,
+  of,
+  switchMap,
+} from "rxjs";
 import {
   isHiddenModel,
   resolveModel,
@@ -34,7 +42,10 @@ import {
   computeRetryable,
   EFFECTFUL_TOOLS,
   finishClass,
+  refusalReason,
   replayEvents,
+  SYNELIA_ERROR_CODES,
+  usage0Allowlist,
   usage0Refusal,
 } from "../synelia/run-refusal";
 import type {
@@ -283,6 +294,9 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
                     type: "synelia_refusal_usage0_trigger",
                     threadId: request.threadId,
                     runId,
+                    // The exact allowlist key matched (`${provider}:${model}`), e.g.
+                    // router9:cc/claude-sonnet-5-5 — the value put in SYNELIA_REFUSAL_USAGE0_MODELS.
+                    key: `${resolved.provider}:${resolved.model}`,
                     provider: resolved.provider,
                     model: resolved.model,
                     outputTokens: 0,
@@ -382,7 +396,20 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
           complete: () => timing("done"),
           error: () => timing("error"),
         });
-        return stream;
+        // Synelia fork (LIVE path): map the terminal RUN_FINISHED through THE ONE decision
+        // (refusalReason, with the resolved provider/model), so a usage0 or empty-finish refusal
+        // reaches the BROWSER as a RUN_ERROR, not a bare RUN_FINISHED — never both. The model is
+        // resolved (async) before the terminal event is forwarded. Persistence runs the same
+        // decision on the recorded events, so live and stored outcomes cannot diverge.
+        return liveRefusalTransform(
+          stream,
+          async () =>
+            resolveModel(
+              pickedModel(request),
+              await this.#models().catch(() => undefined),
+            ),
+          { runId, threadId: request.threadId },
+        );
       }),
     );
   }
@@ -475,6 +502,47 @@ export function pickedModel(
       ? entry.value.replace(/^"|"$/g, "").trim()
       : "";
   return value || undefined;
+}
+
+/**
+ * Synelia fork (LIVE refusal): transform a run's outgoing stream so its terminal RUN_FINISHED is
+ * replaced by a provider_refusal RUN_ERROR when the SAME decision as persistence (refusalReason, over
+ * the accumulated events with the resolved provider/model) says the finish is a silent refusal —
+ * never emitting both events. `resolveContext` is awaited before the terminal event is forwarded, so
+ * an async model resolution is settled first. Exported and free of `this` so it is unit-testable with
+ * a synthetic stream. The live RUN_ERROR carries metadata.retryable (computeRetryable); persistence
+ * stores the same code/reason and retryable is (re)stamped by connect replay.
+ */
+export function liveRefusalTransform(
+  stream: Observable<BaseEvent>,
+  resolveContext: () => Promise<{ provider?: string; model?: string }>,
+  terminal: { runId: string; threadId: string },
+  allowlist: ReadonlySet<string> = usage0Allowlist(),
+): Observable<BaseEvent> {
+  const seen: BaseEvent[] = [];
+  return stream.pipe(
+    concatMap((event) => {
+      seen.push(event);
+      if ((event as { type?: string }).type !== "RUN_FINISHED")
+        return of(event);
+      return from(
+        resolveContext().then((context): BaseEvent[] => {
+          const reason = refusalReason(seen, context, allowlist);
+          if (!reason) return [event];
+          return [
+            {
+              type: "RUN_ERROR",
+              threadId: terminal.threadId,
+              runId: terminal.runId,
+              message: "content_filter",
+              code: SYNELIA_ERROR_CODES.providerRefusal,
+              metadata: { reason, retryable: computeRetryable(seen) },
+            } as BaseEvent,
+          ];
+        }),
+      ).pipe(concatMap((events) => from(events)));
+    }),
+  );
 }
 
 /**

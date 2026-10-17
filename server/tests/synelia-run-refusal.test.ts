@@ -5,6 +5,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import type { BaseEvent } from "@ag-ui/client";
+import { resolveModel } from "../src/synelia/models";
 import {
   adjustPersistedRun,
   classifyErrorCode,
@@ -394,5 +395,63 @@ describe("replayEvents (the single replay rule)", () => {
     ]);
     expect(types(out).some((t) => t === "TEXT_MESSAGE_CONTENT")).toBe(true);
     expect(types(out)).toContain("RUN_FINISHED");
+  });
+});
+
+describe("allowlist key = resolveModel(SYNELIA_DEFAULT_MODEL) (konnect config 2026-10-17)", () => {
+  // Prod .env.mastra: SYNELIA_MODELS_MODE=on, SYNELIA_DEFAULT_MODEL=router9:cc/claude-sonnet-5-5,
+  // SYNELIA_MODELS lists rapide/alternatif/code/raisonnement. The provider/model COLUMNS konnect
+  // stored for the refusal runs 759e3cbb, 0e9258d0 and 0b071677 are router9 / cc/claude-sonnet-5-5.
+  const configuredDefaultId = "router9:cc/claude-sonnet-5-5";
+  const list = {
+    defaultModel: configuredDefaultId,
+    models: [
+      {
+        id: "router9:cc/claude-sonnet-5-5",
+        provider: "router9",
+        model: "cc/claude-sonnet-5-5",
+        available: true,
+      },
+      {
+        id: "router9:gemini/gemini-3.8-flash",
+        provider: "router9",
+        model: "gemini/gemini-3.8-flash",
+        available: true,
+      },
+      {
+        id: "openrouter:deepseek/deepseek-v4.1-flash",
+        provider: "openrouter",
+        model: "deepseek/deepseek-v4.1-flash",
+        available: true,
+      },
+      {
+        id: "openrouter:z-ai/glm-5.3",
+        provider: "openrouter",
+        model: "z-ai/glm-5.3",
+        available: true,
+      },
+    ],
+  };
+
+  test("resolveModel(default) builds exactly the key stored for run 0b071677, and the env allowlist contains it", () => {
+    const resolved = resolveModel(configuredDefaultId, list);
+    // Same shape persistence/live build the key from (`${provider}:${model}`).
+    expect(resolved).toEqual({
+      provider: "router9",
+      model: "cc/claude-sonnet-5-5",
+    });
+    const key = `${resolved.provider}:${resolved.model}`;
+    expect(key).toBe("router9:cc/claude-sonnet-5-5"); // == stored provider | model columns
+    // THE EXACT env value to enable the rule: SYNELIA_REFUSAL_USAGE0_MODELS=router9:cc/claude-sonnet-5-5
+    expect(usage0Allowlist("router9:cc/claude-sonnet-5-5").has(key)).toBe(true);
+  });
+
+  test("the Alternatif model (Gemini) key is NOT in that allowlist", () => {
+    const gemini = resolveModel("router9:gemini/gemini-3.8-flash", list);
+    expect(
+      usage0Allowlist("router9:cc/claude-sonnet-5-5").has(
+        `${gemini.provider}:${gemini.model}`,
+      ),
+    ).toBe(false);
   });
 });
