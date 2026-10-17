@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { MessageListPreference } from "@/components/settings/message-list-preference";
 import { authKeys } from "@/lib/auth/queries";
+import { ui } from "@/lib/i18n";
 import {
   saveUserPreferencesMutationOptions,
   userPreferencesQueryOptions,
@@ -70,7 +71,7 @@ function setup() {
 
 test("loads preferences from the account and renders the saved emphasis", async () => {
   const { view } = setup();
-  const agent = await view.findByText("General Assistant");
+  const agent = await view.findByText(ui.settings.previewAgent);
   expect(agent.className).toContain("text-[0.9rem]");
   expect(requests).toEqual([
     { path: "/api/settings/preferences", method: "GET", body: undefined },
@@ -82,19 +83,19 @@ test("shows loading and read errors without enabling a save", async () => {
   response = () => pending.promise;
   const { view } = setup();
   expect(view.getByRole("combobox")).toHaveProperty("disabled", true);
-  expect(view.queryByText("General Assistant")).toBeNull();
+  expect(view.queryByText(ui.settings.previewAgent)).toBeNull();
   pending.resolve(
     Response.json({ error: "Storage unavailable" }, { status: 503 }),
   );
   expect((await view.findByRole("alert")).textContent).toBe(
     "Storage unavailable",
   );
-  expect(view.getByRole("button", { name: "Retry" })).toBeTruthy();
+  expect(view.getByRole("button", { name: ui.settings.retry })).toBeTruthy();
 });
 
 test("successful writes update only the current account cache; failures preserve saved values", async () => {
   const { client, view } = setup();
-  await view.findByText("General Assistant");
+  await view.findByText(ui.settings.previewAgent);
   const bobKey = userPreferencesQueryOptions("bob").queryKey;
   client.setQueryData(bobKey, {
     messageListEmphasis: "agent",
@@ -112,7 +113,7 @@ test("successful writes update only the current account cache; failures preserve
     });
   await mutation.execute({ messageListEmphasis: "thread" });
   await waitFor(() =>
-    expect(view.getByText("Plan next week").className).toContain(
+    expect(view.getByText(ui.settings.previewTitle).className).toContain(
       "text-[0.9rem]",
     ),
   );

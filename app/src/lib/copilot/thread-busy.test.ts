@@ -58,8 +58,9 @@ describe("thread busy (a run already going) vs a real failure", () => {
    *
    * So the sentence check in isAlreadyRunning (stream-reattach.ts:44) never sees it. The run
    * resolves without failing, the person's message is still last, and channel-chat's
-   * `endedWithoutAnswer` replay (connectAgent, the same path as the idempotent resend) shows the
-   * run that is going. That is what this test pins.
+   * `endedWithoutAnswer` replay (connectAgent, the same path as the idempotent resend) runs. The
+   * refused message is not in the server's snapshot, so `replayKeeps` keeps what the tab showed and
+   * the thread status draws the run that is going. That is what this test pins.
    */
   test("(b) in-memory 'Thread already running' arrives as an empty 200 stream: no failure, replay path", async () => {
     const urls: string[] = [];

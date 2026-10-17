@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { dedupeById, endedWithoutAnswer, isStreamCut } from "./stream-reattach";
+import {
+  dedupeById,
+  endedWithoutAnswer,
+  isStreamCut,
+  replayKeeps,
+} from "./stream-reattach";
 
 describe("stream reattach (gate 12)", () => {
   test("network cuts are recognised, provider errors and user aborts are not", () => {
@@ -25,5 +30,14 @@ describe("stream reattach (gate 12)", () => {
     expect(endedWithoutAnswer([user, answer])).toBe(false);
     expect(endedWithoutAnswer([user, tool])).toBe(false);
     expect(endedWithoutAnswer([])).toBe(false);
+  });
+  test("a replay only adds: a snapshot missing a shown message is not applied", () => {
+    const user = { id: "u1", role: "user" };
+    const answer = { id: "a1", role: "assistant" };
+    const refused = { id: "u2", role: "user" };
+    expect(replayKeeps([user], [user, answer])).toEqual([user, answer]);
+    expect(replayKeeps([user, refused], [user, answer])).toBeNull();
+    expect(replayKeeps([user], [])).toBeNull();
+    expect(replayKeeps([user], [user, answer, answer])).toEqual([user, answer]);
   });
 });

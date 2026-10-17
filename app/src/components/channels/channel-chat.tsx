@@ -39,6 +39,7 @@ import {
   dedupeById,
   endedWithoutAnswer,
   isAlreadyRunning,
+  replayKeeps,
   isStreamCut,
 } from "@/lib/copilot/stream-reattach";
 import {
@@ -916,13 +917,17 @@ export function ChannelChat({
       turnFailure.current === null &&
       endedWithoutAnswer(target.messages)
     ) {
+      const before = target.messages;
       await copilotkit
         .connectAgent({ agent: target })
         .then(() => {
-          const deduped = dedupeById(target.messages);
-          if (deduped !== target.messages) target.setMessages(deduped);
+          const kept = replayKeeps(before, target.messages);
+          if (kept === null) target.setMessages(before);
+          else if (kept !== target.messages) target.setMessages(kept);
         })
-        .catch(() => undefined);
+        .catch(() => {
+          if (target.messages !== before) target.setMessages(before);
+        });
     }
     if (turnFailure.current !== null) {
       throw new Error(turnFailure.current);

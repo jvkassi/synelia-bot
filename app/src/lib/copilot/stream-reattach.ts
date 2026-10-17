@@ -68,3 +68,18 @@ export function endedWithoutAnswer(
 ): boolean {
   return messages.at(-1)?.role === "user";
 }
+
+/**
+ * Synelia fork: a replay may only ADD to what the tab already shows. When the replayed snapshot is
+ * missing a message the tab had (an empty snapshot, or a message the server refused because a run
+ * was already going), the tab keeps what it had and returns null; the thread status takes over.
+ */
+export function replayKeeps<T extends { id: string }>(
+  before: readonly T[],
+  after: T[],
+): T[] | null {
+  const ids = new Set(after.map((message) => message.id));
+  return before.every((message) => ids.has(message.id))
+    ? dedupeById(after)
+    : null;
+}
