@@ -2,7 +2,11 @@ import "./home-fallback-routing.fixture";
 
 import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  MutationObserver,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -12,8 +16,10 @@ import {
 import { cleanup, render, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type AgentProfile, agentKeys } from "@/lib/agents/queries";
+import { createChannelMutationOptions } from "@/lib/channels/mutations";
+import { channelKeys } from "@/lib/channels/queries";
 import { describeStartError } from "@/lib/channels/start-error";
-import { ui } from "@/lib/i18n";
+import { pilot, ui } from "@/lib/i18n";
 import { Route as HomeRoute } from "@/routes/_authed/_app/index";
 
 /*
@@ -228,4 +234,55 @@ test("describeStartError words each failure from its status and code", () => {
     ),
   ).toBe(ui.home.networkError);
   expect(describeStartError(new Error("boom"))).toBe(ui.home.startFailed);
+});
+
+test("the front routing bypass skips /api/route when the roster is only synelia-assistant", async () => {
+  const flags = pilot as { hideBotsAndSkillsNav: boolean };
+  const before = flags.hideBotsAndSkillsNav;
+  flags.hideBotsAndSkillsNav = true;
+  try {
+    const state = { mode: "ok" as Mode, starts: [] as string[][] };
+    const asked: string[] = [];
+    installFetch(state);
+    const inner = global.fetch;
+    global.fetch = Object.assign(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        asked.push(typeof input === "string" ? input : input.toString());
+        return inner(input, init);
+      },
+      { preconnect: originalFetch.preconnect },
+    );
+    const queryClient = makeQueryClient();
+    queryClient.setQueryData(agentKeys.list(false), [
+      agent("synelia-assistant", "public"),
+    ]);
+    const view = renderHome(queryClient);
+    await send(view, "prompt b");
+    await waitFor(() => expect(state.starts).toEqual([["synelia-assistant"]]));
+    expect(asked).not.toContain("/api/route");
+  } finally {
+    flags.hideBotsAndSkillsNav = before;
+  }
+});
+
+test("create-channel resolves right after the POST; the roster refresh is fired, not awaited", async () => {
+  const state = { mode: "ok" as Mode, starts: [] as string[][] };
+  installFetch(state);
+  const queryClient = new QueryClient();
+  const invalidated: unknown[] = [];
+  // A roster refetch that never lands: an awaited one would hold the mutation forever.
+  queryClient.invalidateQueries = ((filters?: { queryKey?: unknown }) => {
+    invalidated.push(filters?.queryKey);
+    return new Promise<void>(() => undefined);
+  }) as QueryClient["invalidateQueries"];
+  const observer = new MutationObserver(
+    queryClient,
+    createChannelMutationOptions(queryClient),
+  );
+  const outcome = await Promise.race([
+    observer.mutate(["synelia-assistant"]).then((channel) => channel.id),
+    new Promise<string>((resolve) => setTimeout(() => resolve("held"), 500)),
+  ]);
+  expect(outcome).toBe("channel-1");
+  expect(invalidated).toEqual([channelKeys.all]);
 });
