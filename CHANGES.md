@@ -173,3 +173,6 @@ Not done in phase 0: LISTEN/NOTIFY (not used), SSE resume via Last-Event-ID, mul
 | accueil | message et « Le modèle réfléchit… » affichés dès l'envoi. En pilote avec un seul Bot, pas d'appel à `route` |
 | bannière | `/api/channels/:id` est relu toutes les 5 s tant qu'il est en erreur, donc la bannière disparaît dès que ça revient. Échec final : `ui.conversation.connectionLost` |
 | panneau | conservé (traduit, 5eeeb64). Seul le bouton « Ouvrir {nom} » est masqué en pilote |
+| 404 (suite) | `GET /api/plugins/for/*` : 200 `{tools:[],skills:[]}` en pilote, requête front désactivée (vue par le test navigateur : 10 × 404) |
+| bannière hors ligne | la bannière de reconnexion suit aussi `online`/`offline` (hors ligne, React Query se met en pause sans erreur) |
+| test navigateur | `ui/browser-e2e.mjs` (compte dédié `jv.e2e@synelia.tech`, identifiants uniquement dans `e2e-browser.env` en chmod 600) |

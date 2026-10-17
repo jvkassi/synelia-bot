@@ -1,5 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import { client } from "@/lib/client";
+import { pilot } from "@/lib/i18n";
 
 /**
  * Re-exported, not re-declared.
@@ -409,7 +410,8 @@ export function composioAppsQueryOptions(query: string) {
 export function agentPluginsQueryOptions(agentId: string) {
   return queryOptions({
     queryKey: pluginKeys.forAgent(agentId),
-    enabled: agentId.length > 0,
+    // Synelia fork: plugins and skills are outside the pilot; no 15 s poll of a closed route.
+    enabled: agentId.length > 0 && !pilot.hideBotsAndSkillsNav,
     refetchInterval: 15_000,
     queryFn: async (): Promise<GrantedPlugins> => {
       const response = await client(

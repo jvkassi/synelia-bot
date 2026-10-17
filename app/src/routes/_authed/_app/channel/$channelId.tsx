@@ -2,6 +2,7 @@ import { IconSettings } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { AgentProfile } from "@/components/agents/agent-profile";
 import { BotPausedBanner } from "@/components/bot-profile/pause-banner";
@@ -40,6 +41,20 @@ export const Route = createFileRoute("/_authed/_app/channel/$channelId")({
 function RouteComponent() {
   const { channelId } = Route.useParams();
   const { settings, watch } = Route.useSearch();
+  // Synelia fork: offline, React Query pauses instead of failing, so the banner also follows the
+  // browser's own online/offline events.
+  const [offline, setOffline] = useState(
+    typeof navigator !== "undefined" && navigator.onLine === false,
+  );
+  useEffect(() => {
+    const update = () => setOffline(navigator.onLine === false);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
   const channel = useQuery({
     ...channelQueryOptions(channelId),
     // Synelia fork: while the reconnecting banner is up, ask again every 5 s. Window focus does not
@@ -171,7 +186,7 @@ function RouteComponent() {
       channel.data?.agentIds.length === 1 ? (
         <BotPausedBanner agentId={agentId} />
       ) : null}
-      {channel.error && channel.data ? (
+      {(channel.error || offline) && channel.data ? (
         <p
           className="px-4 py-2 text-muted-foreground text-sm"
           data-testid="synelia-reconnecting"

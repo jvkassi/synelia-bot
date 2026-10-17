@@ -43,6 +43,11 @@ const PILOT_EMPTY_READS: { method: string; pattern: RegExp; body: unknown }[] =
     { method: "GET", pattern: /^\/api\/sandboxed\/published$/, body: [] },
     {
       method: "GET",
+      pattern: /^\/api\/plugins\/for\/[^/]+$/,
+      body: { tools: [], skills: [] },
+    },
+    {
+      method: "GET",
       pattern: /^\/api\/components\/for-agent\/[^/]+$/,
       body: { components: [] },
     },
