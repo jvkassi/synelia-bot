@@ -111,6 +111,35 @@ db("LocalIntelligence locks (gate 1)", () => {
   });
 });
 
+db("boot expires stale locks, row kept, acquire works again", () => {
+  test("a lock held before boot is expired (interrupted), not deleted; a new run can lock", async () => {
+    const before = new LocalIntelligence(url as string);
+    const threadId = id();
+    const runId = id();
+    await before.getOrCreateThread({ threadId, userId: "u1", agentId: "a" });
+    await before.ɵacquireThreadLock({
+      threadId,
+      runId,
+      userId: "u1",
+      agentId: "a",
+    });
+    expect(
+      (await before.threadRunState({ threadId, userId: "u1" })).lockedRunId,
+    ).toBe(runId);
+    const booted = new LocalIntelligence(url as string); // fresh process: ready() runs the boot step
+    await booted.ready();
+    expect(
+      (await booted.threadRunState({ threadId, userId: "u1" })).lockedRunId,
+    ).toBeNull();
+    await booted.ɵacquireThreadLock({
+      threadId,
+      runId: id(),
+      userId: "u1",
+      agentId: "a",
+    });
+  });
+});
+
 db("runner index follows rename / archive / delete (gate 4)", () => {
   const store = new LocalIntelligence(url as string);
   const runner = new PostgresAgentRunner(store);

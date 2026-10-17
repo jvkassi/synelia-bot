@@ -1,6 +1,6 @@
-import { pilot } from "@/lib/i18n";
 import { queryOptions } from "@tanstack/react-query";
 import { client, tryClient } from "@/lib/client";
+import { pilot } from "@/lib/i18n";
 
 /** A component as the Admin surface sees it: its state, its versions and who is held back from it. */
 export type ComponentRecord = {

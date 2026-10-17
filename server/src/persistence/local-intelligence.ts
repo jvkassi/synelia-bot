@@ -105,7 +105,18 @@ export class LocalIntelligence {
   ready(): Promise<void> {
     this.#ready ??= this.#sql
       .unsafe(LOCAL_PERSISTENCE_DDL)
-      .then(() => undefined)
+      .then(async () => {
+        // Single-instance assumption: at boot no turn can be running in this process, so every
+        // unexpired lock is stale: expire it (a restart mid-run would otherwise read as "in
+        // progress" until expiry). The row stays, so the page can tell the turn was interrupted.
+        // Goes away in phase 1 with incremental thread_event writes.
+        const cleared = await this
+          .#sql`UPDATE synelia_thread_lock SET expires_at = now() WHERE expires_at > now()`;
+        if (cleared.count > 0)
+          console.info(
+            `[synelia] ${cleared.count} verrou(s) de fil obsolète(s) expiré(s) au démarrage`,
+          );
+      })
       .catch((error: unknown) => {
         this.#ready = undefined;
         throw error;
@@ -532,7 +543,7 @@ export class LocalIntelligence {
       VALUES (${params.threadId}, ${params.runId}, now() + make_interval(secs => ${ttl}))
       ON CONFLICT (thread_id) DO UPDATE
         SET run_id = EXCLUDED.run_id, expires_at = EXCLUDED.expires_at
-        WHERE synelia_thread_lock.expires_at < now()
+        WHERE synelia_thread_lock.expires_at <= now()
            OR synelia_thread_lock.run_id = EXCLUDED.run_id
       RETURNING run_id`) as { run_id: string }[];
     if (!rows[0]) throw new LocalIntelligenceError("Thread is busy.", 409);

@@ -12,8 +12,9 @@ import { tryClient } from "@/lib/client";
  */
 
 export type { ComputerControlState as ControlState } from "@openbot/shared/computer-control";
-import { pilot } from "@/lib/i18n";
+
 import type { ComputerControlState as ControlState } from "@openbot/shared/computer-control";
+import { pilot } from "@/lib/i18n";
 
 async function callControl(
   computerId: string,

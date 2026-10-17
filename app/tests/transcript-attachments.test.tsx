@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, expect, test } from "bun:test";
 import type { Message, UserMessage } from "@ag-ui/core";
 import type { Attachment } from "@copilotkit/react-core/v2";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { frameFiring } from "@openbot/shared/routine-firing";
 import {
   act,
   cleanup,
@@ -17,9 +18,8 @@ import {
 } from "@/components/channels/chat-transcript";
 import type { QueuedMessage } from "@/components/channels/composer";
 import { attachmentUrl } from "@/lib/channels/attachments";
-import { frameFiring } from "@openbot/shared/routine-firing";
-import { settleReactWork } from "./settle-react-work";
 import { ui } from "@/lib/i18n";
+import { settleReactWork } from "./settle-react-work";
 
 /**
  * `toVisibleChatItems` (chat-messages.ts) gathers the attachment parts of a user turn into one

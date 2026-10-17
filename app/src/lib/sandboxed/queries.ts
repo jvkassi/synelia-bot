@@ -1,6 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
-import { pilot } from "@/lib/i18n";
 import { client } from "@/lib/client";
+import { pilot } from "@/lib/i18n";
 
 /** A component authored in the browser, as the playground edits it. */
 export type SandboxedRecord = {

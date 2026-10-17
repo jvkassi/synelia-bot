@@ -1,12 +1,8 @@
+import { MAX_IMAGE_BYTES } from "@openbot/shared/attachments";
 import type { Hono as HonoApp, MiddlewareHandler } from "hono";
-import { liveRunId } from "./persistence/postgres-runner";
-import { type SyneliaModelList, visibleModels } from "./synelia/models";
-import { createPilotGate, pilotEnabled } from "./synelia/pilot-gate";
-import { localIntelligence } from "./persistence/local-intelligence";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { serveStatic } from "hono/bun";
-import { MAX_IMAGE_BYTES } from "@openbot/shared/attachments";
 import { enterpriseControls } from "./admin/controls";
 import { createEnterpriseGate } from "./admin/gate";
 import { createEnterpriseAdminRoutes } from "./admin/routes";
@@ -29,10 +25,10 @@ import type { ApprovalService } from "./approvals/service";
 import {
   type AuditEventType,
   type AuditInitiator,
-  auditEventsToCsv,
   AuditQueryError,
   type AuditReader,
   type AuditStore,
+  auditEventsToCsv,
   auditQueryFromUrl,
   DEPLOYMENT_INITIATOR,
   readAuditExportRows,
@@ -101,6 +97,8 @@ import { createPasswordRoutes, createSignInRoutes } from "./passwords/routes";
 import type { SignInService } from "./passwords/service";
 import type { OnboardingStore } from "./people/onboarding";
 import { MAX_PAGE, type PeopleStore } from "./people/store";
+import { localIntelligence } from "./persistence/local-intelligence";
+import { liveRunId } from "./persistence/postgres-runner";
 import type { AccountModeSwitch } from "./plugins/account-mode";
 import type { ComposioBroker } from "./plugins/broker";
 import { createPluginRoutes } from "./plugins/routes";
@@ -131,6 +129,8 @@ import type { IntentRouter } from "./routing/classify";
 import { createRoutingRoutes } from "./routing/routes";
 import { createCoworkerRoutingService } from "./routing/service";
 import type { SelfHostBanner } from "./self-host-banner";
+import { type SyneliaModelList, visibleModels } from "./synelia/models";
+import { createPilotGate, pilotEnabled } from "./synelia/pilot-gate";
 import { createTeamBotRoutes } from "./team-bots/routes";
 import type { TeamBots } from "./team-bots/team-bots";
 import type { PackageStatusReader } from "./tenant-package";
@@ -2008,7 +2008,7 @@ export function createApp(
     };
     try {
       const lastError = await store.lastRunError(params);
-      const { lockedRunId, storedRuns } = await store.threadRunState(params);
+      const { lockedRunId } = await store.threadRunState(params);
       // A live run (this process's runner) or an unexpired lock means a turn is still being
       // written; no live run and not a single stored run means the only turn was lost (restart).
       const activeRunId = liveRunId(params.threadId) ?? lockedRunId;
@@ -2016,7 +2016,7 @@ export function createApp(
         known: true,
         lastError,
         activeRunId,
-        interrupted: !activeRunId && storedRuns === 0,
+        interrupted: !activeRunId, // front only uses it when the last message is the person's
       });
     } catch (error) {
       if ((error as { status?: number }).status === 404)

@@ -1,6 +1,6 @@
-import { pilot } from "@/lib/i18n";
 import { queryOptions } from "@tanstack/react-query";
 import { client } from "@/lib/client";
+import { pilot } from "@/lib/i18n";
 
 /** How loudly one Bot may reach the signed-in person. Badges on the web always show. */
 export type BotNotify = "all" | "needs_input" | "none";

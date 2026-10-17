@@ -22,16 +22,16 @@ import {
   ɵGLOBAL_STORE,
 } from "@copilotkit/runtime/v2";
 import { defer, from, type Observable, switchMap } from "rxjs";
-import type {
-  LocalIntelligence,
-  LocalThreadSummary,
-} from "./local-intelligence";
 import {
   isHiddenModel,
   resolveModel,
   type SyneliaModelList,
 } from "../synelia/models";
 import { pilotTools } from "../synelia/pilot-gate";
+import type {
+  LocalIntelligence,
+  LocalThreadSummary,
+} from "./local-intelligence";
 import { requestUser } from "./request-user";
 
 type HistoricRun = {

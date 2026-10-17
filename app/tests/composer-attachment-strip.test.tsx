@@ -5,8 +5,8 @@ import {
   AttachmentStrip,
   type StagedFile,
 } from "@/components/channels/composer/attachment-strip";
-import { settleReactWork } from "./settle-react-work";
 import { ui } from "@/lib/i18n";
+import { settleReactWork } from "./settle-react-work";
 
 /**
  * WHAT A SCREEN READER IS OFFERED BY THE ROW ACROSS THE TOP OF THE COMPOSER, AND WHEN.
