@@ -1,3 +1,4 @@
+import { ui } from "@/lib/i18n";
 const RELATIVE_UNITS = [
   { limit: 60_000, divisor: 1_000, unit: "second" },
   { limit: 3_600_000, divisor: 60_000, unit: "minute" },
@@ -6,7 +7,8 @@ const RELATIVE_UNITS = [
   { limit: Number.POSITIVE_INFINITY, divisor: 604_800_000, unit: "week" },
 ] as const;
 
-const relativeFormat = new Intl.RelativeTimeFormat(undefined, {
+// Synelia fork: the pilot language, not the browser's.
+const relativeFormat = new Intl.RelativeTimeFormat(ui.locale, {
   numeric: "auto",
 });
 

@@ -6,6 +6,8 @@
  * second language is one more dictionary of the same shape. The active language is French.
  */
 const fr = {
+  /** BCP 47 tag for dates and relative times. */
+  locale: "fr-FR",
   signIn: {
     title: (product: string) => `Se connecter à ${product}`,
     email: "Adresse e-mail",
@@ -78,4 +80,6 @@ export const pilot = {
   hideExploreAgents: true,
   hideBotsAndSkillsNav: true,
   shortOnboarding: true,
+  /** No computer supervisor in this deployment: the "watch the computer" control is hidden. */
+  hideComputerControls: true,
 } as const;

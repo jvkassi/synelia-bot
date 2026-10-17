@@ -1,5 +1,5 @@
 import { IconSettings } from "@tabler/icons-react";
-import { ui } from "@/lib/i18n";
+import { pilot, ui } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
@@ -138,11 +138,14 @@ function RouteComponent() {
           </div>
           <div className="flex flex-row items-center gap-1.5">
             <SyneliaModelPicker />
+            {/* Synelia fork: no computers in the pilot. */}
+            {pilot.hideComputerControls ? null : (
             <ComputerChatControls
               computerId={agentId}
               open={isWatching}
               onOpenChange={(open) => show(open ? "watch" : null)}
             />
+            )}
             <Button
               aria-label="Channel coworker"
               aria-pressed={isSettingsOpen}

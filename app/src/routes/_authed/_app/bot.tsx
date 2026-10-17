@@ -1,5 +1,5 @@
 import { CopilotChat } from "@copilotkit/react-core/v2";
-import { ui } from "@/lib/i18n";
+import { pilot, ui } from "@/lib/i18n";
 import { IconPlus } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -186,11 +186,14 @@ function BotChat({ agentId, name }: { agentId: string; name: string }) {
              */}
             <div className="flex flex-wrap items-start gap-2">
               <SyneliaModelPicker />
+              {/* Synelia fork: no computers in the pilot. */}
+              {pilot.hideComputerControls ? null : (
               <ComputerChatControls
                 computerId={agentId}
                 open={watch === true}
                 onOpenChange={showComputer}
               />
+              )}
               <Button onClick={startNew} size="sm" variant="ghost">
                 <IconPlus />
                 {ui.conversation.newChat}
