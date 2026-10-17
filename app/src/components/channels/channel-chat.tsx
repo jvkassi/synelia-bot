@@ -36,6 +36,7 @@ import { observeApprovalAgent } from "@/lib/copilot/approval-context";
 import { ConversationProvider } from "@/lib/copilot/conversation";
 import { afterMs, joinWithin } from "@/lib/copilot/join-thread";
 import { repairUnansweredToolCalls } from "@/lib/copilot/repair-history";
+import { retryKeepCount } from "@/lib/copilot/retry-turn";
 import { codedReason, EMPTY_RUN } from "@/lib/copilot/stop-notice";
 import { stoppedReason } from "@/lib/copilot/stopped-turn";
 import {
@@ -649,6 +650,8 @@ export function ChannelChat({
    */
   const runFinishedHere = useRef(false);
   const assistantMessagesBeforeRun = useRef<Set<string>>(new Set());
+  /** Synelia fork: message ids just before this tab's latest run started (see retry-turn.ts). */
+  const idsBeforeRun = useRef<ReadonlySet<string> | null>(null);
 
   /*
    * TWO DIFFERENT FACTS ABOUT ONE TURN, AND NEITHER OF THEM IS `agent.isRunning`.
@@ -850,6 +853,9 @@ export function ChannelChat({
       target.setMessages(repaired as typeof target.messages);
     }
 
+    idsBeforeRun.current = new Set(
+      target.messages.map((message) => message.id),
+    );
     setRunsInFlight((count) => count + 1);
     let wasCut = false;
     try {
@@ -1038,13 +1044,19 @@ export function ChannelChat({
   };
 
   /**
-   * Synelia fork: « Réessayer » under a failed turn. Only when the person's message is still the
-   * last one (nothing answered it) and nothing is running; the same turn counters as `say`, so the
-   * composer and the queue wait for it too. A failure is reported by the transcript as for any turn.
+   * Synelia fork: « Réessayer » under a failed turn. Cuts the thread back to the person's last
+   * message, dropping whatever the failed run had started writing after it (partial text, its tool
+   * calls and results: see retry-turn.ts), then runs again from there with every earlier id intact.
+   * Offered only when that cut is clean (`retryable` below), so the button never does nothing. The
+   * same turn counters as `say`, so the composer and the queue wait for it too.
    */
   const retryLastTurn = async () => {
     if (turnsRef.current > 0 || agentRef.current.isRunning) return;
-    if (!endedWithoutAnswer(agentRef.current.messages)) return;
+    const target = agentRef.current;
+    const keep = retryKeepCount(target.messages, idsBeforeRun.current);
+    if (keep === null) return;
+    if (keep < target.messages.length)
+      target.setMessages(target.messages.slice(0, keep));
     noteSend();
     turnsRef.current += 1;
     setTurnsInFlight(turnsRef.current);
@@ -1357,10 +1369,13 @@ export function ChannelChat({
                * run before closing it; see server/src/channels/stall-guard.ts.
                */
               stopped={runError ?? storedRunError ?? undefined}
-              onRetry={() => void retryLastTurn()}
-              retryDisabled={
-                turnsInFlight > 0 || agent.isRunning || showServerRun
-              }
+              {...(retryKeepCount(agent.messages, idsBeforeRun.current) !== null
+                ? {
+                    onRetry: () => void retryLastTurn(),
+                    retryDisabled:
+                      turnsInFlight > 0 || agent.isRunning || showServerRun,
+                  }
+                : {})}
               serverRunning={showServerRun && !runError}
             />
             {/* Synelia fork: the pilot data rule stays visible under the composer. */}

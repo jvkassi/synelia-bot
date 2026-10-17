@@ -341,3 +341,82 @@ test("Stop: no notice and no « Réessayer » afterwards", async () => {
   expect(view.queryByTestId("transcript-retry")).toBeNull();
   expect(view.queryByTestId("transcript-stopped")).toBeNull();
 });
+
+test("« Réessayer » after a partial answer: the half-written reply and its tool call are dropped, the run restarts from the user message", async () => {
+  const second = Promise.withResolvers<Response>();
+  runAnswer = (input, index) =>
+    index === 0
+      ? sse([
+          { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
+          {
+            type: "TEXT_MESSAGE_START",
+            messageId: "partial",
+            role: "assistant",
+          },
+          {
+            type: "TEXT_MESSAGE_CONTENT",
+            messageId: "partial",
+            delta: "Voici le début d'une répo",
+          },
+          {
+            type: "TOOL_CALL_START",
+            toolCallId: "call-1",
+            toolCallName: "search",
+            parentMessageId: "partial",
+          },
+          { type: "TOOL_CALL_ARGS", toolCallId: "call-1", delta: "{}" },
+          { type: "TOOL_CALL_END", toolCallId: "call-1" },
+          {
+            type: "TOOL_CALL_RESULT",
+            messageId: "tool-result-1",
+            toolCallId: "call-1",
+            content: "rien",
+            role: "tool",
+          },
+          { type: "RUN_ERROR", message: "x", code: "run_stalled" },
+        ])
+      : second.promise;
+  const view = await sendPhishingPrompt();
+  await view.findByText("Voici le début d'une répo");
+  const retry = (await view.findByTestId(
+    "transcript-retry",
+  )) as HTMLButtonElement;
+  expect(retry.disabled).toBe(false);
+  const user = userEvent.setup({ document: view.container.ownerDocument });
+  await user.click(retry);
+  await waitFor(() => expect(runs).toBe(2));
+  const [first, again] = bodies as [RunAgentInput, RunAgentInput];
+  // Everything up to and including the person's message, same ids, nothing after it.
+  expect(again.messages.map((message) => message.id)).toEqual(
+    first.messages.map((message) => message.id),
+  );
+  expect(again.messages.at(-1)?.role).toBe("user");
+  expect(again.messages.some((message) => message.id === "partial")).toBe(
+    false,
+  );
+  expect(again.messages.some((message) => message.id === "tool-result-1")).toBe(
+    false,
+  );
+  expect(userMessages(again)).toHaveLength(1);
+  // The partial bubble left the screen as the retry started.
+  await waitFor(() =>
+    expect(view.queryByText("Voici le début d'une répo")).toBeNull(),
+  );
+  second.resolve(
+    sse([
+      { type: "RUN_STARTED", threadId: again.threadId, runId: again.runId },
+      { type: "TEXT_MESSAGE_START", messageId: "a2", role: "assistant" },
+      { type: "TEXT_MESSAGE_CONTENT", messageId: "a2", delta: "Non." },
+      { type: "TEXT_MESSAGE_END", messageId: "a2" },
+      { type: "RUN_FINISHED", threadId: again.threadId, runId: again.runId },
+    ]),
+  );
+  await view.findByText("Non.");
+  await settleReactWork();
+  expect(view.queryByText("Voici le début d'une répo")).toBeNull();
+  const bubbles = [
+    ...view.container.querySelectorAll('[data-slot="bubble-content"]'),
+  ].filter((bubble) => bubble.textContent?.includes(PROMPT));
+  expect(bubbles).toHaveLength(1);
+  expect(runs).toBe(2);
+});

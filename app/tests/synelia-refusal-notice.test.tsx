@@ -6,6 +6,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render } from "@testing-library/react";
 import { ChatTranscript } from "@/components/channels/chat-transcript";
+import { retryKeepCount } from "@/lib/copilot/retry-turn";
 import {
   alternativeModel,
   codedReason,
@@ -311,4 +312,38 @@ test("channel-chat reads the RUN_ERROR code before the wording, and the stored l
   expect(model).toMatch(
     /codedReason\(data\?\.lastError\?\.code, data\?\.lastError\?\.message\)/,
   );
+});
+
+test("retryKeepCount: cut back to the last user message only when what follows is the failed run's output", () => {
+  const before = new Set(["sys", "a0", "u1"]);
+  const base = [
+    { id: "sys", role: "system" },
+    { id: "a0", role: "assistant" },
+    { id: "u1", role: "user" },
+  ];
+  // Nothing after the person's message: keep everything (also after a reload, no ids known).
+  expect(retryKeepCount(base, before)).toBe(3);
+  expect(retryKeepCount(base, null)).toBe(3);
+  // Partial text, tool call and result from the failed run: dropped.
+  const partial = [
+    ...base,
+    { id: "p", role: "assistant" },
+    { id: "t", role: "tool" },
+    { id: "p2", role: "assistant" },
+  ];
+  expect(retryKeepCount(partial, before)).toBe(3);
+  // Not provably the failed run's output: no retry offered rather than a silent no-op.
+  expect(retryKeepCount(partial, null)).toBe(null);
+  expect(
+    retryKeepCount(
+      [...base, { id: "old", role: "assistant" }],
+      new Set([...before, "old"]),
+    ),
+  ).toBe(null);
+  expect(retryKeepCount([...base, { id: "s2", role: "system" }], before)).toBe(
+    null,
+  );
+  // The user message itself must predate the failed run.
+  expect(retryKeepCount(partial, new Set(["sys", "a0"]))).toBe(null);
+  expect(retryKeepCount([{ id: "a", role: "assistant" }], before)).toBe(null);
 });
