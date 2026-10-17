@@ -85,6 +85,10 @@ const fr = {
   pilotNotice:
     "Pilote : données de test uniquement, pas de code ni de documents clients.",
   conversation: {
+    reconnecting:
+      "Connexion interrompue… nouvelle tentative. Si rien ne revient, rechargez la page.",
+    runInProgress: "Réponse en cours…",
+    runInterrupted: "Réponse interrompue. Renvoyez votre message.",
     fallbackTitle: "Conversation",
     askAnything: "Posez votre question",
     chooseBot: "Choisir un assistant…",

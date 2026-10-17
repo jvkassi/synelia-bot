@@ -254,5 +254,8 @@ describe("hidden QA model (admin only)", () => {
     ).toBe(true);
     expect(isHiddenModel("synelia-test:always-fails", withTest)).toBe(true);
     expect(isHiddenModel("router9:glm", withTest)).toBe(false);
+    // Fail closed: list unreachable and no cache -> still hidden.
+    expect(isHiddenModel("synelia-test:always-fails", undefined)).toBe(true);
+    expect(isHiddenModel("synelia-test:anything", undefined)).toBe(true);
   });
 });

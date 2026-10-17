@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import { pilot } from "@/lib/i18n";
 import { client } from "@/lib/client";
 
 /** A component authored in the browser, as the playground edits it. */
@@ -61,6 +62,8 @@ export function sandboxedListQueryOptions() {
 export function publishedSandboxedQueryOptions() {
   return queryOptions({
     queryKey: sandboxedKeys.published(),
+    // Synelia fork: sandboxed UI is outside the pilot (its API answers 404 there).
+    enabled: !pilot.hideComputerControls,
     refetchInterval: 30_000,
     queryFn: async (): Promise<PublishedSandboxed[]> => {
       return (

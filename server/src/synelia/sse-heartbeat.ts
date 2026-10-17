@@ -5,12 +5,19 @@
  * connection after `idleTimeout` (10 s by default) without a byte written, and a model can stay
  * silent longer than that before its first token. Two fixes, both applied in http-server.ts:
  *  - the AG-UI routes get `server.timeout(request, 0)` (no idle limit for that request);
- *  - every text/event-stream response gets an SSE comment (`: ping`) every 5 s, so no hop (Bun,
- *    Traefik, a corporate proxy, the browser) ever sees an idle stream. Comments are ignored by
- *    every SSE parser, AG-UI's included.
+ *  - a text/event-stream response gets an SSE comment (`: ping`) when NOTHING was forwarded for
+ *    5 s AND the last forwarded byte closed an event (`\n\n` or `\r\n\r\n`). A ping is never
+ *    injected in the middle of an event, so the stream always parses. Comments are ignored by
+ *    every SSE parser, AG-UI's included. The timer is cleared on upstream end, error, and client
+ *    cancel/disconnect.
  */
 export const SSE_HEARTBEAT_MS = 5_000;
 const PING = new TextEncoder().encode(": ping\n\n");
+
+/** Whether `tail` (the last bytes forwarded) ends an SSE event. */
+export function endsEvent(tail: string): boolean {
+  return /(\r\n|\n|\r)(\r\n|\n|\r)$/.test(tail);
+}
 
 export function withSseHeartbeat(
   response: Response,
@@ -21,28 +28,52 @@ export function withSseHeartbeat(
   const type = response.headers.get("content-type") ?? "";
   if (!response.body || !type.includes("text/event-stream")) return response;
   const reader = response.body.getReader();
+  const decoder = new TextDecoder();
   let timer: ReturnType<typeof setInterval> | undefined;
+  let lastWrite = Date.now();
+  // Before the first byte, a ping is safe: nothing is open.
+  let atBoundary = true;
+  let tail = "";
+  const stop = () => {
+    if (timer !== undefined) clearInterval(timer);
+    timer = undefined;
+  };
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
-      timer = setInterval(() => {
-        try {
-          controller.enqueue(PING);
-        } catch {
-          clearInterval(timer);
-        }
-      }, everyMs);
+      // Checked at a finer grain than the period so a quiet stream is pinged ~everyMs after its
+      // last byte rather than up to 2x later.
+      timer = setInterval(
+        () => {
+          if (!atBoundary || Date.now() - lastWrite < everyMs) return;
+          try {
+            controller.enqueue(PING);
+            lastWrite = Date.now();
+          } catch {
+            stop();
+          }
+        },
+        Math.max(Math.floor(everyMs / 5), 1),
+      );
     },
     async pull(controller) {
-      const { done, value } = await reader.read();
-      if (done) {
-        clearInterval(timer);
-        controller.close();
-        return;
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          stop();
+          controller.close();
+          return;
+        }
+        controller.enqueue(value);
+        lastWrite = Date.now();
+        tail = (tail + decoder.decode(value, { stream: true })).slice(-8);
+        atBoundary = endsEvent(tail);
+      } catch (error) {
+        stop();
+        controller.error(error);
       }
-      controller.enqueue(value);
     },
     cancel(reason) {
-      clearInterval(timer);
+      stop();
       return reader.cancel(reason);
     },
   });
@@ -50,9 +81,15 @@ export function withSseHeartbeat(
   headers.set("cache-control", "no-cache, no-transform");
   headers.set("x-accel-buffering", "no");
   headers.delete("content-length");
-  return new Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
+  return Object.assign(
+    new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    }),
+    {
+      /** For tests: whether the heartbeat timer is still armed. */
+      [Symbol.for("synelia.heartbeatActive")]: () => timer !== undefined,
+    },
+  );
 }

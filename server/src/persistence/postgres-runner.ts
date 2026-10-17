@@ -296,3 +296,21 @@ export function pickedModel(
       : "";
   return value || undefined;
 }
+
+/**
+ * Synelia fork: the run currently streaming on this thread in THIS process (the open runner keeps
+ * live runs in memory), or undefined. Read from the runtime's global store, shared by every runner
+ * instance, so the thread status route needs no handle on the runner.
+ */
+export function liveRunId(threadId: string): string | undefined {
+  const store = (
+    ɵGLOBAL_STORE as unknown as {
+      peek(
+        id: string,
+      ): { isRunning?: boolean; currentRunId?: string | null } | undefined;
+    }
+  ).peek(threadId);
+  return store?.isRunning && store.currentRunId
+    ? store.currentRunId
+    : undefined;
+}

@@ -6,28 +6,63 @@ import type { MiddlewareHandler } from "hono";
  * like an unknown route (no 403, nothing that says the feature exists). On by default; set
  * SYNELIA_PILOT=0 to get upstream behaviour back.
  */
-export const PILOT_GATED_PREFIXES = [
-  "/api/bots", // Bot lifecycle (create/hire/retire)
-  "/api/team-bots",
-  "/api/plugins", // Skills, MCP servers, connections, Composio, grants
-  "/api/computers", // agent computer
-  "/api/host-access",
-  "/api/sandboxed",
-  "/api/agent-tools", // tool launch
-  "/api/demonstrations",
-  "/api/routines",
-  "/api/responsibilities",
-  "/api/proactive",
-  "/api/voice",
-  "/api/components",
-  "/api/groups",
-  "/api/delivery", // outbound channels (SMS, webhooks, opentag)
-  "/api/events", // inbound triggers (email, GitHub, webhooks) that start runs
-  "/api/admin/learning",
+/**
+ * ALLOWLIST of the API surfaces the pilot screens use (inventory of app/src fetch calls on sign-in,
+ * home, conversation, sidebar, settings and admin). Anything else answers 404, so a route added
+ * upstream later is closed until somebody opens it here on purpose.
+ */
+export const PILOT_ALLOWED_PREFIXES = [
+  "/api/auth", // Better Auth (sign-in, session)
+  "/api/me",
+  "/api/capabilities",
+  "/api/channels", // conversations (the UI calls them "conversations")
+  "/api/copilotkit", // AG-UI run / connect / threads
+  "/api/threads",
+  "/api/synelia", // models, badge map, run model
+  "/api/attachments",
+  "/api/audio", // dictation in the composer
+  "/api/settings",
+  "/api/identity",
+  "/api/passwords",
+  "/api/sign-in-requests",
+  "/api/approvals",
+  "/api/memory",
+  "/api/route",
+  "/api/admin", // admin screens; learning is closed below
 ] as const;
 
+/** Closed even under an allowed prefix. */
+const PILOT_CLOSED_PREFIXES = ["/api/admin/learning"] as const;
+
+/**
+ * Reads the conversation screen still makes for features the pilot hides: answered with a harmless
+ * empty 200 so a stale tab or a missed front guard never turns into an error on screen.
+ */
+const PILOT_EMPTY_READS: { method: string; pattern: RegExp; body: unknown }[] =
+  [
+    { method: "GET", pattern: /^\/api\/sandboxed\/published$/, body: [] },
+    {
+      method: "PUT",
+      pattern: /^\/api\/components\/catalogue$/,
+      body: { added: [] },
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/computers\/[^/]+\/control$/,
+      body: null,
+    },
+    {
+      method: "GET",
+      pattern: /^\/api\/proactive\/suggestions$/,
+      body: { suggestions: [] },
+    },
+  ];
+
 /** Read-only listing stays (the model picker and the transcript need the Bot names). */
-const AGENT_WRITE = /^\/api\/agents(\/|$)/;
+const AGENT_PATH = /^\/api\/agents(\/|$)/;
+
+const under = (path: string, prefix: string) =>
+  path === prefix || path.startsWith(`${prefix}/`);
 
 export function pilotEnabled(
   env: Record<string, string | undefined> = process.env,
@@ -36,19 +71,29 @@ export function pilotEnabled(
 }
 
 export function isPilotGated(method: string, path: string): boolean {
-  if (
-    PILOT_GATED_PREFIXES.some(
-      (prefix) => path === prefix || path.startsWith(`${prefix}/`),
-    )
-  )
-    return true;
-  return AGENT_WRITE.test(path) && method !== "GET" && method !== "HEAD";
+  if (!path.startsWith("/api/")) return false;
+  if (PILOT_CLOSED_PREFIXES.some((prefix) => under(path, prefix))) return true;
+  if (AGENT_PATH.test(path)) return method !== "GET" && method !== "HEAD";
+  return !PILOT_ALLOWED_PREFIXES.some((prefix) => under(path, prefix));
+}
+
+export function pilotEmptyRead(
+  method: string,
+  path: string,
+): { body: unknown } | undefined {
+  return PILOT_EMPTY_READS.find(
+    (read) => read.method === method && read.pattern.test(path),
+  );
 }
 
 export function createPilotGate(enabled = pilotEnabled()): MiddlewareHandler {
   return async (context, next) => {
-    if (enabled && isPilotGated(context.req.method, context.req.path))
-      return context.json({ error: "Not found" }, 404);
+    if (enabled) {
+      const empty = pilotEmptyRead(context.req.method, context.req.path);
+      if (empty) return context.json(empty.body as never, 200);
+      if (isPilotGated(context.req.method, context.req.path))
+        return context.json({ error: "Not found" }, 404);
+    }
     await next();
   };
 }

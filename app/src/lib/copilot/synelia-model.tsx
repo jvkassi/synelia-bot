@@ -276,24 +276,31 @@ export const syneliaRunModelRenderer = {
 export function useStoredRunError(
   threadId: string | undefined,
   endsOnUserMessage: boolean,
-): string | null {
+): { error: string | null; activeRunId: string | null; interrupted: boolean } {
   const { data } = useQuery({
     queryKey: ["synelia", "thread-error", threadId],
     enabled: Boolean(threadId),
     queryFn: async () => {
       const response = await fetch(
         `/api/threads/${encodeURIComponent(threadId ?? "")}`,
-        {
-          credentials: "include",
-        },
+        { credentials: "include" },
       );
       if (!response.ok) return null;
-      const body = (await response.json()) as {
+      return (await response.json()) as {
         lastError?: { message?: string | null } | null;
+        activeRunId?: string | null;
+        interrupted?: boolean;
       };
-      return body.lastError?.message ?? null;
     },
     staleTime: 30_000,
+    // While a run is still being written, look again every 3 s until it ends.
+    refetchInterval: (query) => (query.state.data?.activeRunId ? 3_000 : false),
   });
-  return endsOnUserMessage ? (data ?? null) : null;
+  if (!endsOnUserMessage)
+    return { error: null, activeRunId: null, interrupted: false };
+  return {
+    error: data?.lastError?.message ?? null,
+    activeRunId: data?.activeRunId ?? null,
+    interrupted: Boolean(data?.interrupted) && !data?.lastError,
+  };
 }

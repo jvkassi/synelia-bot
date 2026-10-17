@@ -64,12 +64,17 @@ export function visibleModels(
     : { ...list, models: list.models.filter((option) => !option.hidden) };
 }
 
+/**
+ * Fail CLOSED: an id in the QA namespace (`synelia-test:*`) counts as hidden even when the list is
+ * unreachable and nothing is cached, so a non-admin can never reach the failing model.
+ */
 export function isHiddenModel(
   picked: string | undefined,
   list: SyneliaModelList | undefined,
 ): boolean {
+  if (!picked) return false;
+  if (picked.startsWith("synelia-test:")) return true;
   return Boolean(
-    picked &&
-      list?.models.some((option) => option.id === picked && option.hidden),
+    list?.models.some((option) => option.id === picked && option.hidden),
   );
 }

@@ -28,7 +28,20 @@ test("pilot gate: outside-phase-0 surfaces are 404, chat/threads/models/auth pas
     ["GET", "/api/threads/x"],
   ])
     expect((await app.request(path as string, { method })).status).toBe(200);
-  expect(isPilotGated("GET", "/api/botsx")).toBe(false);
+  // Allowlist: an unknown/new upstream route is closed by default.
+  expect(isPilotGated("GET", "/api/botsx")).toBe(true);
+  expect(isPilotGated("GET", "/api/some-new-upstream-feature")).toBe(true);
+  expect(isPilotGated("GET", "/assets/index.js")).toBe(false);
+  // Harmless empty 200 for reads the conversation screen may still make.
+  for (const [method, path, body] of [
+    ["GET", "/api/sandboxed/published", []],
+    ["PUT", "/api/components/catalogue", { added: [] }],
+    ["GET", "/api/computers/synelia-assistant/control", null],
+  ] as const) {
+    const response = await app.request(path, { method });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(body);
+  }
 });
 
 test("gate 10: tools are an allowlist (ask*/show* known names only)", async () => {

@@ -533,10 +533,38 @@ export function ChannelChat({
   const streamCut = useRef<string | null>(null);
   // Synelia fork: after a reload the live error is gone; the stored one is drawn in its place.
   const lastMessage = agent.messages[agent.messages.length - 1];
-  const storedRunError = useStoredRunError(
+  const threadStatus = useStoredRunError(
     channel.threadId ?? undefined,
     !agent.isRunning && lastMessage?.role === "user",
   );
+  /*
+   * Synelia fork (2a minimal): after a reload mid-run the server is still writing the turn. Say so,
+   * and once the run is over replay the thread once so the stored answer appears without F5.
+   * A thread whose only turn was lost (restart, expired lock, no stored run) says it was interrupted.
+   */
+  const storedRunError =
+    threadStatus.error ??
+    (threadStatus.activeRunId
+      ? ui.conversation.runInProgress
+      : threadStatus.interrupted
+        ? ui.conversation.runInterrupted
+        : null);
+  const sawActiveRun = useRef(false);
+  useEffect(() => {
+    if (threadStatus.activeRunId) {
+      sawActiveRun.current = true;
+      return;
+    }
+    if (!sawActiveRun.current || agent.isRunning) return;
+    sawActiveRun.current = false;
+    void copilotkit
+      .connectAgent({ agent })
+      .then(() => {
+        const deduped = dedupeById(agent.messages);
+        if (deduped !== agent.messages) agent.setMessages(deduped);
+      })
+      .catch(() => undefined);
+  }, [threadStatus.activeRunId, agent, copilotkit]);
   const awaitingReply = useRef(false);
   /**
    * WHY THIS TURN ENDED WITHOUT AN ANSWER, KEPT WHERE `deliver` CAN STILL SEE IT — because the one
@@ -767,18 +795,38 @@ export function ChannelChat({
       if (streamCut.current !== null) {
         const cutReason = streamCut.current;
         streamCut.current = null;
+        // Dedupe as the replay arrives, not only at the end, so the person never sees a doubled
+        // message while the server catches up.
+        const dedupe = target.subscribe({
+          onMessagesChanged: () => {
+            const deduped = dedupeById(target.messages);
+            if (deduped !== target.messages) target.setMessages(deduped);
+          },
+        });
         try {
-          await copilotkit.connectAgent({ agent: target });
+          for (
+            let attempt = 0;
+            attempt < 2 && awaitingReply.current;
+            attempt++
+          ) {
+            if (attempt > 0)
+              await new Promise((resolve) => setTimeout(resolve, 2_000));
+            await copilotkit.connectAgent({ agent: target });
+          }
           const deduped = dedupeById(target.messages);
           if (deduped !== target.messages) target.setMessages(deduped);
           if (awaitingReply.current) {
-            // Reattached but the run never reported an end: nothing more is coming.
+            // Reattached twice and the run never reported RUN_FINISHED / RUN_ERROR: say so and
+            // point at the reload, which recovers whatever the server stored.
             awaitingReply.current = false;
+            setRunError(ui.conversation.reconnecting);
           }
         } catch {
           awaitingReply.current = false;
           turnFailure.current = cutReason;
           setRunError(cutReason);
+        } finally {
+          dedupe.unsubscribe();
         }
       }
     } finally {

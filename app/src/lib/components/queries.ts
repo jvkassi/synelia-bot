@@ -1,3 +1,4 @@
+import { pilot } from "@/lib/i18n";
 import { queryOptions } from "@tanstack/react-query";
 import { client, tryClient } from "@/lib/client";
 
@@ -79,6 +80,8 @@ export async function announceGallery(
     description: string;
   }[],
 ): Promise<string[]> {
+  // Synelia fork: the component catalogue admin is outside the pilot (404 there).
+  if (pilot.hideBotsAndSkillsNav) return [];
   try {
     const response = await tryClient("/api/components/catalogue", {
       method: "PUT",

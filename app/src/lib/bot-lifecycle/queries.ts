@@ -1,3 +1,4 @@
+import { pilot } from "@/lib/i18n";
 import { queryOptions } from "@tanstack/react-query";
 import { client } from "@/lib/client";
 
@@ -101,6 +102,8 @@ export function botAttentionQueryOptions() {
 export function botLifecycleQueryOptions(agentId: string) {
   return queryOptions({
     queryKey: botLifecycleKeys.lifecycle(agentId),
+    // Synelia fork: Bot lifecycle is outside the pilot (its API answers 404 there).
+    enabled: !pilot.hideBotsAndSkillsNav,
     queryFn: (): Promise<BotLifecycle> =>
       client(`${botPath(agentId)}/lifecycle`, "lifecycle", {
         fallback: "Could not load this Bot's state",

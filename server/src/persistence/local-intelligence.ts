@@ -331,6 +331,25 @@ export class LocalIntelligence {
     this.#emit({ kind: "deleted", threadId: params.threadId });
   }
 
+  /**
+   * For the thread status route: an unexpired lock (headless turns), and whether the thread holds
+   * any stored run at all (a thread with none and no live run lost its only turn: interrupted).
+   */
+  async threadRunState(params: { threadId: string; userId: string }) {
+    await this.getThread(params);
+    const rows = (await this.#sql`
+      SELECT
+        (SELECT run_id FROM synelia_thread_lock WHERE thread_id = ${params.threadId} AND expires_at > now()) AS locked_run,
+        (SELECT count(*) FROM synelia_thread_run WHERE thread_id = ${params.threadId})::int AS runs`) as {
+      locked_run: string | null;
+      runs: number;
+    }[];
+    return {
+      lockedRunId: rows[0]?.locked_run ?? null,
+      storedRuns: rows[0]?.runs ?? 0,
+    };
+  }
+
   /** The last run of the thread, if it ended in error, with its stored technical message. */
   async lastRunError(params: { threadId: string; userId: string }) {
     await this.getThread(params);

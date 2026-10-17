@@ -108,3 +108,21 @@ on konnect behind Traefik + basicauth, with a Mastra Bot answering through OpenR
 | `server/Dockerfile` | Copies `agent-computer/src/egress.ts`, imported by the server (upstream image failed to start without it); `TENANT_PACKAGE_DIR` build arg so the app shows the Synelia brand. |
 
 Not done in phase 0: LISTEN/NOTIFY (not used), SSE resume via Last-Event-ID, multi-user/SSO, learning.
+
+
+## Passe 4 (ouverture 5 utilisateurs)
+
+| # | Changement | Fichiers |
+|---|---|---|
+| 2b | Un refetch en échec de `/api/channels/:id` (données déjà là) n'efface plus le fil : bannière « Connexion interrompue… » (`synelia-reconnecting`), écran d'erreur seulement sans données | `app/src/routes/_authed/_app/channel/$channelId.tsx` |
+| 3 | 404 du gate pilote : le front n'appelle plus control / published / catalogue / lifecycle quand masqués ; serveur en **allowlist** (`PILOT_ALLOWED_PREFIXES`), lectures inoffensives en 200 vide | `server/src/synelia/pilot-gate.ts`, `app/src/lib/{computers,sandboxed,components,bot-lifecycle}` |
+| heartbeat | ping SSE seulement entre deux événements (frontière `\n\n`), timer nettoyé fin/erreur/cancel, test d'événement scindé | `server/src/synelia/sse-heartbeat.ts` |
+| QA | `isHiddenModel` fail-closed pour `synelia-test:*` | `server/src/synelia/models.ts` |
+| 2a min | `GET /api/threads/:id` renvoie `activeRunId` (run vivant du runner ou `synelia_thread_lock` non expiré) et `interrupted` ; front : « Réponse en cours… » puis rejoue le fil à la fin, « Réponse interrompue » sinon | `server/src/app.ts`, `app/src/lib/copilot/synelia-model.tsx`, `channel-chat.tsx` |
+| reattach | coupure = regex réseau seulement ; 2 tentatives connect puis bannière ; dédup incrémentale | `stream-reattach.ts`, `channel-chat.tsx` |
+
+**Gate 13 — garde post-déploiement** : `deploy.sh` attend (≤120 s) les verrous actifs, puis `e2e.sh ownership` + `gate` ; échec → redéploie le `DEPLOYED_COMMIT` précédent, code ≠ 0.
+
+**Checklist ouverture** : `SYNELIA_TEST_MODEL=off` sur une instance réellement ouverte (laissé actif sur konnect pour la QA ; le modèle reste masqué aux non-admins, fail-closed).
+
+**Phase 1** : écrire `thread_event` au fil de l'eau (pas seulement en fin de run) pour qu'un redémarrage serveur ne perde plus le tour en cours.

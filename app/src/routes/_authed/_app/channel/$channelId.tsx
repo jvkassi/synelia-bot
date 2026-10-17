@@ -160,14 +160,21 @@ function RouteComponent() {
           </div>
         </div>
       </div>
-      {agentId && channel.data?.agentIds.length === 1 ? (
+      {!pilot.hideBotsAndSkillsNav &&
+      agentId &&
+      channel.data?.agentIds.length === 1 ? (
         <BotPausedBanner agentId={agentId} />
       ) : null}
-      <ChannelBody
-        channel={channel.data}
-        isPending={channel.isPending}
-        hasError={Boolean(channel.error)}
-      />
+      {channel.error && channel.data ? (
+        <p
+          className="px-4 py-2 text-muted-foreground text-sm"
+          data-testid="synelia-reconnecting"
+          role="status"
+        >
+          {ui.conversation.reconnecting}
+        </p>
+      ) : null}
+      <ChannelBody channel={channel.data} isPending={channel.isPending} />
     </DetailPanel>
   );
 }
@@ -179,15 +186,16 @@ function RouteComponent() {
 function ChannelBody({
   channel,
   isPending,
-  hasError,
 }: {
   channel: AgentChannel | undefined;
   isPending: boolean;
-  hasError: boolean;
 }) {
   // Nothing while the channel loads: a placeholder inside a local round-trip is a flicker.
   if (isPending) return null;
-  if (hasError || !channel) {
+  // Synelia fork: only a conversation that NEVER loaded shows the error screen. A failed refetch
+  // (offline, reconnect, a proxy blip) keeps the transcript on screen with a banner, and React
+  // Query retries on reconnect (`online` event) and focus; one reload recovers everything.
+  if (!channel) {
     return (
       <p className="p-8 text-sm text-destructive" role="alert">
         {ui.conversation.loadFailed}

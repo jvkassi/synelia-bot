@@ -17,7 +17,8 @@ export function isStreamCut(error: unknown): boolean {
       : typeof error === "string"
         ? error
         : "";
-  return (error instanceof TypeError && message !== "") || CUT.test(message);
+  // Only the known network wordings: a TypeError from a bug in our own code is not a cut stream.
+  return CUT.test(message);
 }
 
 /** Keep one message per id (the last version wins, in first-seen position). */

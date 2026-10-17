@@ -12,6 +12,7 @@ import { tryClient } from "@/lib/client";
  */
 
 export type { ComputerControlState as ControlState } from "@openbot/shared/computer-control";
+import { pilot } from "@/lib/i18n";
 import type { ComputerControlState as ControlState } from "@openbot/shared/computer-control";
 
 async function callControl(
@@ -36,6 +37,9 @@ export function readControl(
   requestId?: string,
   signal?: AbortSignal,
 ) {
+  // Synelia fork: no computers in the pilot; nobody holds a control that does not exist, and
+  // the gated route is never asked (its 404 must not ripple into the conversation).
+  if (pilot.hideComputerControls) return Promise.resolve(null);
   return callControl(
     computerId,
     `/control${requestId ? `?requestId=${encodeURIComponent(requestId)}` : ""}`,

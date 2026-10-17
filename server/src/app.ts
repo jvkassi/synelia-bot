@@ -1,4 +1,5 @@
 import type { Hono as HonoApp, MiddlewareHandler } from "hono";
+import { liveRunId } from "./persistence/postgres-runner";
 import { type SyneliaModelList, visibleModels } from "./synelia/models";
 import { createPilotGate, pilotEnabled } from "./synelia/pilot-gate";
 import { localIntelligence } from "./persistence/local-intelligence";
@@ -2007,7 +2008,16 @@ export function createApp(
     };
     try {
       const lastError = await store.lastRunError(params);
-      return context.json({ known: true, lastError });
+      const { lockedRunId, storedRuns } = await store.threadRunState(params);
+      // A live run (this process's runner) or an unexpired lock means a turn is still being
+      // written; no live run and not a single stored run means the only turn was lost (restart).
+      const activeRunId = liveRunId(params.threadId) ?? lockedRunId;
+      return context.json({
+        known: true,
+        lastError,
+        activeRunId,
+        interrupted: !activeRunId && storedRuns === 0,
+      });
     } catch (error) {
       if ((error as { status?: number }).status === 404)
         return context.json({ known: false, lastError: null });
