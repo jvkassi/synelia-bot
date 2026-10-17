@@ -36,6 +36,8 @@ COPY toolkit toolkit
 # `server/src/tenant-package`, so the app cannot be built without it.
 COPY server server
 COPY examples examples
+# Synelia fork: which tenant package names the product in the built app (brand.yaml).
+ARG TENANT_PACKAGE_DIR
 RUN bun run --cwd app build
 
 

@@ -36,6 +36,8 @@ services:
     build:
       context: ./src
       dockerfile: server/Dockerfile
+      args:
+        TENANT_PACKAGE_DIR: ../examples/synelia
     env_file: [.env.server]
     working_dir: /app/server
     command: ["bunx", "drizzle-kit", "migrate", "--config=drizzle.config.ts"]
