@@ -47,6 +47,13 @@ const fr = {
     start: "Commencer",
     next: "Continuer",
     back: "Retour",
+    computerTitle: "Chaque assistant dispose de son propre ordinateur",
+    rosterTitle: "Choisissez parmi nos assistants ou créez le vôtre",
+    example: "Exemple",
+    ownAgent: "Votre propre assistant",
+    placeholderResearch: "Analyste recherche",
+    placeholderData: "Analyste de données",
+    placeholderSupport: "Agent support",
   },
   home: {
     title: "Nouvelle conversation",
