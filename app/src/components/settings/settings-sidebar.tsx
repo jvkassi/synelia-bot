@@ -35,8 +35,8 @@ const ALL_ITEMS: {
   icon: React.ComponentType<{ className?: string }>;
   linkOptions: LinkOptions;
   title: string;
-  /** Synelia fork: hidden while the pilot is on (its API is closed there). */
-  pilotHidden?: boolean;
+  /** Synelia fork: the `pilot.*` flag that hides it (its API is closed in the pilot). */
+  pilotHidden?: "hideSettingsExtras" | "hideNotificationsSettings";
 }[] = [
   {
     title: ui.settings.nav.general,
@@ -48,13 +48,14 @@ const ALL_ITEMS: {
   {
     /* Where updates go for every Bot at once; how much each Bot sends is on that Bot's page. */
     title: ui.settings.nav.notifications,
+    pilotHidden: "hideNotificationsSettings",
     icon: IconBell,
     linkOptions: { to: "/settings/notifications" },
   },
   {
     /* Whether Bots ask first, and rules for every Bot. Team settings are an administrator's. */
     title: ui.settings.nav.approvals,
-    pilotHidden: true,
+    pilotHidden: "hideSettingsExtras",
     icon: IconChecks,
     linkOptions: { to: "/settings/approvals" },
   },
@@ -70,28 +71,28 @@ const ALL_ITEMS: {
      * this deployment may reach at all, here you decide what it may reach as you.
      */
     title: ui.settings.nav.connectedAccounts,
-    pilotHidden: true,
+    pilotHidden: "hideSettingsExtras",
     icon: IconPlug,
     linkOptions: { to: "/settings/connected-accounts" },
   },
   {
     /* Logins saved from a Bot's private sign-in form. */
     title: ui.settings.nav.passwords,
-    pilotHidden: true,
+    pilotHidden: "hideSettingsExtras",
     icon: IconKey,
     linkOptions: { to: "/settings/passwords" },
   },
   {
     /* The same mark Admin gives UI Components. It is the same subject seen from the other side. */
     title: ui.settings.nav.componentsGallery,
-    pilotHidden: true,
+    pilotHidden: "hideSettingsExtras",
     icon: IconLayoutGrid,
     linkOptions: { to: "/settings/components-gallery" },
   },
 ];
 
 const ITEMS = ALL_ITEMS.filter(
-  (item) => !(pilot.hideSettingsExtras && item.pilotHidden),
+  (item) => !(item.pilotHidden && pilot[item.pilotHidden]),
 );
 
 export function SettingsSidebar({
