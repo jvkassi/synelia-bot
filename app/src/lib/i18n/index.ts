@@ -55,6 +55,83 @@ const fr = {
     placeholderData: "Analyste de données",
     placeholderSupport: "Agent support",
   },
+  /** Settings: menu, General (préférences) and Memory. */
+  settings: {
+    backToApp: "Retour à l'application",
+    nav: {
+      general: "Général",
+      notifications: "Notifications",
+      approvals: "Approbations",
+      memory: "Mémoire",
+      connectedAccounts: "Comptes connectés",
+      passwords: "Mots de passe",
+      componentsGallery: "Galerie de composants",
+    },
+    preferences: "Préférences",
+    preferencesDescription: (product: string) =>
+      `L'apparence et le comportement de ${product} pour vous. Les préférences de la liste des conversations suivent votre compte ; le thème est enregistré dans ce navigateur.`,
+    general: "Général",
+    darkTheme: "Thème sombre",
+    darkThemeDescription: (product: string) =>
+      `Utiliser l'apparence sombre dans tout ${product}.`,
+    emphasis: "Mise en avant dans la liste",
+    emphasisDescription:
+      "Choisissez le nom affiché en plus grand dans la barre latérale.",
+    threadTitle: "Titre de la conversation",
+    agentName: "Nom de l'assistant",
+    loading: "Chargement…",
+    retry: "Réessayer",
+    saving: "Enregistrement…",
+    preview: "Aperçu de la liste des conversations",
+    previewAgent: "Assistant général",
+    previewTitle: "Préparer la semaine prochaine",
+    standingTitle: "Instructions permanentes",
+    standingDescription:
+      "S'appliquent à tous les assistants, dans toutes les conversations. Le rôle d'un assistant dit ce qu'il fait ; ces instructions disent comment vous voulez que les choses soient faites, par exemple le style d'écriture ou la façon de présenter votre entreprise.",
+    standingPlaceholder:
+      "Nous sommes une petite équipe. Écrivez en français, avec des phrases courtes, et ne parlez jamais de « plateforme ».",
+    characters: (count: number, limit: number) =>
+      `${count.toLocaleString("fr-FR")} sur ${limit.toLocaleString("fr-FR")} caractères`,
+    saved: "Enregistré",
+    save: "Enregistrer",
+    cancel: "Annuler",
+    shortcuts: "Raccourcis clavier",
+    hotkeys: {
+      "new-chat": {
+        label: "Nouvelle conversation",
+        description: "Démarrer une nouvelle conversation depuis n'importe où.",
+      },
+    } as Record<string, { label: string; description: string }>,
+    memory: {
+      title: "Mémoire",
+      description:
+        "Ce que vos assistants savent de vous. Les faits que vous leur donnez sont partagés par tous ; ce qu'un assistant apprend reste propre à cet assistant.",
+      remember: "Retenir un fait",
+      rememberDescription: "Il sera connu de tous vos assistants.",
+      field: "Ce que vous voulez que vos assistants sachent",
+      placeholder: "Je préfère les réunions le matin.",
+      submit: "Retenir",
+      yours: "Vos souvenirs",
+      empty: "Vous n'avez encore aucun souvenir.",
+      keptInIntelligence: "Conservé dans Intelligence",
+      disabled: "Désactivé",
+      formedBy: (bot: string, unreviewed: boolean) =>
+        `Appris par ${bot}${unreviewed ? " · à vérifier" : ""}`,
+      imported: "Importé · à vérifier",
+      reviewed: "Vérifié",
+      yourBot: "votre assistant",
+      from: (source: string) => `Depuis ${source}`,
+      aConversation: "une conversation",
+      read: (when: string) => `, lu le ${when}`,
+      openRecord: "Ouvrir la source",
+      edit: "Modifier",
+      confirm: "Confirmer",
+      forget: "Oublier",
+      use: (content: string) => `Utiliser ce souvenir : ${content}`,
+      editTitle: "Modifier le souvenir",
+      fieldLabel: "Souvenir",
+    },
+  },
   home: {
     title: "Nouvelle conversation",
     routedHint:
@@ -214,4 +291,23 @@ export const pilot = {
   hideBotPage: PILOT_ON,
   /** Voice calls are outside the pilot (their API answers 404). */
   hideVoice: PILOT_ON,
+  /** Settings tabs outside the pilot (approvals, connected accounts, passwords, gallery). */
+  hideSettingsExtras: PILOT_ON,
 } as const;
+
+/** Settings routes the pilot closes; a direct hit lands on General. */
+export const PILOT_HIDDEN_SETTINGS = [
+  "/settings/approvals",
+  "/settings/connected-accounts",
+  "/settings/passwords",
+  "/settings/components-gallery",
+] as const;
+
+export function isPilotHiddenSettingsPath(pathname: string): boolean {
+  return (
+    pilot.hideSettingsExtras &&
+    PILOT_HIDDEN_SETTINGS.some(
+      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+    )
+  );
+}

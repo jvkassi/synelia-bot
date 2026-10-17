@@ -17,7 +17,9 @@ import {
 } from "@/components/ui/item";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { appConfig } from "@/lib/generated/application-config";
 import { formatHotkey, HOTKEYS } from "@/lib/hotkeys/hotkeys";
+import { ui } from "@/lib/i18n";
 
 export const Route = createFileRoute("/_authed/settings/")({
   component: RouteComponent,
@@ -36,21 +38,23 @@ function RouteComponent() {
    */
   return (
     <PageShell
-      description="How OpenBot looks and behaves for you. Message list preferences sync with your account. Theme is saved in this browser."
-      title="Preferences"
+      description={ui.settings.preferencesDescription(
+        appConfig.brand.productName,
+      )}
+      title={ui.settings.preferences}
     >
-      <PageSection title="General">
+      <PageSection title={ui.settings.general}>
         <PageRows>
           <Item size="sm">
             <ItemContent>
-              <ItemTitle>Dark theme</ItemTitle>
+              <ItemTitle>{ui.settings.darkTheme}</ItemTitle>
               <ItemDescription>
-                Use the dark appearance across OpenBot.
+                {ui.settings.darkThemeDescription(appConfig.brand.productName)}
               </ItemDescription>
             </ItemContent>
             <ItemActions>
               <Switch
-                aria-label="Dark theme"
+                aria-label={ui.settings.darkTheme}
                 checked={dark}
                 onCheckedChange={setDark}
               />
@@ -69,14 +73,19 @@ function RouteComponent() {
        * actually do rather than what somebody remembered they did. Read-only on purpose: these
        * are not rebindable, and a row with nothing to click says so by having nothing to click.
        */}
-      <PageSection title="Keyboard shortcuts">
+      <PageSection title={ui.settings.shortcuts}>
         <PageRows>
           {HOTKEYS.map((hotkey, index) => (
             <React.Fragment key={hotkey.id}>
               <Item size="sm">
                 <ItemContent>
-                  <ItemTitle>{hotkey.label}</ItemTitle>
-                  <ItemDescription>{hotkey.description}</ItemDescription>
+                  <ItemTitle>
+                    {ui.settings.hotkeys[hotkey.id]?.label ?? hotkey.label}
+                  </ItemTitle>
+                  <ItemDescription>
+                    {ui.settings.hotkeys[hotkey.id]?.description ??
+                      hotkey.description}
+                  </ItemDescription>
                 </ItemContent>
                 <ItemActions>
                   <span className="flex gap-1">

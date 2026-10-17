@@ -1,8 +1,14 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { SidebarShell } from "@/components/layout/sidebar-shell";
 import { SettingsSidebar } from "@/components/settings/settings-sidebar";
+import { isPilotHiddenSettingsPath } from "@/lib/i18n";
 
 export const Route = createFileRoute("/_authed/settings")({
+  // Synelia fork: tabs outside the pilot are not reachable by URL either; General instead.
+  beforeLoad: ({ location }) => {
+    if (isPilotHiddenSettingsPath(location.pathname))
+      throw redirect({ to: "/settings" });
+  },
   component: RouteComponent,
 });
 

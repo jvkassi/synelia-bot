@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { MemoryList, RememberFact } from "@/components/memory/memories";
 import { settleReactWork } from "./settle-react-work";
+import { ui } from "@/lib/i18n";
 
 /** Settings → Memory: what the person's Bots know about them, and which Bot learned it. */
 
@@ -91,7 +92,11 @@ function draw(node: ReactNode) {
 test("a memory a Bot formed names the Bot that formed it", async () => {
   serving();
   const view = draw(<MemoryList />);
-  expect(await view.findByText(/Formed by Expenses/)).toBeTruthy();
+  expect(
+    await view.findByText(
+      new RegExp(ui.settings.memory.formedBy("Expenses", false)),
+    ),
+  ).toBeTruthy();
 });
 
 test("remembering a fact saves it", async () => {
@@ -99,14 +104,18 @@ test("remembering a fact saves it", async () => {
   const view = draw(<RememberFact />);
   const user = userEvent.setup({ document });
   // The form lives in a dialog behind the page's action, not on the page.
-  fireEvent.click(view.getByRole("button", { name: "Remember a fact" }));
+  fireEvent.click(
+    view.getByRole("button", { name: ui.settings.memory.remember }),
+  );
   await user.type(
     await view.findByRole("textbox", {
-      name: "Something you want your Bots to know",
+      name: ui.settings.memory.field,
     }),
     "I work from Lisbon.",
   );
-  fireEvent.click(view.getByRole("button", { name: "Remember" }));
+  fireEvent.click(
+    view.getByRole("button", { name: ui.settings.memory.submit }),
+  );
   await waitFor(() =>
     expect(writes).toContainEqual({
       request: "POST /api/memory",
@@ -120,12 +129,12 @@ test("each memory's switch is named for the memory it turns on or off", async ()
   const view = draw(<MemoryList />);
   expect(
     await view.findByRole("switch", {
-      name: "Use this memory: I prefer mornings.",
+      name: ui.settings.memory.use("I prefer mornings."),
     }),
   ).toBeTruthy();
   expect(
     view.getByRole("switch", {
-      name: "Use this memory: Receipts go to finance@.",
+      name: ui.settings.memory.use("Receipts go to finance@."),
     }),
   ).toBeTruthy();
 });
@@ -135,20 +144,26 @@ test("reopening Remember a fact after a failure starts clean", async () => {
   refuseWrite = "Memory is full.";
   const view = draw(<RememberFact />);
   const user = userEvent.setup({ document });
-  await user.click(view.getByRole("button", { name: "Remember a fact" }));
+  await user.click(
+    view.getByRole("button", { name: ui.settings.memory.remember }),
+  );
   await user.type(
     await view.findByRole("textbox", {
-      name: "Something you want your Bots to know",
+      name: ui.settings.memory.field,
     }),
     "I work from Lisbon.",
   );
-  await user.click(view.getByRole("button", { name: "Remember" }));
+  await user.click(
+    view.getByRole("button", { name: ui.settings.memory.submit }),
+  );
   expect((await view.findByRole("alert")).textContent).toBe("Memory is full.");
   await user.keyboard("{Escape}");
   await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
-  await user.click(view.getByRole("button", { name: "Remember a fact" }));
+  await user.click(
+    view.getByRole("button", { name: ui.settings.memory.remember }),
+  );
   const field = (await view.findByRole("textbox", {
-    name: "Something you want your Bots to know",
+    name: ui.settings.memory.field,
   })) as HTMLTextAreaElement;
   expect(field.value).toBe("");
   expect(view.queryByRole("alert")).toBeNull();

@@ -30,6 +30,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { agentListQueryOptions } from "@/lib/agents/queries";
+import { ui } from "@/lib/i18n";
 import {
   createMemoryMutationOptions,
   deleteMemoryMutationOptions,
@@ -63,14 +64,14 @@ export function RememberFact() {
         variant="ghost"
       >
         <IconPlus />
-        Remember a fact
+        {ui.settings.memory.remember}
       </Button>
       <Dialog onOpenChange={setOpen} open={open}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remember a fact</DialogTitle>
+            <DialogTitle>{ui.settings.memory.remember}</DialogTitle>
             <DialogDescription>
-              It reaches every one of your Bots.
+              {ui.settings.memory.rememberDescription}
             </DialogDescription>
           </DialogHeader>
           <DialogBody className="mt-4">
@@ -90,7 +91,7 @@ export function RememberFact() {
             >
               <Field>
                 <FieldLabel htmlFor={`${formId}-content`}>
-                  Something you want your Bots to know
+                  {ui.settings.memory.field}
                 </FieldLabel>
                 <Textarea
                   id={`${formId}-content`}
@@ -98,7 +99,7 @@ export function RememberFact() {
                   maxLength={6000}
                   value={content}
                   onChange={(event) => setContent(event.target.value)}
-                  placeholder="I prefer meetings in the morning."
+                  placeholder={ui.settings.memory.placeholder}
                 />
               </Field>
             </form>
@@ -110,7 +111,7 @@ export function RememberFact() {
           </DialogBody>
           <DialogFooter className="mt-4">
             <Button onClick={() => setOpen(false)} size="sm" variant="outline">
-              Cancel
+              {ui.settings.cancel}
             </Button>
             <Button
               disabled={remember.isPending || !content.trim()}
@@ -118,7 +119,7 @@ export function RememberFact() {
               size="sm"
               type="submit"
             >
-              Remember
+              {ui.settings.memory.submit}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -132,9 +133,10 @@ export function MemoryList() {
   const memories = useQuery(memoriesQueryOptions());
   const agents = useQuery(agentListQueryOptions());
   const botName = (id: string | null) =>
-    agents.data?.find((agent) => agent.id === id)?.name ?? "your Bot";
+    agents.data?.find((agent) => agent.id === id)?.name ??
+    ui.settings.memory.yourBot;
   return (
-    <PageSection title="Your memories">
+    <PageSection title={ui.settings.memory.yours}>
       {memories.isPending ? null : memories.error ? (
         <p role="alert" className="mt-4 text-destructive text-sm">
           {memories.error.message}
@@ -152,7 +154,7 @@ export function MemoryList() {
           ))}
         </PageRows>
       ) : (
-        <PageEmpty>You have no memories yet.</PageEmpty>
+        <PageEmpty>{ui.settings.memory.empty}</PageEmpty>
       )}
     </PageSection>
   );
@@ -181,14 +183,17 @@ function MemoryRow({
   // forgotten here but not paused or reviewed.
   const heldByIntelligence = memory.formedBy === "intelligence";
   const status = heldByIntelligence
-    ? "Kept in Intelligence"
+    ? ui.settings.memory.keptInIntelligence
     : !memory.enabled
-      ? "Disabled"
+      ? ui.settings.memory.disabled
       : memory.formedBy === "bot"
-        ? `Formed by ${botName}${memory.reviewState === "unreviewed" ? " · awaiting review" : ""}`
+        ? ui.settings.memory.formedBy(
+            botName,
+            memory.reviewState === "unreviewed",
+          )
         : memory.reviewState === "unreviewed"
-          ? "Imported · awaiting review"
-          : "Reviewed";
+          ? ui.settings.memory.imported
+          : ui.settings.memory.reviewed;
   return (
     <Item size="sm">
       <ItemMedia variant="icon">
@@ -203,15 +208,19 @@ function MemoryRow({
         </ItemDescription>
         {memory.formedBy === "bot" && (
           <ItemDescription className="line-clamp-none">
-            From {memory.sourceApp ?? "a conversation"}
+            {ui.settings.memory.from(
+              memory.sourceApp ?? ui.settings.memory.aConversation,
+            )}
             {memory.observedAt
-              ? `, read ${new Date(memory.observedAt).toLocaleString()}`
+              ? ui.settings.memory.read(
+                  new Date(memory.observedAt).toLocaleString("fr-FR"),
+                )
               : ""}
             {memory.sourceLink && (
               <>
                 {" · "}
                 <a href={memory.sourceLink} target="_blank" rel="noreferrer">
-                  Open record
+                  {ui.settings.memory.openRecord}
                 </a>
               </>
             )}
@@ -228,7 +237,7 @@ function MemoryRow({
               size="sm"
               variant="outline"
             >
-              Edit
+              {ui.settings.memory.edit}
             </Button>
             {memory.reviewState === "unreviewed" && (
               <Button
@@ -236,7 +245,7 @@ function MemoryRow({
                 variant="outline"
                 onClick={() => update({ reviewState: "confirmed" })}
               >
-                Confirm
+                {ui.settings.memory.confirm}
               </Button>
             )}
             <Button
@@ -245,7 +254,7 @@ function MemoryRow({
               disabled={forget.isPending}
               onClick={() => forget.mutate(memory.id)}
             >
-              Forget
+              {ui.settings.memory.forget}
             </Button>
           </div>
         </ItemFooter>
@@ -259,7 +268,7 @@ function MemoryRow({
         <ItemActions>
           {/* Binary and immediate: Bots stop or start using it when switched. */}
           <Switch
-            aria-label={`Use this memory: ${clip(memory.content)}`}
+            aria-label={ui.settings.memory.use(clip(memory.content))}
             checked={memory.enabled}
             disabled={save.isPending}
             onCheckedChange={(enabled) => update({ enabled })}
@@ -310,13 +319,13 @@ function EditMemoryDialog({
     <Dialog onOpenChange={(next) => !next && onClose()} open>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit memory</DialogTitle>
+          <DialogTitle>{ui.settings.memory.editTitle}</DialogTitle>
           <DialogDescription>{memory.provenance}</DialogDescription>
         </DialogHeader>
         <DialogBody className="mt-4">
           <Field>
             <FieldLabel className="sr-only" htmlFor={id}>
-              Memory
+              {ui.settings.memory.fieldLabel}
             </FieldLabel>
             <Textarea
               autoFocus
@@ -335,14 +344,14 @@ function EditMemoryDialog({
         </DialogBody>
         <DialogFooter className="mt-4">
           <Button onClick={onClose} size="sm" variant="outline">
-            Cancel
+            {ui.settings.cancel}
           </Button>
           <Button
             disabled={saving || !content.trim()}
             onClick={() => onSave(content)}
             size="sm"
           >
-            Save
+            {ui.settings.save}
           </Button>
         </DialogFooter>
       </DialogContent>
