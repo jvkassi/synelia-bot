@@ -45,6 +45,8 @@ export function requestLogLine(entry: {
   status: number;
   durationMs: number;
   userId?: string;
+  /** The client went away before the response finished (closed tab, network cut, navigation). */
+  aborted?: boolean;
 }): string {
   const path = loggedPath(entry.path);
   const threadId = threadIdFromPath(path);
@@ -57,6 +59,7 @@ export function requestLogLine(entry: {
     ...(entry.userId ? { userId: entry.userId } : {}),
     ...(threadId ? { threadId } : {}),
     ...(isTestAccount(entry.userId) ? { test: true } : {}),
+    ...(entry.aborted ? { aborted: true } : {}),
   })}\n`;
 }
 
@@ -79,8 +82,14 @@ export function createRequestLog(
   let lastDay = "";
   return async (context, next) => {
     const started = performance.now();
+    // An error that escapes next() would otherwise be logged with the default 200 of an unset
+    // response: it is logged as 500, then rethrown untouched.
+    let thrown = false;
     try {
       await next();
+    } catch (error) {
+      thrown = true;
+      throw error;
     } finally {
       const at = new Date();
       const actor = (context.var as { actor?: { id?: string; email?: string } })
@@ -89,9 +98,10 @@ export function createRequestLog(
         at,
         method: context.req.method,
         path: context.req.path,
-        status: context.res.status,
+        status: thrown ? 500 : context.res.status,
         durationMs: performance.now() - started,
         userId: actor?.id,
+        aborted: context.req.raw.signal?.aborted === true,
       });
       ready ??= mkdir(dir, { recursive: true });
       const today = day(at);

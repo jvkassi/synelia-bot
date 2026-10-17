@@ -90,3 +90,55 @@ test("no logged /api/auth path carries a segment longer than 20 chars (tokens in
     expect(path.split("/").every((segment) => segment.length <= 20)).toBe(true);
   }
 });
+
+test("a thrown error is logged as 500 and a client abort is flagged", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "reqlog-"));
+  const app = new Hono();
+  app.use("/api/*", createRequestLog(dir));
+  app.get("/api/boom", () => {
+    throw new Error("boom");
+  });
+  app.get("/api/slow", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    return new Response("late");
+  });
+  app.onError(() => new Response("handled", { status: 502 }));
+  await app.request("/api/boom");
+  const controller = new AbortController();
+  const slow = app.request(
+    new Request("http://x/api/slow", { signal: controller.signal }),
+  );
+  controller.abort();
+  await slow.catch(() => undefined);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  const [file] = await readdir(dir);
+  const lines = (await readFile(join(dir, file as string), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  const boom = lines.find((line) => line.path === "/api/boom");
+  expect(boom?.status).toBeGreaterThanOrEqual(500);
+  const late = lines.find((line) => line.path === "/api/slow");
+  expect(late?.aborted).toBe(true);
+});
+
+test("an error escaping the app (no onError) is logged as 500, not 200", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "reqlog-"));
+  const middleware = createRequestLog(dir);
+  const context = {
+    req: { method: "GET", path: "/api/x", raw: new Request("http://x/api/x") },
+    res: { status: 200 },
+    var: {},
+  };
+  await expect(
+    middleware(context as never, async () => {
+      throw new Error("escaped");
+    }),
+  ).rejects.toThrow("escaped");
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const [file] = await readdir(dir);
+  const line = JSON.parse(
+    (await readFile(join(dir, file as string), "utf8")).trim(),
+  ) as { status: number };
+  expect(line.status).toBe(500);
+});
