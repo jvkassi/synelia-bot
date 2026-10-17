@@ -325,3 +325,14 @@ Cause supposée : interférence sur la base de test partagée.
 ## Libellé « Alternatif » (prochain déploiement)
 
 Gemini Flash s'affiche « Alternatif » au lieu de « Réflexion » (`modelLabel`, test). **À appliquer au prochain déploiement** dans `/srv/synelia-bot/.env.mastra` : remplacer l'usage `router9:gemini/gemini-3.8-flash@reflexion` par `@alternatif`.
+
+## Passe 7 (local, non déployé)
+
+- **Changement de mot de passe, gate** : `clearMustChangePasswordAfter` (`server/src/auth/index.ts`) passe par `confirmedPasswordChangeUserId`. Le drapeau n'est levé que sur un succès confirmé : le résultat ne doit être ni une Error, ni une Response, ni un statut ≥ 400 ; il doit porter `user.id` ; cet id doit être celui de la session (la nouvelle d'abord). Test négatif sur un vrai Better Auth : avec un mauvais mot de passe temporaire, la requête est refusée, `must_change_password` reste à true et le gate répond toujours 403. Tests unitaires sur toutes les formes d'échec.
+- **Base de test** : `SYNELIA_TEST_DATABASE_URL` passe par le garde upstream `testDatabaseUrlFrom`, qui refuse la base live `openbot`.
+- **LocalIntelligence** : le DDL ne tourne plus qu'une fois par processus et par URL (son `ALTER TABLE … ADD COLUMN IF NOT EXISTS` prend un verrou ACCESS EXCLUSIVE). Ajout de `close()` ; le fichier d'intégration ferme ses pools en `afterAll`.
+- **Accueil pilote** : envoi direct à `synelia-assistant` (`app/src/lib/agents/pilot-recipient.ts`), sans `POST /api/route`. Ce routage était un appel LLM d'environ 3,3 s sur konnect, déclenché parce que le roster compte 2 Bots (`general-assistant` vient du paquet tenant). Hors pilote, rien ne change.
+- **Request log** : une erreur qui sort de `next()` est enregistrée en 500 (et non plus avec le 200 par défaut), et une requête abandonnée par le client porte `aborted: true`.
+- **Nom affiché** : `general-assistant` devient « Assistant général » (`examples/synelia/agents.yaml:15`). Le titre « Everyday Work » (ligne 16) n'a pas été modifié.
+- **Limite de la trace du modèle** : quand la liste des modèles est indisponible au moment de l'enregistrement, le run enregistre l'id choisi par le navigateur (`pickedModel`, `server/src/persistence/postgres-runner.ts:381`), sans le vérifier contre l'allowlist. Mastra a pu répondre avec son modèle par défaut : c'est le modèle demandé qui est enregistré, pas une preuve du modèle qui a répondu.
+- **Script de diff** : `test-baselines/failing-tests.sh` s'arrête au récapitulatif final de bun (`N tests failed:`). Ce récapitulatif répétait les échecs sous le dernier en-tête de fichier, `tests/support/database.test.ts`, d'où des échecs « fantômes » attribués à ce fichier.

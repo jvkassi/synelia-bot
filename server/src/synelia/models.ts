@@ -23,8 +23,11 @@ export function resolveModel(
   list: SyneliaModelList | undefined,
 ): { provider?: string; model?: string } {
   // Synelia fork: the list unreachable at save time (Mastra slow) must not leave the run without a
-  // model. Fall back to the allowlisted id the browser picked (`provider:model`); the default is
-  // unknown here, so nothing is invented when nothing was picked.
+  // model. Fall back to the id the browser picked (`provider:model`, read unvalidated by pickedModel
+  // in persistence/postgres-runner.ts). Trace limitation: without the list this id is NOT checked
+  // against the allowlist, and Mastra may have answered with its default instead (an unknown or
+  // unavailable pick), so the stored model is what was asked for, not proven to be what answered.
+  // The default is unknown here, so nothing is invented when nothing was picked.
   if (!list) return splitModelId(picked);
   const usable = list.models.filter((option) => option.available !== false);
   const option =
