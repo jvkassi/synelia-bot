@@ -1422,7 +1422,11 @@ export function loadConfig(
      */
     singleUser:
       !organizationAuthUrl &&
-      singleUserAllowed(environment, configuredAuthProviders(auth).length > 0),
+      singleUserAllowed(
+        environment,
+        // Synelia fork: password sign-in is an identity provider too.
+        configuredAuthProviders(auth).length > 0 || auth?.password === true,
+      ),
     accessibility: accessibilityEnabled(environment),
     generativeUi: generativeUiEnabled(environment),
     selfHostBanner: selfHostBannerEnabled(environment),
