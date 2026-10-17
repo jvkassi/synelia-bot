@@ -17,6 +17,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { apiUrl } from "@/lib/api-url";
+import { apiFetch } from "@/lib/api-fetch";
 import { client } from "@/lib/client";
 import { ui } from "@/lib/i18n";
 
@@ -243,7 +244,7 @@ function useThreadModels() {
     queryKey: threadModelsKey(threadId),
     enabled: Boolean(threadId) && !running,
     queryFn: async () => {
-      const response = await fetch(
+      const response = await apiFetch(
         apiUrl(
           `/api/synelia/threads/${encodeURIComponent(threadId ?? "")}/models`,
         ),
@@ -280,7 +281,7 @@ function RunModelLabel({ runId }: { runId: string }) {
   const { data } = useQuery({
     queryKey: ["synelia", "answer-model", runId],
     queryFn: async () => {
-      const response = await fetch(
+      const response = await apiFetch(
         apiUrl(`/api/synelia/runs/${encodeURIComponent(runId)}`),
         {
           credentials: "include",
@@ -335,7 +336,7 @@ export function useStoredRunError(
     queryKey: ["synelia", "thread-error", threadId],
     enabled: Boolean(threadId),
     queryFn: async () => {
-      const response = await fetch(
+      const response = await apiFetch(
         apiUrl(`/api/threads/${encodeURIComponent(threadId ?? "")}`),
         { credentials: "include" },
       );

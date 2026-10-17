@@ -1918,8 +1918,10 @@ export function mountCopilotRuntime(
  * `PostgresAgentRunner` through AsyncLocalStorage, and rehydrates a thread from Postgres before the
  * runtime's synchronous thread endpoints read it. Anything but `/info` without a person is a 401,
  * because a thread must belong to somebody.
+ *
+ * Synelia fork: exported for the 401 contract test (tests/synelia-mask-401-sources.test.ts).
  */
-function withRequestUser(
+export function withRequestUser(
   inner: ReturnType<typeof createCopilotHonoHandler>,
   runner: PostgresAgentRunner,
   store: LocalIntelligence,
@@ -1943,7 +1945,11 @@ function withRequestUser(
     }
     if (!user?.id) {
       if (context.req.path.endsWith("/info")) return next();
-      return context.json({ error: "Sign in to use this deployment." }, 401);
+      // Synelia fork: stable reason, as in auth/guards.ts.
+      return context.json(
+        { error: "Sign in to use this deployment.", code: "session_expired" },
+        401,
+      );
     }
     // The role travels too, for admin-only QA options (the hidden test model).
     const role = identifyActor

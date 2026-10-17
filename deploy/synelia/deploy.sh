@@ -9,6 +9,8 @@
 set -euo pipefail
 HOST=${HOST:-konnect}; DIR=/srv/synelia-bot
 cd "$(git rev-parse --show-toplevel)"
+# shellcheck source=served-check.sh
+. deploy/synelia/served-check.sh
 if [ -n "$(git status --porcelain)" ]; then
   echo "refus : arbre git non propre (git status --porcelain non vide). Commitez d'abord." >&2
   exit 1
@@ -53,38 +55,24 @@ ship() { # $1 = commit, run from a clean tree of that commit
   ssh "$HOST" "cd $DIR && docker compose up -d >> tmp/build-$1.log 2>&1 && echo $1 > src/DEPLOYED_COMMIT && echo deployed $1"
 }
 
-# What is SERVED must be the announced commit: the server's own /version.json (inside the container)
-# and, through Traefik with the e2e basic-auth entry, the same JSON plus the <meta> of index.html.
-# Basic credentials go to curl on stdin (-K -), never on a command line or in the output.
-check_served() { # $1 = expected commit; prints what it saw, returns non-zero on any mismatch
-  local want=$1 inside url env_file outside meta ok=0
-  for _ in $(seq 1 12); do
-    inside=$(ssh "$HOST" "cd $DIR && docker compose exec -T server bun -e 'fetch(\"http://127.0.0.1:3001/version.json\").then(r=>r.text()).then(t=>console.log(t))'" 2>/dev/null | tr -d '[:space:]') || inside=""
-    [ -n "$inside" ] && break; sleep 5
-  done
-  echo "version (conteneur) : ${inside:-illisible}"
-  [ "$inside" = "{\"server\":\"$want\",\"front\":\"$want\"}" ] || ok=1
-  env_file=${E2E_ENV:-$(dirname "$E2E")/e2e.env}
-  if [ -r "$env_file" ]; then
-    url=$(sed -n 's/^E2E_URL=//p' "$env_file" | head -1)
-    local basic; basic=$( (sed -n 's/^E2E_BASIC_USER=//p' "$env_file" | head -1; sed -n 's/^E2E_BASIC_PASSWORD=//p' "$env_file" | head -1) | paste -sd: -)
-    outside=$(printf 'user = "%s"\n' "$basic" | curl -sf -K - "$url/version.json" | tr -d '[:space:]') || outside=""
-    meta=$(printf 'user = "%s"\n' "$basic" | curl -sf -K - "$url/" | grep -o 'name="synelia-version" content="[0-9a-f]*"' | sed 's/.*content="//; s/"$//') || meta=""
-    echo "version (Traefik)   : ${outside:-illisible} ; meta index.html : ${meta:-absente}"
-    [ "$outside" = "$inside" ] && [ "$meta" = "$want" ] || ok=1
-  else
-    echo "AVERTISSEMENT : $env_file illisible, vérification Traefik sautée." >&2; ok=1
-  fi
-  return $ok
-}
-
+ENV_FILE=${E2E_ENV:-$(dirname "$E2E")/e2e.env}
+# The running images become :previous BEFORE anything is built, so a bad build can be undone by retag.
+PREV_IMAGE=$(tag_previous)
+echo "image précédente (synelia-bot-server:previous) : ${PREV_IMAGE:-aucune}"
 ship "$COMMIT"
 
-if ! check_served "$COMMIT"; then
-  echo "ÉCHEC : le SHA servi n'est pas $COMMIT (image non reconstruite, ancien conteneur, ou cache). Rien n'est annoncé." >&2
+# After the containers were recreated: what is SERVED must be the announced commit.
+if ! check_served "$COMMIT" "$ENV_FILE"; then
+  echo "ÉCHEC : le SHA servi n'est pas $COMMIT. FENÊTRE ARRÊTÉE : n'annoncez pas ce hash, ne lancez pas de test." >&2
+  if ! migrations_changed "$PREVIOUS" "$COMMIT"; then
+    echo "ROLLBACK AUTOMATIQUE REFUSÉ : des migrations (drizzle/ ou migrations/) ont changé entre ${PREVIOUS:-commit inconnu} et $COMMIT, et le service migrate les a déjà appliquées. Rien n'est remis en arrière ; intervention manuelle sur $HOST." >&2
+    exit 1
+  fi
+  set +e; rollback_previous_image "$PREVIOUS" "$ENV_FILE"; rb=$?; set -e
+  [ $rb = 0 ] || echo "ATTENTION : rollback non vérifié (code $rb), intervention manuelle sur $HOST." >&2
   exit 1
 fi
-echo "servi = $COMMIT (serveur et front)"
+echo "servi = $COMMIT (serveur, front, Traefik, meta)"
 
 if [ -z "${SKIP_GUARD:-}" ]; then
   sleep 10
@@ -95,7 +83,9 @@ if [ -z "${SKIP_GUARD:-}" ]; then
   fi
   if [ $rc != 0 ]; then
     echo "ÉCHEC du garde post-déploiement (e2e ownership gate)." >&2
-    if [ -n "$PREVIOUS" ] && [ "$PREVIOUS" != "$COMMIT" ]; then
+    if [ -n "$PREVIOUS" ] && [ "$PREVIOUS" != "$COMMIT" ] && ! migrations_changed "$PREVIOUS" "$COMMIT"; then
+      echo "ROLLBACK AUTOMATIQUE REFUSÉ : migrations changées entre $PREVIOUS et $COMMIT (déjà appliquées). FENÊTRE ARRÊTÉE, intervention manuelle." >&2
+    elif [ -n "$PREVIOUS" ] && [ "$PREVIOUS" != "$COMMIT" ]; then
       echo "rollback vers $PREVIOUS" >&2
       TMP=$(mktemp -d); git worktree add -q --detach "$TMP" "$PREVIOUS"
       (cd "$TMP" && SKIP_GUARD=1 HOST=$HOST bash -c "$(declare -f ship active_locks); DIR=$DIR; ship $PREVIOUS")

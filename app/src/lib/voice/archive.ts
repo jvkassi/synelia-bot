@@ -1,5 +1,6 @@
 import type { ActivityMessage, Message } from "@ag-ui/core";
 import { apiUrl } from "@/lib/api-url";
+import { apiFetch } from "@/lib/api-fetch";
 import { pilot } from "@/lib/i18n";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { channelKeys } from "@/lib/channels/queries";
@@ -94,7 +95,7 @@ export function saveVoiceSession(
   void (async () => {
     try {
       const payload = JSON.stringify(input);
-      const response = await fetch(apiUrl("/api/voice/sessions"), {
+      const response = await apiFetch(apiUrl("/api/voice/sessions"), {
         method: "POST",
         credentials: "include",
         signal: AbortSignal.timeout(30_000),

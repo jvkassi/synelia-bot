@@ -20,6 +20,7 @@ import { VoiceCallWidget } from "@/components/channels/voice-call-widget";
 import { HandoffResumeNotice } from "@/components/computer/handoff-resume-notice";
 import { agentListQueryOptions } from "@/lib/agents/queries";
 import { apiUrl } from "@/lib/api-url";
+import { apiFetch } from "@/lib/api-fetch";
 import { attachmentUrl } from "@/lib/channels/attachments";
 import {
   recordChannelActivityMutationOptions,
@@ -598,7 +599,7 @@ export function ChannelChat({
   const stopServerRun = () => {
     const runId = threadStatus.activeRunId;
     if (!runId || !channel.threadId) return;
-    void fetch(
+    void apiFetch(
       apiUrl(
         `/api/copilotkit/agent/${encodeURIComponent(agent.agentId ?? "")}/stop/${encodeURIComponent(channel.threadId)}`,
       ),

@@ -1,4 +1,5 @@
 import { apiUrl } from "@/lib/api-url";
+import { apiFetch } from "@/lib/api-fetch";
 import type { ConnectVoice, VoiceEvent } from "./types";
 
 /** WebRTC owns audio buffering and interruption truncation; the data channel carries controls. */
@@ -111,7 +112,7 @@ export const connectWebRtc: ConnectVoice = async ({
     };
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
-    const response = await fetch(apiUrl("/api/voice/calls"), {
+    const response = await apiFetch(apiUrl("/api/voice/calls"), {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json", "x-openbot-voice": "1" },

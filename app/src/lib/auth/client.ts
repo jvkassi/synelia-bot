@@ -1,8 +1,18 @@
 import { ssoClient } from "@better-auth/sso/client";
 import { createAuthClient } from "better-auth/react";
+import { withUnmasking } from "@/lib/unmask-fetch";
 import type { AuthProviderId } from "./queries";
 
-export const authClient = createAuthClient({ plugins: [ssoClient()] });
+/*
+ * Synelia fork: the server masks its 401s as 403 + x-synelia-status: 401 (basic-auth proxy); the
+ * Better Auth client gets the unmasking fetch explicitly, whatever the boot order.
+ */
+export const authClient = createAuthClient({
+  plugins: [ssoClient()],
+  fetchOptions: {
+    customFetchImpl: (input, init) => withUnmasking(fetch)(input, init),
+  },
+});
 
 /** What each provider is called on the button, since none of them are called by their id. */
 const PROVIDER_NAMES: Record<AuthProviderId, string> = {

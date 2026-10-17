@@ -19,6 +19,7 @@ import {
   reduceQueue,
 } from "@/components/channels/composer";
 import { apiUrl } from "@/lib/api-url";
+import { apiFetch } from "@/lib/api-fetch";
 import { attachmentUrl } from "@/lib/channels/attachments";
 import { newId } from "../../lib/new-id";
 
@@ -539,7 +540,7 @@ function releaseStagedAttachment(attachment: Attachment): void {
   if (typeof metadata?.attachmentId !== "string") {
     return;
   }
-  void fetch(apiUrl(attachmentUrl(metadata.attachmentId)), {
+  void apiFetch(apiUrl(attachmentUrl(metadata.attachmentId)), {
     method: "DELETE",
     credentials: "include",
   }).catch(() => undefined);

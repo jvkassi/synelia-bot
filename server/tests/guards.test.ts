@@ -39,6 +39,8 @@ describe("server authorization", () => {
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({
       error: "Authentication required.",
+      // Synelia fork: stable reason (auth/guards.ts).
+      code: "session_expired",
     });
   });
 

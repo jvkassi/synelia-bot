@@ -9,6 +9,7 @@ import { streamPathBotId } from "./computer/stream-path";
 import type { DeploymentConfig } from "./config";
 import type { DemonstrationRecorder } from "./demonstrations/recording";
 import type { DemonstrationStore } from "./demonstrations/store";
+import { maskIf401 } from "./synelia/basic-auth-safe";
 import { withSseHeartbeat } from "./synelia/sse-heartbeat";
 
 /**
@@ -114,7 +115,8 @@ export function startHttpServer(deps: {
         // unauthenticated socket here would be the whole point of the proxy defeated.
         const actor = await resolveRequestActor(request).catch(() => null);
         if (!actor) {
-          return new Response("Sign in first.", { status: 401 });
+          // Synelia fork: masked like every other 401 behind the basic-auth proxy.
+          return maskIf401(new Response("Sign in first.", { status: 401 }));
         }
         // And which Bot, which the guard above does not answer. This socket carries that Bot's screen,
         // so signing in is not enough: without this, anybody signed in watches anybody's Bot work. And

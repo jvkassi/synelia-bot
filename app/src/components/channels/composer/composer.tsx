@@ -28,6 +28,7 @@ import {
 import { attachmentModality } from "@/components/channels/chat-messages";
 import { IconWaveform } from "@/components/icons/waveform";
 import { apiUrl } from "@/lib/api-url";
+import { apiFetch } from "@/lib/api-fetch";
 import {
   attachmentUrl,
   classifyAttachment,
@@ -1676,7 +1677,7 @@ export function Composer({
  * actionable. `cull-staged-attachments.ts` is the backstop for whatever this misses.
  */
 function discardStagedAttachment(attachmentId: string): void {
-  void fetch(apiUrl(attachmentUrl(attachmentId)), {
+  void apiFetch(apiUrl(attachmentUrl(attachmentId)), {
     method: "DELETE",
     credentials: "include",
   }).catch(() => undefined);

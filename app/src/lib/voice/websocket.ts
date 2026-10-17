@@ -1,4 +1,5 @@
 import { apiUrl } from "@/lib/api-url";
+import { apiFetch } from "@/lib/api-fetch";
 import { decodePcm, encodePcm } from "./pcm";
 import type { ConnectVoice, VoiceEvent } from "./types";
 
@@ -118,7 +119,7 @@ export const connectWebSocket: ConnectVoice = async ({
     output = context.createMediaStreamDestination();
     onOutput(output.stream);
 
-    const response = await fetch(apiUrl("/api/voice/calls"), {
+    const response = await apiFetch(apiUrl("/api/voice/calls"), {
       method: "POST",
       credentials: "include",
       signal,

@@ -1,5 +1,6 @@
 import type { AttachmentsConfig } from "@copilotkit/react-core/v2";
 import { apiUrl } from "@/lib/api-url";
+import { apiFetch } from "@/lib/api-fetch";
 import {
   ACCEPTED_IMAGE_MIME,
   ACCEPTED_TEXT_MIME,
@@ -62,7 +63,7 @@ export function uploadToChannel(
      */
     formData.append("uploadGroup", uploadGroup);
 
-    const response = await fetch(
+    const response = await apiFetch(
       apiUrl(`/api/channels/${channelId}/attachments`),
       {
         method: "POST",

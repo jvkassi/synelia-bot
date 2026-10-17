@@ -5,6 +5,7 @@ import {
   MAX_DICTATION_BYTES,
 } from "@openbot/shared/dictation";
 import { apiUrl } from "@/lib/api-url";
+import { apiFetch } from "@/lib/api-fetch";
 
 export interface Recording {
   /** Shared with the visualizer; the recorder owns this stream's lifetime. */
@@ -118,7 +119,7 @@ export async function transcribeRecording(
   }
   const body = new FormData();
   body.set("file", audio, `recording.${extension}`);
-  const response = await fetch(apiUrl("/api/audio/transcriptions"), {
+  const response = await apiFetch(apiUrl("/api/audio/transcriptions"), {
     method: "POST",
     credentials: "include",
     headers: { "x-openbot-dictation": "1" },

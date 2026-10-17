@@ -63,7 +63,12 @@ export function createRequireUser(
     });
 
     if (!session) {
-      return context.json({ error: "Authentication required." }, 401);
+      // Synelia fork: a stable reason, so a browser can tell "signed out" from any other refusal
+      // (behind the basic-auth proxy this 401 leaves as 403 + x-synelia-status: 401).
+      return context.json(
+        { error: "Authentication required.", code: "session_expired" },
+        401,
+      );
     }
 
     const roles = session.user.role

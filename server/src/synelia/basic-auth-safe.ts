@@ -29,21 +29,37 @@ export function mask401Enabled(
   return env.SYNELIA_MASK_401 === "1";
 }
 
+/** The masked form of a 401 (403 + marker, no WWW-Authenticate); any other response unchanged. */
+export function maskIf401(
+  response: Response,
+  enabled: boolean = mask401Enabled(),
+): Response {
+  if (!enabled || response.status !== 401) return response;
+  const headers = new Headers(response.headers);
+  headers.delete("www-authenticate");
+  headers.set(MASKED_STATUS_HEADER, "401");
+  return new Response(response.body, {
+    status: 403,
+    statusText: "Forbidden",
+    headers,
+  });
+}
+
+/**
+ * Outermost Hono middleware. It sees the final response of everything mounted after it: route
+ * handlers, the Better Auth handler, the CopilotKit runtime (run/connect SSE included), and errors
+ * turned into responses by `app.onError` / `HTTPException` (Hono resolves those inside `next()`).
+ * The one 401 written outside Hono, the computer-stream WebSocket upgrade in http-server.ts, goes
+ * through `maskIf401` there.
+ */
 export function createBasicAuthSafe401(
   enabled: boolean = mask401Enabled(),
 ): MiddlewareHandler {
   return async (context, next) => {
     await next();
     if (!enabled || context.res.status !== 401) return;
-    const original = context.res;
-    const headers = new Headers(original.headers);
-    headers.delete("www-authenticate");
-    headers.set(MASKED_STATUS_HEADER, "401");
+    const masked = maskIf401(context.res, true);
     context.res = undefined;
-    context.res = new Response(original.body, {
-      status: 403,
-      statusText: "Forbidden",
-      headers,
-    });
+    context.res = masked;
   };
 }
