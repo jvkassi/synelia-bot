@@ -142,23 +142,119 @@ export function pilotEmptyRead(
 }
 
 /**
- * Non-canonical API paths are refused before any route (pilot only): a double slash, an upper-case
- * `/API`, or a dot segment. Hono matches `/api/*` case-sensitively and literally, so `/API/admin/x`
- * or `//api/admin/x` would skip the `/api/*` gates; the app never builds such URLs.
+ * The request path exactly as it arrived in `request.url`: from the first `/` after the authority to
+ * the first `?` or `#`, NOT percent-decoded. This is the string Hono's `getPath` starts from (it then
+ * decodes `%xx` with decodeURI when it meets one); the query string is ignored here as it is there.
+ *
+ * Bun builds `request.url` with the WHATWG URL parser before any of this runs, so `.` and `..`
+ * segments, `%2e` and `%2e%2e` included, are already resolved (`/api/admin/people/../credentials`
+ * reaches the app as `/api/admin/credentials`). Gate and router both see that resolved path, so
+ * they agree on it; the dot-segment rule below is kept for any runtime that does not resolve them.
  */
-export function isNonCanonicalApiPath(path: string): boolean {
-  const lower = path.toLowerCase();
-  if (!/^\/+api(\/|$)/.test(lower) && !lower.includes("/api/")) return false;
-  if (path.includes("//")) return true;
-  if (!path.startsWith("/api/") && lower.startsWith("/api")) return true;
-  return /(^|\/)\.{1,2}(\/|$)/.test(path);
+export function rawRequestPath(url: string): string {
+  const schemeEnd = url.indexOf("://");
+  const start = schemeEnd === -1 ? 0 : url.indexOf("/", schemeEnd + 3);
+  if (start === -1) return "/";
+  let end = url.length;
+  for (let i = start; i < url.length; i++) {
+    const code = url.charCodeAt(i);
+    if (code === 63 || code === 35) {
+      end = i;
+      break;
+    }
+  }
+  return url.slice(start, end);
+}
+
+/** Decodes each run of well-formed `%xx` escapes; a run that is not valid UTF-8 is left as is. */
+const decodeEscapes = (path: string) =>
+  path.replace(/(?:%[0-9a-fA-F]{2})+/g, (run) => {
+    try {
+      return decodeURIComponent(run);
+    } catch {
+      return run;
+    }
+  });
+
+/**
+ * Where a path really points, whatever games it plays: every `%xx` decoded (up to three rounds, so
+ * `%2563` ends as `c`), each segment cut at its first `;`, empty and `.` segments dropped, `..`
+ * popping the previous one, and the first segment lowered to `api` when it is any casing of it.
+ * Used only to decide whether a request is AIMED at /api; it is never what the router is given.
+ */
+export function apiTarget(raw: string): string {
+  let decoded = raw;
+  for (let round = 0; round < 3 && decoded.includes("%"); round++)
+    decoded = decodeEscapes(decoded);
+  const segments: string[] = [];
+  for (const piece of decoded.split(/[/\\]/)) {
+    const segment = piece.split(";")[0] ?? "";
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      segments.pop();
+      continue;
+    }
+    segments.push(segment);
+  }
+  if (segments[0]?.toLowerCase() === "api") segments[0] = "api";
+  return `/${segments.join("/")}`;
+}
+
+/**
+ * Escapes the canonical form never carries (RFC 3986 section 6.2.2.2: an unreserved character is
+ * always sent as itself, so `%63`, `%2e`, `%61`, `%7E` are a second spelling of a plain character),
+ * plus the ones that change the path's shape or meaning: `%2F` and `%5C` (a separator hidden in a
+ * segment), `%00`, and `%25` (a second round of encoding, `%2563`).
+ */
+const FORBIDDEN_ESCAPE =
+  /%(?:[3][0-9]|[46][1-9a-fA-F]|[57][0-9aA]|2[dDeEfF]|5[fFcC]|7[eE]|00|25)/;
+
+/**
+ * The canonical form of an /api path, the only form the pilot lets reach an /api route (RFC 3986
+ * normalized, never re-encoded):
+ *  - starts with exactly `/api` (lower case) followed by `/` or nothing;
+ *  - no empty segment (`//`, trailing `/`), no `.` or `..` segment;
+ *  - no `;` at all: Hono gives it no meaning, but no pilot route uses it and matrix parameters are
+ *    the classic way to make a gate and a router disagree, so it is refused rather than allowed;
+ *  - every `%` starts a well-formed `%xx`, and none of them is in FORBIDDEN_ESCAPE.
+ * Every other escape is allowed and expected: the front builds ids with encodeURIComponent, so
+ * `%3A`, `%40`, `%20`, `%C3%A9`... are legitimate and reach the route, which decodes its params.
+ */
+export function isCanonicalApiPath(raw: string): boolean {
+  if (raw !== "/api" && !raw.startsWith("/api/")) return false;
+  if (raw.includes(";") || raw.includes("\\")) return false;
+  if (/%(?![0-9a-fA-F]{2})/.test(raw)) return false;
+  if (FORBIDDEN_ESCAPE.test(raw)) return false;
+  return raw
+    .slice(1)
+    .split("/")
+    .every((segment) => segment !== "" && segment !== "." && segment !== "..");
+}
+
+/**
+ * Pilot rule: a request aimed at `/api` (by `apiTarget`) must be in canonical form, or it answers 404.
+ * An allowlist of one form rather than a list of known tricks: whatever encoding, casing, separator
+ * or segment game a request plays, it is not canonical and stops here. Since a canonical path
+ * contains no `%2F`, `%5C`, `%25` or encoded unreserved character, decoding it (Hono's decodeURI,
+ * which leaves reserved escapes such as `%3A` alone) changes no segment boundary and no prefix: the
+ * gates compare the same path, segment for segment, that the router matches.
+ *
+ * Paths outside `/api` (SPA routes, `/assets/*` with Vite's hashed names, `/health`, `/.well-known/*`)
+ * are not judged: no /api handler is reachable from them, and the static server and SPA fallback
+ * answer them as before.
+ */
+export function isNonCanonicalApiPath(raw: string): boolean {
+  const target = apiTarget(raw);
+  if (target !== "/api" && !target.startsWith("/api/")) return false;
+  return !isCanonicalApiPath(raw);
 }
 
 export function createPilotPathGuard(
   enabled = pilotEnabled(),
 ): MiddlewareHandler {
   return async (context, next) => {
-    if (enabled && isNonCanonicalApiPath(context.req.path)) {
+    // From the raw URL, not `c.req.path`: that one is already decoded and would hide `%63`.
+    if (enabled && isNonCanonicalApiPath(rawRequestPath(context.req.raw.url))) {
       console.warn("pilot_blocked non-canonical /api path");
       return context.json({ error: "Not found" }, 404);
     }
@@ -202,7 +298,7 @@ export function createPilotGate(enabled = pilotEnabled()): MiddlewareHandler {
 
 /**
  * PERMANENT RULE (gate item 10): an ALLOWLIST. In the pilot the Bot may only use the in-chat
- * questions and display components below; any other tool the browser offers (agent computer,
+ * questions and display components below, plus report_refusal (audit only); any other tool the browser offers (agent computer,
  * sandboxed UI, anything added upstream later) is removed before the run.
  */
 export const PILOT_ALLOWED_TOOLS: ReadonlySet<string> = new Set([
@@ -221,6 +317,9 @@ export const PILOT_ALLOWED_TOOLS: ReadonlySet<string> = new Set([
   "showQuote",
   "showRecord",
   "showTable",
+  // Self-reported decline (computer-tools.tsx): the browser posts it to /api/agents/:id/declined,
+  // which writes one bot.declined audit row for a Bot the caller may reach. Audit only, no effect.
+  "report_refusal",
 ]);
 
 export function isPilotGatedTool(name: string): boolean {

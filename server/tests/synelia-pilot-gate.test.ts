@@ -44,7 +44,7 @@ test("pilot gate: outside-phase-0 surfaces are 404, chat/threads/models/auth pas
   }
 });
 
-test("gate 10: tools are an allowlist (ask*/show* known names only)", async () => {
+test("gate 10: tools are an allowlist (ask*/show* known names + report_refusal)", async () => {
   const { pilotTools, isPilotGatedTool } = await import(
     "../src/synelia/pilot-gate"
   );
@@ -59,6 +59,7 @@ test("gate 10: tools are an allowlist (ask*/show* known names only)", async () =
     "showTable",
   ].map((name) => ({ name }));
   expect(pilotTools(offered, true)?.map((tool) => tool.name)).toEqual([
+    "report_refusal",
     "askChoice",
     "showTable",
   ]);
@@ -184,19 +185,112 @@ test("pilot: path tricks under /api/admin never reach a handler", async () => {
     "//api/admin/credentials",
     "/api/admin/people/",
     "/API/admin/credentials",
+    "/Api/admin/credentials",
     "/Api/admin/people",
     "/api/admin/%63redentials",
+    "/api/admin/%2563redentials",
+    "/api/admin%2Fcredentials",
+    "/api/%2e%2e/api/admin/credentials",
+    "/api/admin/credentials/",
+    "/api/admin/credentials;x",
+    "/api/admin/people;x",
     "/api/admin/people/../credentials",
     "/api/admin/people/./",
     "/api/admin/people%2f..%2fcredentials",
     "/api//admin/people",
+    "/%61pi/admin/people",
   ]) {
     const response = await app.request(`http://x${path}`);
     expect([path, response.status]).toEqual([path, 404]);
+    expect(await response.text()).not.toBe("HANDLER");
   }
   expect((await app.request("http://x/api/admin/people?search=a")).status).toBe(
     200,
   );
+  // encodeURIComponent ids (front: threads, memory, approvals, agents/declined) reach the handler.
+  for (const path of [
+    "/api/threads/x%3Ay",
+    "/api/memory/a%40b",
+    "/api/threads/caf%C3%A9%20x",
+    "/api/admin/people?q=%2e%2e%2F%63",
+  ]) {
+    const response = await app.request(`http://x${path}`);
+    expect([path, await response.text()]).toEqual([path, "HANDLER"]);
+  }
   expect((await app.request("http://x/assets/app.js")).status).toBe(200);
+  expect((await app.request("http://x/assets/a%20b.js")).status).toBe(200);
+  expect((await app.request("http://x/channel/abc")).status).toBe(200);
   expect((await app.request("http://x/")).status).toBe(200);
+});
+
+test("pilot: canonical /api form (RFC 3986), raw path from the request URL", async () => {
+  const { isCanonicalApiPath, isNonCanonicalApiPath, rawRequestPath } =
+    await import("../src/synelia/pilot-gate");
+  expect(rawRequestPath("http://x:3001/api/a%63?b=%2F#c")).toBe("/api/a%63");
+  expect(rawRequestPath("https://h.example//api/x")).toBe("//api/x");
+  expect(rawRequestPath("http://h")).toBe("/");
+  for (const ok of [
+    "/api",
+    "/api/me",
+    "/api/threads/x%3Ay",
+    "/api/memory/a%40b",
+    "/api/threads/caf%C3%A9",
+    "/api/auth/scim/v2/Users",
+    "/api/approvals/q%20x/decision",
+  ])
+    expect([ok, isCanonicalApiPath(ok)]).toEqual([ok, true]);
+  for (const bad of [
+    "/api/%30",
+    "/api/%41",
+    "/api/%5A",
+    "/api/%7a",
+    "/api/%2D",
+    "/api/%2e",
+    "/api/%5f",
+    "/api/%7E",
+    "/api/a%2Fb",
+    "/api/a%5Cb",
+    "/api/a%00",
+    "/api/a%25",
+    "/api/a%2",
+    "/api/a%zz",
+    "/api/a;b",
+    "/api/a\\b",
+    "/api/",
+    "/api//a",
+    "/api/./a",
+    "/api/../a",
+    "/apix",
+    "/API",
+  ])
+    expect([bad, isCanonicalApiPath(bad)]).toEqual([bad, false]);
+  // Only paths AIMED at /api are judged; the SPA and assets are left alone.
+  expect(isNonCanonicalApiPath("/assets/index-Ab_9-x.js")).toBe(false);
+  expect(isNonCanonicalApiPath("/channel/x%3Ay")).toBe(false);
+  expect(isNonCanonicalApiPath("/apidocs")).toBe(false);
+  expect(isNonCanonicalApiPath("/%41PI/admin")).toBe(true);
+  expect(isNonCanonicalApiPath("/x/..%2Fapi/admin")).toBe(true);
+  expect(isNonCanonicalApiPath("/api\\admin")).toBe(true);
+});
+
+test("pilot: app apiUrl() (credentials page URL) keeps %xx intact through the canonical gate", async () => {
+  const { apiUrl } = await import("../../app/src/lib/api-url");
+  const { createPilotPathGuard } = await import("../src/synelia/pilot-gate");
+  const app = new Hono();
+  app.use("*", createPilotPathGuard(true));
+  app.use("/api/*", createPilotGate(true));
+  app.get("/api/memory/:id", (c) => c.text(`HANDLER ${c.req.param("id")}`));
+  const page = {
+    href: "https://tester:secret@bot.example/channel/x",
+    origin: "https://bot.example",
+  };
+  const url = apiUrl(`/api/memory/${encodeURIComponent("a:b@c é")}`, page);
+  expect(url).toBe("https://bot.example/api/memory/a%3Ab%40c%20%C3%A9");
+  const response = await app.request(url);
+  expect(response.status).toBe(200);
+  expect(await response.text()).toBe("HANDLER a:b@c é");
+  // A non-canonical spelling built the same way still gets the gate's 404.
+  expect(
+    (await app.request(apiUrl("/api/admin/%63redentials", page))).status,
+  ).toBe(404);
 });

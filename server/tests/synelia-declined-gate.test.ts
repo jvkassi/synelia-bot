@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Hono } from "hono";
 import { createAgentRoutes } from "../src/agents/routes";
+import type { AuditEventInput, AuditStore } from "../src/audit";
 import { createPilotGate } from "../src/synelia/pilot-gate";
 
 /**
@@ -17,14 +18,9 @@ test("pilot: POST /api/agents/:id/declined only, ownership checked by the handle
         ? { id: "bot-a", visibility: "private" }
         : undefined,
   };
-  const auditStore = {
-    record: async (event: unknown) => {
-      written.push(event);
-    },
-    append: async (event: unknown) => {
-      written.push(event);
-    },
-    insert: async (event: unknown) => {
+  // Only the real interface (audit.ts `AuditStore`): a rename of `insert` breaks this test.
+  const auditStore: AuditStore = {
+    insert: async (event: AuditEventInput) => {
       written.push(event);
     },
   };
@@ -44,7 +40,7 @@ test("pilot: POST /api/agents/:id/declined only, ownership checked by the handle
         store as never,
         requireUser as never,
         false,
-        auditStore as never,
+        auditStore,
       ),
     );
     return app;
@@ -61,7 +57,12 @@ test("pilot: POST /api/agents/:id/declined only, ownership checked by the handle
   expect(ownStatus).toBeGreaterThanOrEqual(200);
   expect(ownStatus).toBeLessThan(300);
   const afterOwn = written.length;
-  expect(afterOwn).toBeGreaterThan(0);
+  expect(afterOwn).toBe(1);
+  expect(written[0]).toMatchObject({
+    eventType: "bot.declined",
+    targetId: "bot-a",
+    actorUserId: "user-a",
+  });
 
   expect((await post(as("user-b"), "/api/agents/bot-a/declined")).status).toBe(
     404,

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Synelia fork: remove-tester.sh <email> — undo add-tester.sh: env entries (after backup), the
 # basicauth entry, the app account (DELETE FROM users, cascades sessions/accounts) and the secrets
-# file; recreates only the synelia server and checks the other stacks did not move.
+# file; also drops the email from INITIAL_ADMIN_EMAILS (an admin added with --role admin), so a
+# later account with that address is not promoted at sign-in; recreates only the synelia server and
+# checks the other stacks did not move.
 set -euo pipefail
-echo "AVERTISSEMENT : ce script recrée le conteneur server synelia (coupure de quelques secondes pour tous). Fenêtre annoncée uniquement. Un admin ajouté par --role admin reste dans INITIAL_ADMIN_EMAILS (à retirer à la main)."
+echo "AVERTISSEMENT : ce script recrée le conteneur server synelia (coupure de quelques secondes pour tous). Fenêtre annoncée uniquement. L'email est aussi retiré de INITIAL_ADMIN_EMAILS."
 [ $# -eq 1 ] || { echo "usage: $0 <email>" >&2; exit 2; }
 HOST=${HOST:-konnect}
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -21,6 +23,17 @@ for i,l in enumerate(lines):
         lines[i]='BASICAUTH_USERS='+q+','.join(kept)+q
 open(p,'w').write('\n'.join(lines))
 PY
+EMAIL="$EMAIL" python3 - <<'PY'
+import os
+p='.env.server'; lines=open(p).read().split('\n'); e=os.environ['EMAIL']
+for i,l in enumerate(lines):
+    if l.startswith('INITIAL_ADMIN_EMAILS='):
+        v=l.split('=',1)[1].strip().strip('"\'')
+        lines[i]='INITIAL_ADMIN_EMAILS='+','.join(x.strip() for x in v.split(',') if x.strip() and x.strip().lower()!=e)
+open(p,'w').write('\n'.join(lines))
+PY
+if grep '^INITIAL_ADMIN_EMAILS=' .env.server | cut -d= -f2- | tr -d '"'"'"'"' | tr ',' '\n' | tr 'A-Z' 'a-z' | sed 's/^ *//;s/ *$//' | grep -qxF "$EMAIL"; then echo "toujours dans INITIAL_ADMIN_EMAILS" >&2; exit 7; fi
+echo "absent de INITIAL_ADMIN_EMAILS"
 chmod 600 .env .env.server
 n=$(printf "WITH d AS (DELETE FROM users WHERE email = :'email' RETURNING 1) SELECT count(*) FROM d;\n" | psql_q | tr -d '[:space:]')
 echo "comptes supprimés: $n"
