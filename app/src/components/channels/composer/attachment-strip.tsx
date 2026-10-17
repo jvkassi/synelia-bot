@@ -2,6 +2,7 @@ import { IconFile, IconX } from "@tabler/icons-react";
 import { motion, useReducedMotion } from "motion/react";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { ui } from "@/lib/i18n";
 import { EASE_OUT, ENTRANCE_SECONDS } from "@/lib/motion";
 import { Collapse } from "./collapse";
 
@@ -84,7 +85,7 @@ export function AttachmentStrip({
     <Collapse open={occupied}>
       <ul
         aria-hidden={!occupied}
-        aria-label="Attachments"
+        aria-label={ui.composer.attachments}
         className="flex flex-wrap items-start gap-2 pb-3"
       >
         {images.map((image) => (

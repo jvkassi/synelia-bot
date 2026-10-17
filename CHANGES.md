@@ -98,6 +98,7 @@ on konnect behind Traefik + basicauth, with a Mastra Bot answering through OpenR
 - Textes restants en français via `ui.*` : composer, transcript, barre latérale (menu de conversation, pagination, compte), connexion, nouvelle conversation, vue conversation, sélecteur de modèle, bascule de barre latérale, défilement.
 - Erreur réseau brute (« network error », « Failed to fetch ») affichée comme `ui.conversation.networkError` (affichage seulement, transport inchangé).
 - Tests : assertions via `ui.*` ; Explore et `/bot` conditionnés par `pilot.*`.
+- Passe 2 (branche `synelia/phase0-i18n2`) : indicateur d'attente « Le modèle réfléchit… » (`ui.conversation.thinking`, 1:1 et groupe, `role="status"` + `aria-live="polite"`, shimmer existant coupé sous `prefers-reduced-motion`), bouton « Retirer » du message en file, `aria-label` « Pièces jointes » et « Fermer les détails ».
 
 ## Deployment
 | File | Why |

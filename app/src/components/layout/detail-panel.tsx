@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { ui } from "@/lib/i18n";
 import { EASE_OUT } from "@/lib/motion";
 
 /**
@@ -106,7 +107,7 @@ export function DetailPanel({
               </div>
               <div className="flex flex-row gap-1.5">
                 <Button
-                  aria-label="Close details"
+                  aria-label={ui.conversation.closeDetails}
                   onClick={onClose}
                   variant="ghost"
                   size="icon"
