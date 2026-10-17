@@ -305,3 +305,17 @@ Jetons d'entrée : Gemini ~4 250, Claude ~7 620. Claude est plus rapide sur 2 de
 - Hook après `/change-password` : l'id utilisateur est pris de `newSession` (session régénérée par `revokeOtherSessions`), sinon de la session de la requête. Les deux sont présents (vérifié). Test cycle complet sur un vrai Better Auth (adaptateur mémoire) : 403 → change-password → drapeau `false` → `/api/me` 200 avec le **nouveau** cookie. `e2e.sh pwchange` crée un testeur jetable, vérifie 403 puis le cycle complet (ancien cookie 401, nouveau 200), puis le supprime.
 - Modèle par run : si la liste des modèles est injoignable à l'enregistrement, `resolveModel` retombe sur l'id choisi par le navigateur (`provider:model`) au lieu de `{}`. Un re-enregistrement (`ON CONFLICT (run_id)`) n'efface plus provider/model (`COALESCE`). Ce dernier point n'a pas de test SQL local (pas de pgvector sur la machine de test).
 - Le mot de passe initial d'un testeur reste dans `.env.server` (`SYNELIA_TESTER_*_PASSWORD`) après son changement : le bootstrap ne le réutilise jamais pour un compte existant. `remove-tester.sh` l'efface ; nettoyage automatique reporté.
+
+## Tests serveur à isoler (PAS de parité)
+
+Le diff nom par nom contre l'upstream 53a656b (`test-baselines/failing-tests.sh`) laisse 7 tests serveur qui échouent seulement quand toute la suite tourne. Ils passent seuls (14/14 dans le fichier). Bun les attribue à la fois à `tests/synelia-persistence.integration.test.ts` et à `tests/support/database.test.ts`. Ce sont des échecs **à isoler**, explicitement **pas** de la parité avec l'upstream :
+
+- LocalIntelligence locks (gate 1) > acquire with the same runId twice succeeds; another runId gets 409
+- LocalIntelligence locks (gate 1) > renew on a lost lock throws a lock conflict (keepLease stops the turn)
+- boot expires stale locks, row kept, acquire works again > a lock held before boot is expired (interrupted), not deleted; a new run can lock
+- message_ids + per-thread badge map (I) > START and CHUNK ids stored; map has the last assistant message of each run; other user 404
+- runner index follows rename / archive / delete (gate 4) > index updated immediately, not at the next run
+- runner index follows rename / archive / delete (gate 4) > other user: rename/delete answer 404
+- runner index follows rename / archive / delete (gate 4) > title set once from the first run, failed runs and later runs never rewrite it, rename wins
+
+Cause supposée : interférence sur la base de test partagée.
