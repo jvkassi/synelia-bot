@@ -275,12 +275,13 @@ Coupure réseau pendant un run : après 2 reconnexions sans fin de run, la page 
 - Option : déplacer le basicauth dans le serveur (middleware Hono), ce qui rendrait ces refus visibles dans le journal applicatif sans toucher Traefik.
 
 **thread_busy de bout en bout (serveur)**
-- Chemin verrou : le runtime répond son propre 409 `{ "error": "Thread lock denied" }` ; `threadBusyBody` (`copilot.ts`) réécrit tout 409 de `/api/copilotkit/*` en `{ "error": "Thread is busy.", "code": "thread_busy" }`.
 - Chemin en mémoire : le « Thread already running » de l'`InMemoryAgentRunner` partait après le 200 SSE, donc le navigateur recevait un flux vide. `PostgresAgentRunner` émet maintenant `RUN_STARTED` puis `RUN_ERROR` avec `code: "thread_busy"` dans le flux (même schéma que `isAlreadyAnswered`).
 - `toolkit/src/copilotkit/thread-lock.ts` (409 → `null`) est le chemin des hand-offs en arrière-plan (réessai), pas une réponse HTTP au navigateur : laissé tel quel. Test front : Frontend Expert.
 
 **Libellés de modèles** : `label` dans `agent-mastra/src/mastra/synelia-models.ts` (`Rapide` pour Gemini Flash, `Approfondi` pour Claude Sonnet, sinon l'usage configuré ; jamais le fournisseur) ; transmis par `/api/synelia/models`, ajouté à `/api/synelia/runs/:id` et `/api/synelia/threads/:id/models`. Le sélecteur et le pied de réponse l'affichent quand il est présent (style : Frontend Expert).
 
 **Pilot gate** : `/api/identity`, `/api/passwords`, `/api/sign-in-requests` retirés de `PILOT_ALLOWED_PREFIXES` (comptes connectés, mots de passe/identifiants ; aucun des 15 outils autorisés ne les appelle, `sign-in-tool.tsx` n'est pas dans la liste). `/api/approvals` reste ouvert pour les décisions en cours de run (`/decision`, `/questions/*/respond`, `/computer/*`) ; seuls `/api/approvals/rules`, `/preferences` et `/team` sont fermés. La galerie de composants (`/api/components`) était déjà fermée. `e2e.sh gate` : ces routes répondent 404, et `POST /api/approvals/:id/decision` ne reçoit pas le 404 du pilot gate.
+
+**Gemini Flash (« Rapide »)** : `reasoning_effort: "low"` ajouté au corps envoyé à 9router (`requestExtras`/`withRequestExtras`, `agent-mastra/src/mastra/synelia-models.ts`, test sur le corps sortant). Mesuré sur konnect : premier jeton ~3,6 s → ~1,5 s sur un prompt génératif ; `minimal`/`none` répondent 400. claude-sonnet reste un choix, pas le défaut.
 
 **Mesures de latence** : `run_timing` dans `requests-*.jsonl` (et `synelia_timing` sur stdout) par run, nombres et ids seulement : `routeMs`, `prepMs`, `firstEventMs`, `firstTextMs`, `sinceArrivalFirstTextMs`, `totalMs`, `tools`, `messages`, `contextBytes`, `inputBytes`. Côté Mastra, `synelia_timing {kind:"provider_call"}` : `sinceAgentRequestMs`, `headersMs`, `firstChunkMs`, `requestBytes`.

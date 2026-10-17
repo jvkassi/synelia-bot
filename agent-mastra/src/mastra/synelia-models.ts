@@ -169,6 +169,38 @@ export function syneliaProviders(): Map<string, Provider> {
   return providers;
 }
 
+/**
+ * Extra Chat Completions fields per model. Gemini Flash ('Rapide') thinks before its first token,
+ * and 9router only answers once that token exists: `reasoning_effort: "low"` cut it from ~3.6 s to
+ * ~1.5 s on a generative prompt (curl on konnect, 2026-10-17). "minimal"/"none" answer 400.
+ */
+export function requestExtras(
+  provider: string,
+  model: string,
+): Record<string, unknown> {
+  return provider === "router9" && /gemini.*flash/i.test(model)
+    ? { reasoning_effort: "low" }
+    : {};
+}
+
+/** Merges `extras` into a JSON request body (never overrides a field the SDK already set). */
+export function withRequestExtras(
+  inner: typeof fetch,
+  extras: Record<string, unknown>,
+): typeof fetch {
+  if (Object.keys(extras).length === 0) return inner;
+  const wrapped = async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (typeof init?.body === "string") {
+      try {
+        const body = JSON.parse(init.body) as Record<string, unknown>;
+        init = { ...init, body: JSON.stringify({ ...extras, ...body }) };
+      } catch {}
+    }
+    return inner(input, init);
+  };
+  return wrapped as typeof fetch;
+}
+
 /** 'Rapide' for Gemini Flash, 'Approfondi' for Claude Sonnet, else the configured usage. */
 export function modelLabel(model: string, usage: string): string {
   if (/flash/i.test(model)) return "Rapide";
@@ -299,7 +331,13 @@ export function resolveSyneliaModel(picked: string | undefined) {
     baseURL: provider.baseURL,
     apiKey: provider.apiKey,
     name: provider.id,
-    fetch: timedFetch(provider.id, provider.fetch ?? fetch),
+    fetch: timedFetch(
+      provider.id,
+      withRequestExtras(
+        provider.fetch ?? fetch,
+        requestExtras(option.provider, option.model),
+      ),
+    ),
   }).chat(option.model);
   cache.set(option.id, model);
   return model;

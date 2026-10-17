@@ -22,7 +22,6 @@ import { HeadlessToolsMiddleware } from "@openbot/toolkit/headless-tools";
 import { sanitizeSeededHistory } from "@openbot/toolkit/history-sanitize";
 import { executeNativeApprovalTool } from "@openbot/toolkit/native-approval";
 import { historyOrEmpty } from "@openbot/toolkit/thread-history";
-import type { MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { defer, from, switchMap } from "rxjs";
 import { z } from "zod";
@@ -1934,7 +1933,6 @@ function withRequestUser(
     `^${prefix}/threads/([^/]+)/(messages|events|state)$`,
   );
   const threadMutation = new RegExp(`^${prefix}/threads/([^/]+)(/archive)?$`);
-  wrapper.use(`${basePath}/*`, threadBusyBody);
   wrapper.use(`${basePath}/*`, async (context, next) => {
     const arrivedAt = performance.now();
     let user: { id: string; name: string } | undefined;
@@ -2011,17 +2009,3 @@ function withRequestUser(
   wrapper.route("/", inner);
   return wrapper;
 }
-
-/**
- * Synelia fork: every 409 the runtime answers on a run (the lock path's `{ error: "Thread lock
- * denied" }`) leaves with the machine-readable body the app reads (stream-reattach.ts).
- */
-export const THREAD_BUSY_BODY = {
-  error: "Thread is busy.",
-  code: "thread_busy",
-} as const;
-export const threadBusyBody: MiddlewareHandler = async (context, next) => {
-  await next();
-  if (context.res.status === 409)
-    context.res = Response.json(THREAD_BUSY_BODY, { status: 409 });
-};

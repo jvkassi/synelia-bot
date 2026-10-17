@@ -25,10 +25,9 @@ class LocalIntelligenceError extends Error {
     message: string,
     readonly status: number,
     /**
-     * Synelia fork: machine-readable reason, e.g. `thread_busy`. NOT written to the HTTP body by
-     * itself: the runtime answers its own `{ error: "Thread lock denied" }` 409, which
-     * `threadBusyBody` (copilot.ts) rewrites; the in-memory refusal becomes a RUN_ERROR with the
-     * same code (postgres-runner.ts `threadBusyEvents`).
+     * Synelia fork: machine-readable reason, e.g. `thread_busy`. Not written to any HTTP body:
+     * the browser gets `thread_busy` as a RUN_ERROR from the in-memory refusal
+     * (postgres-runner.ts `threadBusyEvents`).
      */
     readonly code?: string,
   ) {
