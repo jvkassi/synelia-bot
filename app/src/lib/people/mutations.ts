@@ -1,8 +1,10 @@
 import { mutationOptions, type QueryClient } from "@tanstack/react-query";
 import { client } from "@/lib/client";
+import { ui } from "@/lib/i18n";
 import { type Person, peopleKeys } from "./queries";
 
-const FALLBACK = "Could not update that person";
+// Synelia fork: French.
+const FALLBACK = ui.adminArea.people.updateFailed;
 
 function invalidatePeople(queryClient: QueryClient) {
   return queryClient.invalidateQueries({ queryKey: peopleKeys.all });

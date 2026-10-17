@@ -25,6 +25,7 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
+import { pilot, ui } from "@/lib/i18n";
 
 const appLinkOptions = { to: "/" } satisfies LinkOptions;
 const adminLinkOptions = { to: "/admin" } satisfies LinkOptions;
@@ -42,85 +43,97 @@ const GROUPS: {
     icon: React.ComponentType<{ className?: string }>;
     linkOptions: LinkOptions;
     title: string;
+    /** Synelia fork: the only entries left in the pilot (every other admin API is closed). */
+    inPilot?: true;
   }[];
 }[] = [
   {
-    label: "What Bots can reach",
+    label: ui.adminArea.groups.reach,
     items: [
       {
-        title: "Credentials",
+        title: ui.adminArea.nav.credentials,
         icon: IconKey,
         linkOptions: { to: "/admin/credentials" },
       },
       {
-        title: "Boundaries",
+        title: ui.adminArea.nav.boundaries,
         icon: IconShieldCheck,
         linkOptions: { to: "/admin/boundaries" },
       },
       {
-        title: "Approvals",
+        title: ui.adminArea.nav.approvals,
         icon: IconChecks,
         linkOptions: { to: "/admin/approvals" },
       },
       {
-        title: "Computers",
+        title: ui.adminArea.nav.computers,
         icon: IconDeviceDesktop,
         linkOptions: { to: "/admin/computers" },
       },
     ],
   },
   {
-    label: "What Bots can do",
+    label: ui.adminArea.groups.do,
     items: [
       {
-        title: "Plugins",
+        title: ui.adminArea.nav.plugins,
         icon: IconPuzzle,
         linkOptions: { to: "/admin/plugins" },
       },
       {
-        title: "Skills",
+        title: ui.adminArea.nav.skills,
         icon: IconFileText,
         linkOptions: { to: "/admin/skills" },
       },
       // Synelia fork: Automatic Learning needs CopilotKit Intelligence; not linked here.
       {
-        title: "UI Components",
+        title: ui.adminArea.nav.components,
         icon: IconLayoutGrid,
         linkOptions: { to: "/admin/components" },
       },
       {
-        title: "Playground",
+        title: ui.adminArea.nav.playground,
         icon: IconCode,
         linkOptions: { to: "/admin/playground" },
       },
     ],
   },
   {
-    label: "Who can get in",
+    label: ui.adminArea.groups.access,
     items: [
       {
-        title: "People",
+        title: ui.adminArea.nav.people,
         icon: IconUsers,
         linkOptions: { to: "/admin/people" },
+        inPilot: true,
       },
       {
-        title: "Identity providers",
+        title: ui.adminArea.nav.identityProviders,
         icon: IconBuildingBank,
         linkOptions: { to: "/admin/identity-providers" },
       },
     ],
   },
   {
-    label: "What happened",
+    label: ui.adminArea.groups.happened,
     items: [
       {
-        title: "Audit",
+        title: ui.adminArea.nav.audit,
         icon: IconListDetails,
         linkOptions: { to: "/admin/audit" },
       },
     ],
   },
 ];
+
+/** Synelia fork: in the pilot, only the `inPilot` entries, and no group left empty. */
+function visibleGroups() {
+  if (!pilot.hideAdminExtras) return GROUPS;
+  return GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => item.inPilot),
+  })).filter((group) => group.items.length > 0);
+}
 
 export function AdminSidebar({
   ...props
@@ -143,7 +156,7 @@ export function AdminSidebar({
               render={(props) => (
                 <Link {...appLinkOptions} {...props}>
                   <IconArrowLeft className="mr-2 h-4 w-4" />
-                  Back to app
+                  {ui.adminArea.backToApp}
                 </Link>
               )}
             />
@@ -151,29 +164,32 @@ export function AdminSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              {/*
-               * `activeOptions.exact`, because /admin is a prefix of every other route here and
-               * would otherwise light up on all of them.
-               */}
-              <SidebarMenuButton
-                render={(props) => (
-                  <Link
-                    {...adminLinkOptions}
-                    activeOptions={{ exact: true }}
-                    activeProps={{ className: "bg-foreground/5" }}
-                    {...props}
-                  >
-                    Overview
-                  </Link>
-                )}
-              />
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
-        {GROUPS.map((group) => (
+        {/* Synelia fork: /admin itself lands on People in the pilot, so no Overview there. */}
+        {pilot.hideAdminExtras ? null : (
+          <SidebarGroup>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                {/*
+                 * `activeOptions.exact`, because /admin is a prefix of every other route here and
+                 * would otherwise light up on all of them.
+                 */}
+                <SidebarMenuButton
+                  render={(props) => (
+                    <Link
+                      {...adminLinkOptions}
+                      activeOptions={{ exact: true }}
+                      activeProps={{ className: "bg-foreground/5" }}
+                      {...props}
+                    >
+                      {ui.adminArea.overview}
+                    </Link>
+                  )}
+                />
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+        )}
+        {visibleGroups().map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
             <SidebarMenu className="gap-px">

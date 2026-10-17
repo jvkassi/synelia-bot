@@ -23,6 +23,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { currentUserQueryOptions } from "@/lib/auth/queries";
 import { terminateMemberComputersMutationOptions } from "@/lib/enterprise/mutations";
+import { pilot, ui } from "@/lib/i18n";
 import {
   setPersonAccessMutationOptions,
   setPersonRoleMutationOptions,
@@ -51,16 +52,33 @@ function describe(person: Person): string {
   const providers = person.providers
     .map((provider) => PROVIDER_NAMES[provider] ?? provider)
     .join(", ");
+  const t = ui.adminArea.people;
   const when = person.lastSignedInAt
-    ? `last signed in ${new Date(person.lastSignedInAt).toLocaleDateString()}`
-    : "never signed in";
+    ? t.lastSignedIn(
+        new Date(person.lastSignedInAt).toLocaleDateString("fr-FR"),
+      )
+    : t.neverSignedIn;
 
   if (person.revoked)
-    return `Access removed · ${providers || "no provider"} · ${when}`;
+    return `${t.accessRemoved} · ${providers || t.noProvider} · ${when}`;
   if (person.configuredAdmin) {
-    return `Administrator by configuration · ${when}`;
+    return `${t.adminByConfiguration} · ${when}`;
   }
-  return `${providers || "no provider"} · ${when}`;
+  return `${providers || t.noProvider} · ${when}`;
+}
+
+/** Synelia fork: the visible note a pilot-disabled control points at (aria-describedby). */
+const EDIT_DISABLED_NOTE = "people-edit-disabled-note";
+
+/**
+ * Synelia fork: the sentence for a failed role/access change. The pilot server answers 404 to a
+ * route it has not opened, which would otherwise read « Not found ».
+ */
+function failureMessage(error: Error): string {
+  const status = (error as { status?: unknown }).status;
+  if (pilot.hideAdminExtras && status === 404)
+    return ui.adminArea.people.pilotUnavailable;
+  return error.message;
 }
 
 function PeoplePage() {
@@ -86,29 +104,32 @@ function PeoplePage() {
   // The server refuses these too. Disabling them here is so the screen does not offer something it
   // knows will be refused, not so the rule is enforced in the browser.
   const failure = setRole.error ?? setAccess.error ?? terminate.error;
+  const t = ui.adminArea.people;
+  // Synelia fork: the pilot is read-only for admin until the server opens these routes.
+  const roleEnabled = pilot.adminPeopleRoleEnabled;
+  const accessEnabled = pilot.adminPeopleAccessEnabled;
+  const editNote =
+    roleEnabled && accessEnabled ? undefined : EDIT_DISABLED_NOTE;
 
   return (
-    <PageShell
-      description="Everybody who has signed in. Administrators reach these screens; everybody else talks to Bots."
-      title="People"
-    >
-      <PageSection
-        description="An address named in INITIAL_ADMIN_EMAILS is an administrator whatever this screen says, so it cannot be changed here."
-        title="Who is here"
-      >
+    <PageShell description={t.description} title={t.title}>
+      <PageSection description={t.sectionDescription} title={t.sectionTitle}>
+        {editNote ? (
+          <p className="mt-4 text-muted-foreground text-sm" id={editNote}>
+            {t.editDisabledInPilot}
+          </p>
+        ) : null}
         {failure ? (
           <p className="mt-4 text-destructive text-sm" role="alert">
-            {failure.message}
+            {failureMessage(failure)}
           </p>
         ) : null}
         {terminate.data ? (
           <p className="mt-4 text-muted-foreground text-sm" role="status">
-            Stopped {terminate.data.stopped.length}{" "}
-            {terminate.data.stopped.length === 1 ? "computer" : "computers"}
-            {terminate.data.failed.length > 0
-              ? `; ${terminate.data.failed.length} could not be stopped`
-              : ""}
-            . Their disks are kept.
+            {t.stopped(
+              terminate.data.stopped.length,
+              terminate.data.failed.length,
+            )}
           </p>
         ) : null}
         {/*
@@ -116,23 +137,19 @@ function PeoplePage() {
           is the opposite of what somebody looking for a colleague needs.
         */}
         <Input
-          aria-label="Search people"
+          aria-label={t.searchLabel}
           className="mt-4"
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search by name or address"
+          placeholder={t.searchPlaceholder}
           value={search}
         />
 
         {people.isPending ? null : people.error ? (
           <p className="mt-4 text-destructive text-sm" role="alert">
-            Could not load people.
+            {t.loadFailed}
           </p>
         ) : rows.length === 0 ? (
-          <PageEmpty>
-            {query
-              ? `Nobody here matches "${query}".`
-              : "Nobody has signed in yet. People appear here once they do."}
-          </PageEmpty>
+          <PageEmpty>{query ? t.noMatch(query) : t.empty}</PageEmpty>
         ) : (
           <PageRows>
             {rows.map((person, index) => {
@@ -164,16 +181,25 @@ function PeoplePage() {
                        * second switch: two switches on one row invites somebody to flip the wrong
                        * one, and these two do very different things.
                        */}
+                      {/* Synelia fork: no computers in the pilot (its API answers 404). */}
+                      {pilot.hideComputerControls ? null : (
+                        <Button
+                          disabled={terminate.isPending}
+                          onClick={() => terminate.mutate(person.id)}
+                          size="sm"
+                          variant="outline"
+                        >
+                          {t.stopComputers}
+                        </Button>
+                      )}
                       <Button
-                        disabled={terminate.isPending}
-                        onClick={() => terminate.mutate(person.id)}
-                        size="sm"
-                        variant="outline"
-                      >
-                        Stop computers
-                      </Button>
-                      <Button
-                        disabled={busy || isSelf || person.configuredAdmin}
+                        aria-describedby={accessEnabled ? undefined : editNote}
+                        disabled={
+                          !accessEnabled ||
+                          busy ||
+                          isSelf ||
+                          person.configuredAdmin
+                        }
                         onClick={() =>
                           setAccess.mutate({
                             userId: person.id,
@@ -183,12 +209,18 @@ function PeoplePage() {
                         size="sm"
                         variant={person.revoked ? "outline" : "destructive"}
                       >
-                        {person.revoked ? "Restore" : "Remove"}
+                        {person.revoked ? t.restore : t.remove}
                       </Button>
                       <Switch
-                        aria-label={`Administrator: ${person.email}`}
+                        aria-describedby={roleEnabled ? undefined : editNote}
+                        aria-label={t.administrator(person.email)}
                         checked={person.role === "admin"}
-                        disabled={busy || person.configuredAdmin || isSelf}
+                        disabled={
+                          !roleEnabled ||
+                          busy ||
+                          person.configuredAdmin ||
+                          isSelf
+                        }
                         onCheckedChange={(checked) =>
                           setRole.mutate({
                             userId: person.id,
@@ -217,7 +249,7 @@ function PeoplePage() {
             size="sm"
             variant="outline"
           >
-            {people.isFetchingNextPage ? "Loading…" : "Show more"}
+            {people.isFetchingNextPage ? t.loading : t.showMore}
           </Button>
         ) : null}
       </PageSection>
