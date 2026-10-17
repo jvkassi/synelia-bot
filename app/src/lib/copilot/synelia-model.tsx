@@ -16,8 +16,8 @@ import {
   useRef,
   useSyncExternalStore,
 } from "react";
-import { apiUrl } from "@/lib/api-url";
 import { apiFetch } from "@/lib/api-fetch";
+import { apiUrl } from "@/lib/api-url";
 import { client } from "@/lib/client";
 import { codedReason, withRetryable } from "@/lib/copilot/stop-notice";
 import { ui } from "@/lib/i18n";
@@ -332,7 +332,12 @@ export const syneliaRunModelRenderer = {
 export function useStoredRunError(
   threadId: string | undefined,
   endsOnUserMessage: boolean,
-): { error: string | null; activeRunId: string | null; interrupted: boolean } {
+): {
+  error: string | null;
+  activeRunId: string | null;
+  interrupted: boolean;
+  known: boolean | undefined;
+} {
   const { data } = useQuery({
     queryKey: ["synelia", "thread-error", threadId],
     enabled: Boolean(threadId),
@@ -341,8 +346,9 @@ export function useStoredRunError(
         apiUrl(`/api/threads/${encodeURIComponent(threadId ?? "")}`),
         { credentials: "include" },
       );
-      if (!response.ok) return null;
+      if (!response.ok) return { known: false } as ThreadStatusBody;
       return (await response.json()) as {
+        known?: boolean;
         lastError?: {
           message?: string | null;
           code?: string | null;
@@ -361,6 +367,8 @@ export function useStoredRunError(
 }
 
 export type ThreadStatusBody = {
+  /** Synelia fork: `false` when the server has no such thread/run; absent on older servers. */
+  known?: boolean;
   /** `code`: a stable server code (stop-notice.ts), read before the message when present. */
   /** `retryable: false`: the failed run had a side-effect tool, no « Réessayer » (stop-notice.ts). */
   lastError?: {
@@ -382,9 +390,22 @@ export type ThreadStatusBody = {
 export function threadStatusView(
   data: ThreadStatusBody | undefined,
   endsOnUserMessage: boolean,
-): { error: string | null; activeRunId: string | null; interrupted: boolean } {
+): {
+  error: string | null;
+  activeRunId: string | null;
+  interrupted: boolean;
+  known: boolean | undefined;
+} {
   const activeRunId = data?.activeRunId ?? null;
   return {
+    // `undefined` while loading (no data yet); the server's `known`, or — on an older server that
+    // omits it — true whenever the thread status came back at all (a 404 set `{ known: false }`).
+    known:
+      data === undefined
+        ? undefined
+        : typeof data.known === "boolean"
+          ? data.known
+          : true,
     error: endsOnUserMessage
       ? withRetryable(
           codedReason(data?.lastError?.code, data?.lastError?.message),

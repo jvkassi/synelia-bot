@@ -14,6 +14,7 @@ import {
   readThreadMessages,
   type StoredThread,
 } from "../src/lib/copilot/thread-messages";
+import { ui } from "../src/lib/i18n";
 
 function HistoryNoticeProbe({
   lastMessageAt,
@@ -160,5 +161,97 @@ describe("channel history notice", () => {
         historyReadFailed: true,
       }),
     ).toContain("temporarily unavailable");
+  });
+
+  test("reopened, server has no such thread and nothing loaded: the last message was not sent — restorable variant", () => {
+    expect(
+      channelHistoryNotice({
+        restoring: false,
+        messageCount: 0,
+        lastMessageAt: "2026-09-08T12:00:00.000Z",
+        historyAvailability: "ready",
+        unreadable: 0,
+        known: false,
+        lastMessageRestorable: true,
+      }),
+    ).toBe(ui.conversation.notSentReopenRestored);
+  });
+
+  test("reopened not-sent, not restorable: the « Renvoyez-le » variant", () => {
+    expect(
+      channelHistoryNotice({
+        restoring: false,
+        messageCount: 0,
+        lastMessageAt: "2026-09-08T12:00:00.000Z",
+        historyAvailability: "ready",
+        unreadable: 0,
+        known: false,
+      }),
+    ).toBe(ui.conversation.notSentReopenPlain);
+  });
+
+  test("history unreachable wins over not-sent: we cannot claim it was not sent when we cannot read", () => {
+    expect(
+      channelHistoryNotice({
+        restoring: false,
+        messageCount: 0,
+        lastMessageAt: "2026-09-08T12:00:00.000Z",
+        historyAvailability: "unavailable",
+        unreadable: 0,
+        known: false,
+      }),
+    ).toContain("temporarily unavailable");
+  });
+
+  test("thread known to the server: no not-sent notice", () => {
+    expect(
+      channelHistoryNotice({
+        restoring: false,
+        messageCount: 0,
+        lastMessageAt: "2026-09-08T12:00:00.000Z",
+        historyAvailability: "ready",
+        unreadable: 0,
+        known: true,
+      }),
+    ).toBeNull();
+  });
+
+  test("status still loading (known undefined): no not-sent notice", () => {
+    expect(
+      channelHistoryNotice({
+        restoring: false,
+        messageCount: 0,
+        lastMessageAt: "2026-09-08T12:00:00.000Z",
+        historyAvailability: "ready",
+        unreadable: 0,
+        known: undefined,
+      }),
+    ).toBeNull();
+  });
+
+  test("messages did load (it was sent): no not-sent notice even if known false", () => {
+    expect(
+      channelHistoryNotice({
+        restoring: false,
+        messageCount: 2,
+        lastMessageAt: "2026-09-08T12:00:00.000Z",
+        historyAvailability: "ready",
+        unreadable: 0,
+        known: false,
+      }),
+    ).toBeNull();
+  });
+
+  test("never used (lastMessageAt null): no not-sent notice", () => {
+    expect(
+      channelHistoryNotice({
+        restoring: false,
+        messageCount: 0,
+        lastMessageAt: null,
+        historyAvailability: "ready",
+        unreadable: 0,
+        known: false,
+      }),
+    ).toBeNull();
   });
 });

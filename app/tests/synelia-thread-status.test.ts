@@ -21,6 +21,8 @@ test("idle normal thread (no run, nothing lost): no interrupted banner, whoever 
       error: null,
       activeRunId: null,
       interrupted: false,
+      // Present data with no explicit `known` field = the thread is known (older-server shape).
+      known: true,
     });
   }
 });
@@ -103,4 +105,17 @@ test("lost run: « Réponse interrompue » never drawn while a turn sent from th
   expect(showInterrupted({ ...idle, localRunning: true })).toBe(false);
   expect(showInterrupted({ ...idle, sentHere: true })).toBe(false);
   expect(showInterrupted({ ...idle, interrupted: false })).toBe(false);
+});
+
+test("threadStatusView.known: undefined while loading, false on a 404-shaped body, true when present", () => {
+  // No data yet (query loading).
+  expect(threadStatusView(undefined, false).known).toBeUndefined();
+  // The 404 branch in useStoredRunError stores { known: false }.
+  expect(threadStatusView({ known: false }, false).known).toBe(false);
+  // Server returned the status explicitly known.
+  expect(
+    threadStatusView({ known: true, activeRunId: null }, false).known,
+  ).toBe(true);
+  // Older server that omits `known`: present data means the thread is known.
+  expect(threadStatusView({ activeRunId: "r1" }, false).known).toBe(true);
 });

@@ -120,6 +120,8 @@ export function channelHistoryNotice({
   historyAvailability,
   historyReadFailed = false,
   unreadable,
+  known,
+  lastMessageRestorable = false,
 }: {
   restoring: boolean;
   messageCount: number;
@@ -127,6 +129,13 @@ export function channelHistoryNotice({
   historyAvailability: "ready" | "unavailable";
   historyReadFailed?: boolean;
   unreadable: number;
+  /**
+   * Synelia fork: whether the server knows this thread (GET /api/threads/:id). `false` only when the
+   * server answered that it has no such thread/run; `undefined` while the status is still loading.
+   */
+  known?: boolean;
+  /** Synelia fork: the unsent last message is the person's own, untruncated, and back in the composer. */
+  lastMessageRestorable?: boolean;
 }): string | null {
   if (restoring) return null;
 
@@ -135,6 +144,19 @@ export function channelHistoryNotice({
     (historyReadFailed || (messageCount === 0 && lastMessageAt !== null))
   ) {
     return "Earlier messages are temporarily unavailable. You can keep using this conversation.";
+  }
+
+  /*
+   * Synelia fork: the roster says something was last said here (`lastMessageAt`), history IS
+   * reachable (the branch above did not fire), yet the server has no record of this thread
+   * (`known === false`) and nothing loaded (`messageCount === 0`). The last message the person typed
+   * never reached the server — it was not sent. Said in French; « revenu dans la zone de saisie »
+   * only when the message is restorable (the person's own, untruncated, put back in the composer).
+   */
+  if (known === false && messageCount === 0 && lastMessageAt !== null) {
+    return lastMessageRestorable
+      ? ui.conversation.notSentReopenRestored
+      : ui.conversation.notSentReopenPlain;
   }
 
   if (unreadable > 0) {
@@ -552,14 +574,6 @@ export function ChannelChat({
   useActiveBot(runtimeAgentId);
 
   const skillCommands = useSkillCommands(runtimeAgentId);
-  const historyNotice = channelHistoryNotice({
-    restoring,
-    messageCount: agent.messages.length,
-    lastMessageAt: channel.lastMessageAt,
-    historyAvailability,
-    historyReadFailed,
-    unreadable,
-  });
 
   // Run failures arrive as events and are reported only for turns started in this mount.
   const [runError, setRunError] = useState<string | null>(null);
@@ -571,6 +585,18 @@ export function ChannelChat({
     channel.threadId ?? undefined,
     !agent.isRunning && lastMessage?.role === "user",
   );
+  const historyNotice = channelHistoryNotice({
+    restoring,
+    messageCount: agent.messages.length,
+    lastMessageAt: channel.lastMessageAt,
+    historyAvailability,
+    historyReadFailed,
+    unreadable,
+    known: threadStatus.known,
+    // The composer prefill on reopen is a follow-up; until it lands the honest notice is
+    // « Renvoyez-le », so this stays false even when the last message is the person's own.
+    lastMessageRestorable: false,
+  });
   /*
    * Synelia fork (2a minimal): after a reload mid-run the server is still writing the turn. Say so,
    * and once the run is over replay the thread once so the stored answer appears without F5.
