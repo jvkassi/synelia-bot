@@ -11,6 +11,7 @@ import {
   providerName,
   signInWith,
   signInWithEmailDomain,
+  authClient,
 } from "@/lib/auth/client";
 import { appConfig } from "@/lib/generated/application-config";
 import {
@@ -48,6 +49,31 @@ function SignScreen() {
   const { data: options } = useQuery(authProvidersQueryOptions());
   const providers = options?.providers ?? [];
   const [email, setEmail] = useState("");
+  // Synelia fork: email/password sign-in for operator-created accounts.
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [signingIn, setSigningIn] = useState(false);
+
+  async function handlePasswordSignIn(submission: React.FormEvent) {
+    submission.preventDefault();
+    setError(null);
+    setSigningIn(true);
+    try {
+      const result = await authClient.signIn.email({
+        email: loginEmail.trim(),
+        password: loginPassword,
+      });
+      if (result.error) {
+        setError("Adresse ou mot de passe incorrect.");
+        return;
+      }
+      window.location.assign("/");
+    } catch {
+      setError("Connexion impossible pour le moment.");
+    } finally {
+      setSigningIn(false);
+    }
+  }
 
   /**
    * Sign in through whichever identity provider covers this address.
@@ -166,9 +192,32 @@ function SignScreen() {
               Your organization requires single sign-on.
             </p>
           ) : null}
+          {options?.passwordLogin ? (
+            <form className="mb-3 flex flex-col gap-2" onSubmit={handlePasswordSignIn}>
+              <Input
+                autoComplete="username"
+                onChange={(event) => setLoginEmail(event.target.value)}
+                placeholder="Adresse e-mail"
+                required
+                type="email"
+                value={loginEmail}
+              />
+              <Input
+                autoComplete="current-password"
+                onChange={(event) => setLoginPassword(event.target.value)}
+                placeholder="Mot de passe"
+                required
+                type="password"
+                value={loginPassword}
+              />
+              <Button disabled={signingIn} type="submit">
+                {signingIn ? "Connexion…" : "Se connecter"}
+              </Button>
+            </form>
+          ) : null}
           {providers.length > 0 && !options?.ssoRequired ? (
             providerButtons
-          ) : options?.sso || options?.ssoRequired ? null : (
+          ) : options?.sso || options?.ssoRequired || options?.passwordLogin ? null : (
             <p className="text-center text-sm text-muted-foreground">
               No sign-in provider is configured for this deployment.
             </p>

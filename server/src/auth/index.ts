@@ -367,6 +367,16 @@ export function createAuth(
       encryptOAuthTokens: true,
     },
     plugins,
+    // Synelia fork: operator-created email/password accounts, never self sign-up.
+    ...(authConfig.password
+      ? {
+          emailAndPassword: {
+            enabled: true,
+            disableSignUp: true,
+            minPasswordLength: 12,
+          },
+        }
+      : {}),
     socialProviders: {
       ...(authConfig.google ? { google: authConfig.google } : {}),
       ...(authConfig.microsoft

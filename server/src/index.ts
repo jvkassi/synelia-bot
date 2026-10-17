@@ -239,6 +239,9 @@ import { createRoutineStore } from "./routines/store";
 import { createIntentRouter } from "./routing/classify";
 import { createModelCompleter } from "./routing/model";
 import { reportIntelligenceEntitlement } from "./intelligence-entitlement-check";
+import { bootstrapPasswordUser } from "./auth/bootstrap-password-user";
+import { localIntelligence } from "./persistence/local-intelligence";
+import { PostgresAgentRunner } from "./persistence/postgres-runner";
 import { createSelfHostBanner } from "./self-host-banner";
 import { createTeamBots } from "./team-bots/team-bots";
 import {
@@ -485,12 +488,8 @@ const identityProviderStore = createIdentityProviderStore(database);
  * store that receives those rows has to exist before anything can sign in.
  */
 const signInAuditStore = createAuditStore(database);
-const auth: AuthService | undefined = config.organizationAuthUrl
-  ? createOrganizationAuth({
-      authorityUrl: config.organizationAuthUrl,
-      materializeUser: organizationUserStore(database),
-    })
-  : config.auth
+const betterAuthInstance =
+  !config.organizationAuthUrl && config.auth
     ? createAuth(
         config,
         database,
@@ -498,6 +497,23 @@ const auth: AuthService | undefined = config.organizationAuthUrl
         signInAuditStore,
       )
     : undefined;
+const auth: AuthService | undefined = config.organizationAuthUrl
+  ? createOrganizationAuth({
+      authorityUrl: config.organizationAuthUrl,
+      materializeUser: organizationUserStore(database),
+    })
+  : betterAuthInstance;
+// Synelia fork: the operator's email/password account, when password sign-in is on.
+if (betterAuthInstance && config.auth?.password) {
+  await bootstrapPasswordUser(betterAuthInstance).catch((error: unknown) =>
+    console.error(
+      JSON.stringify({
+        type: "synelia-bootstrap-user-failed",
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+    ),
+  );
+}
 // Each computer is pushed its network policy on the way to the action that woke it, because a
 // computer refuses every connection until one arrives (see `withPolicyPushOnWake`).
 const computerProvider = config.computer
@@ -676,13 +692,16 @@ const chooseSkills = createModelCompleter({
  * connection, but its `threads` map is per instance, and a runner per turn would fragment the
  * already-running check that keeps two turns off one thread. See `toolkit/run-turn.ts`.
  */
-const routineIntelligence = observeIntelligenceAuthentication(
-  new CopilotKitIntelligence({
-    apiUrl: config.runtime.intelligence.apiUrl,
-    wsUrl: config.runtime.intelligence.gatewayWsUrl,
-    apiKey: config.runtime.intelligence.apiKey,
-  }),
-);
+// Synelia fork: in `postgres` mode this is the local Postgres stand-in (createIntelligenceClient).
+const routineIntelligence = config.runtime.intelligence.local
+  ? createIntelligenceClient(config.runtime.intelligence)
+  : observeIntelligenceAuthentication(
+      new CopilotKitIntelligence({
+        apiUrl: config.runtime.intelligence.apiUrl,
+        wsUrl: config.runtime.intelligence.gatewayWsUrl,
+        apiKey: config.runtime.intelligence.apiKey,
+      }),
+    );
 const approvalComputerTools = async (
   ownerUserId: string,
   agentId: string,
@@ -1554,10 +1573,15 @@ const buildAgentFor = async ({
   }
   return agent;
 };
-const routineAgentRunner = new IntelligenceAgentRunner({
-  url: routineIntelligence.ɵgetRunnerWsUrl(),
-  authToken: routineIntelligence.ɵgetRunnerAuthToken(),
-});
+// Synelia fork: headless turns use the durable open runner instead of Intelligence's gateway.
+const routineAgentRunner = config.runtime.intelligence.local
+  ? new PostgresAgentRunner(
+      localIntelligence(config.runtime.intelligence.local.databaseUrl),
+    )
+  : new IntelligenceAgentRunner({
+      url: routineIntelligence.ɵgetRunnerWsUrl(),
+      authToken: routineIntelligence.ɵgetRunnerAuthToken(),
+    });
 
 const routineRunner = createRoutineRunner({
   routineStore,
@@ -2269,9 +2293,12 @@ const selfHostBannerIntelligence = createIntelligenceClient(
 
 // Said once, at boot, whether Intelligence will let this deployment use what it is licensed for. A
 // self-hosted Intelligence without a licence refuses memory quietly; this is the line that says why.
-void reportIntelligenceEntitlement({
-  entitlements: () => selfHostBannerIntelligence.getRuntimeEntitlements(),
-});
+// Synelia fork: nothing to report when Intelligence is not used at all.
+if (!config.runtime.intelligence.local) {
+  void reportIntelligenceEntitlement({
+    entitlements: () => selfHostBannerIntelligence.getRuntimeEntitlements(),
+  });
+}
 
 const identityGithubCallback =
   config.githubApp && config.publicUrl
