@@ -136,7 +136,8 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
               events: run.events,
               messages: store?.messagesSnapshot ?? [],
               createdAt: run.createdAt ?? Date.now(),
-              status,
+              // A provider failure arrives as a RUN_ERROR event on a stream that still completes.
+              status: run.events.some((event) => event.type === "RUN_ERROR") ? "error" : status,
               ...modelOf(request),
               ...(user ? { userId: user.id } : {}),
             })
