@@ -16,14 +16,12 @@
  *
  * Errors carry `status` like the SDK's typed HTTP errors, because callers branch on 404 and 409.
  */
-import { SQL } from "bun";
+
 import type { BaseEvent } from "@ag-ui/client";
+import { SQL } from "bun";
 import { addressOf } from "../db/client";
+import { computeRetryable, EFFECTFUL_TOOLS } from "../synelia/run-refusal";
 import { LOCAL_PERSISTENCE_DDL } from "./schema";
-import {
-  computeRetryable,
-  EFFECTFUL_TOOLS,
-} from "../synelia/run-refusal";
 
 class LocalIntelligenceError extends Error {
   constructor(
@@ -443,7 +441,10 @@ export class LocalIntelligence {
       code: typeof event?.code === "string" ? event.code : null,
       // Synelia fork: derived at READ from the run's tool calls, never trusted from stored metadata,
       // so a legacy run that ran an effectful tool (report_refusal) comes out not retryable.
-      retryable: computeRetryable(jsonArray(last.events) as BaseEvent[], EFFECTFUL_TOOLS),
+      retryable: computeRetryable(
+        jsonArray(last.events) as BaseEvent[],
+        EFFECTFUL_TOOLS,
+      ),
     };
   }
 

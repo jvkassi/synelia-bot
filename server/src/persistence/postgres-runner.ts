@@ -342,9 +342,10 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
             model: requestedModel,
             provider: requestedProvider,
             finishReason: finishClass(
-              this.#global.peek(request.threadId)?.historicRuns.find(
-                (candidate) => candidate.runId === runId,
-              )?.events ?? [],
+              this.#global
+                .peek(request.threadId)
+                ?.historicRuns.find((candidate) => candidate.runId === runId)
+                ?.events ?? [],
             ),
             // arrival -> runner.run(): auth, role, CopilotKit runtime request handling
             routeMs: runCalledAt - arrivedAt,
@@ -400,7 +401,9 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
         if (liveRunId(request.threadId))
           return super
             .connect(request)
-            .pipe(map((event) => this.#stampRetryable(request.threadId, event)));
+            .pipe(
+              map((event) => this.#stampRetryable(request.threadId, event)),
+            );
         const runs = this.#global.peek(request.threadId)?.historicRuns ?? [];
         return from(replayEvents(runs, EFFECTFUL_TOOLS));
       }),

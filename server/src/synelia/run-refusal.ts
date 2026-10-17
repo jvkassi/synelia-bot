@@ -79,7 +79,8 @@ export function finishClass(events: readonly BaseEvent[]): string {
     return typeof error.code === "string" && error.code
       ? error.code
       : "run_error";
-  if (list.some((event) => TOOL_TYPES.has(event.type ?? ""))) return "tool_call";
+  if (list.some((event) => TOOL_TYPES.has(event.type ?? "")))
+    return "tool_call";
   if (list.some((event) => TEXT_TYPES.has(event.type ?? ""))) return "stop";
   if (list.some((event) => event.type === "RUN_FINISHED"))
     return SYNELIA_ERROR_CODES.providerRefusal;
@@ -179,9 +180,9 @@ export function computeRetryable(
 export function finishedOutputTokens(
   events: readonly BaseEvent[],
 ): number | undefined {
-  const finished = (events as readonly { type?: string; usage?: unknown }[]).find(
-    (event) => event.type === "RUN_FINISHED",
-  );
+  const finished = (
+    events as readonly { type?: string; usage?: unknown }[]
+  ).find((event) => event.type === "RUN_FINISHED");
   const usage = finished?.usage;
   const entry = Array.isArray(usage) ? usage[0] : usage;
   const out = (entry as { outputTokens?: unknown } | undefined)?.outputTokens;

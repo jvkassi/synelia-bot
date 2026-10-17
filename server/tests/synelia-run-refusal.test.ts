@@ -31,9 +31,9 @@ describe("adjustPersistedRun", () => {
     const { events, status } = adjustPersistedRun([started, finished]);
     expect(status).toBe("error");
     // The RUN_FINISHED is REPLACED, never kept alongside the error.
-    expect(events.some((e) => (e as { type?: string }).type === "RUN_FINISHED")).toBe(
-      false,
-    );
+    expect(
+      events.some((e) => (e as { type?: string }).type === "RUN_FINISHED"),
+    ).toBe(false);
     const error = events.find(
       (e) => (e as { type?: string }).type === "RUN_ERROR",
     ) as { message?: string; code?: string; threadId?: string; runId?: string };
@@ -47,33 +47,40 @@ describe("adjustPersistedRun", () => {
     const input = [started, text, finished];
     const { events, status } = adjustPersistedRun(input);
     expect(status).toBe("done");
-    expect(events.some((e) => (e as { type?: string }).type === "RUN_FINISHED")).toBe(
-      true,
-    );
-    expect(events.some((e) => (e as { type?: string }).type === "RUN_ERROR")).toBe(
-      false,
-    );
+    expect(
+      events.some((e) => (e as { type?: string }).type === "RUN_FINISHED"),
+    ).toBe(true);
+    expect(
+      events.some((e) => (e as { type?: string }).type === "RUN_ERROR"),
+    ).toBe(false);
   });
 
   test("a run that only called a tool (report_refusal) is not a silent refusal", () => {
-    const { status, events } = adjustPersistedRun([started, toolStart, finished]);
+    const { status, events } = adjustPersistedRun([
+      started,
+      toolStart,
+      finished,
+    ]);
     expect(status).toBe("done");
-    expect(events.some((e) => (e as { type?: string }).type === "RUN_ERROR")).toBe(
-      false,
-    );
+    expect(
+      events.some((e) => (e as { type?: string }).type === "RUN_ERROR"),
+    ).toBe(false);
   });
 
   test("an existing coded RUN_ERROR keeps its code and drops any RUN_FINISHED", () => {
-    const busy = ev("RUN_ERROR", { message: "Thread is busy.", code: "thread_busy" });
+    const busy = ev("RUN_ERROR", {
+      message: "Thread is busy.",
+      code: "thread_busy",
+    });
     const { events, status } = adjustPersistedRun([started, busy, finished]);
     expect(status).toBe("error");
     const codes = events
       .filter((e) => (e as { type?: string }).type === "RUN_ERROR")
       .map((e) => (e as { code?: string }).code);
     expect(codes).toEqual(["thread_busy"]);
-    expect(events.some((e) => (e as { type?: string }).type === "RUN_FINISHED")).toBe(
-      false,
-    );
+    expect(
+      events.some((e) => (e as { type?: string }).type === "RUN_FINISHED"),
+    ).toBe(false);
   });
 
   test("RUN_ERROR then RUN_FINISHED and RUN_FINISHED then RUN_ERROR give the same result", () => {
@@ -83,7 +90,9 @@ describe("adjustPersistedRun", () => {
     for (const out of [a, b]) {
       expect(out.status).toBe("error");
       expect(
-        out.events.some((e) => (e as { type?: string }).type === "RUN_FINISHED"),
+        out.events.some(
+          (e) => (e as { type?: string }).type === "RUN_FINISHED",
+        ),
       ).toBe(false);
       const code = (
         out.events.find(
@@ -101,9 +110,9 @@ describe("adjustPersistedRun", () => {
     });
     const { events } = adjustPersistedRun([started, refusal]);
     const code = (
-      events.find(
-        (e) => (e as { type?: string }).type === "RUN_ERROR",
-      ) as { code?: string }
+      events.find((e) => (e as { type?: string }).type === "RUN_ERROR") as {
+        code?: string;
+      }
     ).code;
     expect(code).toBe(SYNELIA_ERROR_CODES.providerRefusal);
   });
@@ -117,9 +126,9 @@ describe("adjustPersistedRun", () => {
     expect(status).toBe("error");
     expect(
       (
-        events.find(
-          (e) => (e as { type?: string }).type === "RUN_ERROR",
-        ) as { code?: string }
+        events.find((e) => (e as { type?: string }).type === "RUN_ERROR") as {
+          code?: string;
+        }
       ).code,
     ).toBe("AGENT_STREAM_STALLED");
   });
@@ -174,15 +183,26 @@ describe("computeRetryable", () => {
     // No metadata.retryable anywhere: the value is derived purely from the tool-call event.
     const legacy = [
       { type: "RUN_STARTED", threadId: "t", runId: "r" },
-      { type: "TOOL_CALL_START", toolCallId: "c1", toolCallName: "report_refusal" },
-      { type: "RUN_ERROR", threadId: "t", runId: "r", message: "content_filter" },
+      {
+        type: "TOOL_CALL_START",
+        toolCallId: "c1",
+        toolCallName: "report_refusal",
+      },
+      {
+        type: "RUN_ERROR",
+        threadId: "t",
+        runId: "r",
+        message: "content_filter",
+      },
     ] as unknown as BaseEvent[];
     expect(computeRetryable(legacy)).toBe(false);
   });
 
   test("the effectful set is closed: an unknown tool is retry-safe", () => {
     const other = ev("TOOL_CALL_START", { toolCallName: "somethingNew" });
-    expect(computeRetryable([started, other, error], EFFECTFUL_TOOLS)).toBe(true);
+    expect(computeRetryable([started, other, error], EFFECTFUL_TOOLS)).toBe(
+      true,
+    );
   });
 });
 
@@ -197,40 +217,68 @@ describe("usage0 refusal candidate (dormant signal)", () => {
   test("outputTokens reads from a usage array", () => {
     expect(finishedOutputTokens([started, finishedUsage(0)])).toBe(0);
     expect(finishedOutputTokens([started, finishedUsage(12)])).toBe(12);
-    expect(finishedOutputTokens([started, finishedUsage(null)])).toBeUndefined();
+    expect(
+      finishedOutputTokens([started, finishedUsage(null)]),
+    ).toBeUndefined();
   });
 
   test("disabled by default: empty allowlist never flags, even on the proven pair", () => {
     expect(
-      usage0RefusalCandidate([started, finishedUsage(0)], ctx, "refus", usage0Allowlist("")),
+      usage0RefusalCandidate(
+        [started, finishedUsage(0)],
+        ctx,
+        "refus",
+        usage0Allowlist(""),
+      ),
     ).toBe(false);
   });
 
   test("allowlisted pair with 0 tokens and text is a candidate", () => {
-    expect(usage0RefusalCandidate([started, finishedUsage(0)], ctx, "refus", on)).toBe(true);
+    expect(
+      usage0RefusalCandidate([started, finishedUsage(0)], ctx, "refus", on),
+    ).toBe(true);
   });
 
   test("negative: a genuine short reply with usage > 0 is never flagged", () => {
-    expect(usage0RefusalCandidate([started, finishedUsage(3)], ctx, "oui", on)).toBe(false);
+    expect(
+      usage0RefusalCandidate([started, finishedUsage(3)], ctx, "oui", on),
+    ).toBe(false);
   });
 
   test("negative: usage 0 on a non-allowlisted model never triggers", () => {
     const other = { provider: "router9", model: "gemini/gemini-3.8-flash" };
-    expect(usage0RefusalCandidate([started, finishedUsage(0)], other, "x", on)).toBe(false);
+    expect(
+      usage0RefusalCandidate([started, finishedUsage(0)], other, "x", on),
+    ).toBe(false);
   });
 
   test("empty text is not a candidate (that is the empty-finish path, not this one)", () => {
-    expect(usage0RefusalCandidate([started, finishedUsage(0)], ctx, "   ", on)).toBe(false);
+    expect(
+      usage0RefusalCandidate([started, finishedUsage(0)], ctx, "   ", on),
+    ).toBe(false);
   });
 });
 
 describe("replayEvents (the single replay rule)", () => {
-  const textStart = ev("TEXT_MESSAGE_START", { messageId: "m", role: "assistant" });
-  const textContent = ev("TEXT_MESSAGE_CONTENT", { messageId: "m", delta: "english refusal" });
+  const textStart = ev("TEXT_MESSAGE_START", {
+    messageId: "m",
+    role: "assistant",
+  });
+  const textContent = ev("TEXT_MESSAGE_CONTENT", {
+    messageId: "m",
+    delta: "english refusal",
+  });
   const textEnd = ev("TEXT_MESSAGE_END", { messageId: "m" });
-  const refusalError = ev("RUN_ERROR", { message: "content_filter", code: "provider_refusal" });
-  const unavailError = ev("RUN_ERROR", { message: "boom", code: "provider_unavailable" });
-  const types = (events: BaseEvent[]) => events.map((e) => (e as { type?: string }).type);
+  const refusalError = ev("RUN_ERROR", {
+    message: "content_filter",
+    code: "provider_refusal",
+  });
+  const unavailError = ev("RUN_ERROR", {
+    message: "boom",
+    code: "provider_unavailable",
+  });
+  const types = (events: BaseEvent[]) =>
+    events.map((e) => (e as { type?: string }).type);
   const runError = (events: BaseEvent[]) =>
     events.find((e) => (e as { type?: string }).type === "RUN_ERROR") as
       | { metadata?: { retryable?: boolean } }
@@ -259,7 +307,10 @@ describe("replayEvents (the single replay rule)", () => {
         events: [
           ev("RUN_STARTED"),
           ev("TEXT_MESSAGE_START", { messageId: "a", role: "assistant" }),
-          ev("TEXT_MESSAGE_CONTENT", { messageId: "a", delta: "la vraie réponse" }),
+          ev("TEXT_MESSAGE_CONTENT", {
+            messageId: "a",
+            delta: "la vraie réponse",
+          }),
           ev("TEXT_MESSAGE_END", { messageId: "a" }),
           finished,
         ],
@@ -274,7 +325,9 @@ describe("replayEvents (the single replay rule)", () => {
   });
 
   test("a normal answered run is replayed untouched (no suppression)", () => {
-    const out = replayEvents([{ events: [started, textStart, textContent, textEnd, finished] }]);
+    const out = replayEvents([
+      { events: [started, textStart, textContent, textEnd, finished] },
+    ]);
     expect(types(out).some((t) => t === "TEXT_MESSAGE_CONTENT")).toBe(true);
     expect(types(out)).toContain("RUN_FINISHED");
   });
