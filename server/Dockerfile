@@ -40,6 +40,10 @@ COPY server server
 COPY examples examples
 # Synelia fork: which tenant package names the product in the built app (brand.yaml).
 ARG TENANT_PACKAGE_DIR
+# Synelia fork: the commit being built (deploy.sh passes it; .git is not in the context). The app
+# build stamps it into <meta name="synelia-version"> and dist/version.json.
+ARG SYNELIA_BUILD_SHA=unknown
+ENV SYNELIA_BUILD_SHA=$SYNELIA_BUILD_SHA
 RUN bun run --cwd app build
 
 
@@ -70,6 +74,9 @@ COPY agent-computer/src/egress.ts agent-computer/src/egress.ts
 # without this layer is still a working API.
 COPY --from=app-build /app/app/dist app/dist
 ENV APP_DIST_DIR=/app/app/dist
+# Synelia fork: served as `server` by /version.json (server/src/synelia/version.ts).
+ARG SYNELIA_BUILD_SHA=unknown
+ENV SYNELIA_BUILD_SHA=$SYNELIA_BUILD_SHA
 
 USER openbot:openbot
 

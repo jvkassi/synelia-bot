@@ -36,7 +36,8 @@ ship() { # $1 = commit, run from a clean tree of that commit
   # The compose file that runs is $DIR/docker-compose.yml: keep it equal to the committed one
   # (previous copy kept next to it, so a manual revert is one mv away).
   ssh "$HOST" "cd $DIR && cmp -s src/deploy/synelia/docker-compose.yml docker-compose.yml || { cp -p docker-compose.yml docker-compose.yml.prev && cp src/deploy/synelia/docker-compose.yml docker-compose.yml && echo 'docker-compose.yml mis à jour depuis le commit'; }"
-  ssh "$HOST" "cd $DIR && docker compose --progress plain build server migrate agent-mastra > tmp/build-$1.log 2>&1"
+  # SYNELIA_BUILD_SHA: stamped into the image and the front bundle (/version.json, <meta name="synelia-version">).
+  ssh "$HOST" "cd $DIR && SYNELIA_BUILD_SHA=$1 docker compose --progress plain build server migrate agent-mastra > tmp/build-$1.log 2>&1"
   if [ -z "${SKIP_GUARD:-}" ]; then
     for _ in $(seq 1 24); do
       n=$(active_locks); [ "$n" = "0" ] && break
@@ -52,7 +53,38 @@ ship() { # $1 = commit, run from a clean tree of that commit
   ssh "$HOST" "cd $DIR && docker compose up -d >> tmp/build-$1.log 2>&1 && echo $1 > src/DEPLOYED_COMMIT && echo deployed $1"
 }
 
+# What is SERVED must be the announced commit: the server's own /version.json (inside the container)
+# and, through Traefik with the e2e basic-auth entry, the same JSON plus the <meta> of index.html.
+# Basic credentials go to curl on stdin (-K -), never on a command line or in the output.
+check_served() { # $1 = expected commit; prints what it saw, returns non-zero on any mismatch
+  local want=$1 inside url env_file outside meta ok=0
+  for _ in $(seq 1 12); do
+    inside=$(ssh "$HOST" "cd $DIR && docker compose exec -T server bun -e 'fetch(\"http://127.0.0.1:3001/version.json\").then(r=>r.text()).then(t=>console.log(t))'" 2>/dev/null | tr -d '[:space:]') || inside=""
+    [ -n "$inside" ] && break; sleep 5
+  done
+  echo "version (conteneur) : ${inside:-illisible}"
+  [ "$inside" = "{\"server\":\"$want\",\"front\":\"$want\"}" ] || ok=1
+  env_file=${E2E_ENV:-$(dirname "$E2E")/e2e.env}
+  if [ -r "$env_file" ]; then
+    url=$(sed -n 's/^E2E_URL=//p' "$env_file" | head -1)
+    local basic; basic=$( (sed -n 's/^E2E_BASIC_USER=//p' "$env_file" | head -1; sed -n 's/^E2E_BASIC_PASSWORD=//p' "$env_file" | head -1) | paste -sd: -)
+    outside=$(printf 'user = "%s"\n' "$basic" | curl -sf -K - "$url/version.json" | tr -d '[:space:]') || outside=""
+    meta=$(printf 'user = "%s"\n' "$basic" | curl -sf -K - "$url/" | grep -o 'name="synelia-version" content="[0-9a-f]*"' | sed 's/.*content="//; s/"$//') || meta=""
+    echo "version (Traefik)   : ${outside:-illisible} ; meta index.html : ${meta:-absente}"
+    [ "$outside" = "$inside" ] && [ "$meta" = "$want" ] || ok=1
+  else
+    echo "AVERTISSEMENT : $env_file illisible, vérification Traefik sautée." >&2; ok=1
+  fi
+  return $ok
+}
+
 ship "$COMMIT"
+
+if ! check_served "$COMMIT"; then
+  echo "ÉCHEC : le SHA servi n'est pas $COMMIT (image non reconstruite, ancien conteneur, ou cache). Rien n'est annoncé." >&2
+  exit 1
+fi
+echo "servi = $COMMIT (serveur et front)"
 
 if [ -z "${SKIP_GUARD:-}" ]; then
   sleep 10

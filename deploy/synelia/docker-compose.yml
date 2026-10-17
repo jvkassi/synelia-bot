@@ -41,6 +41,7 @@ services:
       dockerfile: server/Dockerfile
       args:
         TENANT_PACKAGE_DIR: ../examples/synelia
+        SYNELIA_BUILD_SHA: ${SYNELIA_BUILD_SHA:-unknown}
     env_file: [.env.server]
     working_dir: /app/server
     command: ["bunx", "drizzle-kit", "migrate", "--config=drizzle.config.ts"]
@@ -100,6 +101,9 @@ services:
       - ./logs:/app/logs
     environment:
       SYNELIA_REQUEST_LOG_DIR: /app/logs
+      # Behind Traefik basicauth: never send a raw 401 (Chrome would drop the basic credentials and
+      # loop on the prompt). server/src/synelia/basic-auth-safe.ts
+      SYNELIA_MASK_401: "1"
     labels:
       - traefik.enable=true
       - traefik.docker.network=proxy

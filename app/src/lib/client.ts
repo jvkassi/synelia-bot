@@ -32,7 +32,7 @@ export type ClientOptions = {
 
 /** Every request in this app is authenticated, and every one of them is JSON or nothing. */
 async function send(path: string, options: ClientOptions): Promise<Response> {
-  return fetch(apiUrl(path), {
+  const response = await fetch(apiUrl(path), {
     method: options.method,
     credentials: "include",
     headers:
@@ -41,6 +41,25 @@ async function send(path: string, options: ClientOptions): Promise<Response> {
         : { "content-type": "application/json" },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     ...(options.signal ? { signal: options.signal } : {}),
+  });
+  return unmaskStatus(response);
+}
+
+/**
+ * Synelia fork: the server never sends a raw 401 behind the basic-auth proxy (Chrome would evict the
+ * tester's basic credentials and loop on the prompt — server/src/synelia/basic-auth-safe.ts). It
+ * sends 403 + `x-synelia-status: 401` instead; this restores the 401 every caller reasons about.
+ */
+export function unmaskStatus(response: Response): Response {
+  if (
+    response.status !== 403 ||
+    response.headers.get("x-synelia-status") !== "401"
+  )
+    return response;
+  return new Response(response.body, {
+    status: 401,
+    statusText: "Unauthorized",
+    headers: response.headers,
   });
 }
 

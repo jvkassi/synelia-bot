@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Synelia Bot</title>
+    <!-- Synelia fork: opened as https://user:pass@host/…, the document keeps the userinfo in its base
+         URL (Chrome hides it from location.href), and every relative fetch then throws « Request cannot
+         be constructed from a URL that includes credentials ». The navigation already put those basic
+         credentials in Chrome's auth cache, so reload the same address without them before any module
+         runs. Classic and inline for the same reason as the theme script below. -->
+    <script>
+      try {
+        if (/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*@/i.test(document.baseURI) && location.origin !== "null") {
+          location.replace(location.origin + location.pathname + location.search + location.hash);
+        }
+      } catch {}
+    </script>
     <!-- Sets the theme before the first paint. Must stay inline and classic: `defer` or `type="module"` runs too late. -->
     <script>
       // localStorage throws in some privacy modes; a theme is not worth taking the app down for.

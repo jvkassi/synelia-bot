@@ -393,3 +393,13 @@ Une fenêtre annoncée dans le salon ; chaque script qui recrée le server coupe
 1. Fenêtre e2e admin ci-dessus, étapes 2 à 5 (gate 13 avec les variantes `--path-as-is` et les ids `%3A`/`%40`, `qa-model`, `declined`, browser e2e `E2E_CASES=abcdef`).
 2. Ouvrir l'app dans le navigateur e2e par une URL `https://user:pass@hôte/` (basicauth dans l'URL) : connexion, puis un changement de mot de passe forcé complet (compte jetable `add-tester.sh`, retiré ensuite) ; aucune erreur « Request cannot be constructed from a URL that includes credentials ».
 3. Avec cette même URL à identifiants : les chunks chargés à la demande (routes lazy de Vite) et l'audio worklet de la dictée se chargent (0 erreur réseau ou console), et le statut de succès du changement de mot de passe reste affiché jusqu'à la navigation.
+
+## Pass 9 — Chrome behind Traefik basicauth (prompt loop, `user:pass@` URL), build SHA
+| File | Why |
+|---|---|
+| `server/src/synelia/basic-auth-safe.ts` (new), `server/src/app.ts` | Chrome evicts the basic credentials it cached as soon as a request that carried them gets a 401, even the app's own JSON 401 without `WWW-Authenticate` (`/api/me` before sign-in, a wrong password). Every later request then hits Traefik bare → `WWW-Authenticate: Basic` → prompt loop. Outermost middleware: any 401 leaves as 403 + `x-synelia-status: 401`, no `WWW-Authenticate` (request log still records 401). Opt-in `SYNELIA_MASK_401=1`, set on the server in `deploy/synelia/docker-compose.yml` (upstream suites asserting 401 unaffected). |
+| `app/src/lib/client.ts` | `unmaskStatus`: 403 + `x-synelia-status: 401` becomes 401 again, so "signed out" / "session expired" logic is unchanged. |
+| `app/index.html` | Page opened as `https://user:pass@host/…`: Chrome hides the userinfo from `location.href` but keeps it in `document.baseURI`, so relative fetches throw. Inline classic script reloads the same address without userinfo before any module runs (the navigation already cached the credentials). |
+| `app/src/lib/api-url.ts` | Credential detection also reads `document.baseURI` (why 25439793 never fired in Chrome). |
+| `app/vite.config.ts`, `server/Dockerfile`, `deploy/synelia/docker-compose.yml`, `server/src/synelia/version.ts` (new) | Build SHA (`SYNELIA_BUILD_SHA` build arg, else `git rev-parse HEAD`) in `<meta name="synelia-version">`, `dist/version.json`, and `GET /version.json` → `{server, front}`. |
+| `deploy/synelia/deploy.sh` | Builds with `SYNELIA_BUILD_SHA=<commit>`; after `up`, fails unless `/version.json` (container and through Traefik) and the served `<meta>` all equal the announced commit. |

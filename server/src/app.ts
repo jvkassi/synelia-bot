@@ -129,6 +129,7 @@ import type { IntentRouter } from "./routing/classify";
 import { createRoutingRoutes } from "./routing/routes";
 import { createCoworkerRoutingService } from "./routing/service";
 import type { SelfHostBanner } from "./self-host-banner";
+import { createBasicAuthSafe401 } from "./synelia/basic-auth-safe";
 import {
   createModelListSource,
   labelFor,
@@ -142,6 +143,7 @@ import {
   pilotEnabled,
 } from "./synelia/pilot-gate";
 import { createRequestLog } from "./synelia/request-log";
+import { mountVersion } from "./synelia/version";
 import { createTeamBotRoutes } from "./team-bots/routes";
 import type { TeamBots } from "./team-bots/team-bots";
 import type { PackageStatusReader } from "./tenant-package";
@@ -466,8 +468,11 @@ export function createApp(
   const app = new Hono<{ Variables: AppVariables }>();
   // Synelia fork: first, so /api/auth/* (sign-in, 401s) is logged too. No bodies.
   // Synelia fork: `//api/...`, `/API/...` and dot segments never reach a route (pilot).
+  // Synelia fork: outermost, so no 401 ever reaches the basic-auth proxy's browser (see the file).
+  app.use("*", createBasicAuthSafe401());
   app.use("*", createPilotPathGuard());
   app.use("/api/*", createRequestLog());
+  mountVersion(app, config.appDistDir);
   mountDesktopConnectionFailure(app, desktopHostToken);
   mountProviderOAuthProxy(app, modelProviderProxy);
 

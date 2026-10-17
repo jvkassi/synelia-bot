@@ -1,10 +1,11 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { listenPort } from "@openbot/shared/listen-port";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
-import { listenPort } from "@openbot/shared/listen-port";
 
 /*
  * Announce the server's port to the two runtimes that serve the app through Vite, and to no other.
@@ -54,6 +55,51 @@ function announceServerPort(port: number): Plugin {
         }
         response.setHeader("content-type", "text/html; charset=utf-8");
         response.end(inject(html));
+      });
+    },
+  };
+}
+
+/*
+ * Synelia fork: the commit this bundle was built from, so a deploy can prove the served front is the
+ * announced hash. SYNELIA_BUILD_SHA (deploy.sh → compose build arg → server/Dockerfile ENV) wins;
+ * a local build falls back to `git rev-parse HEAD`; anything else is "unknown". Written into
+ * index.html as <meta name="synelia-version"> and into dist/version.json (read by the server's
+ * /version.json, server/src/synelia/version.ts).
+ */
+export function syneliaBuildSha(
+  env: Record<string, string | undefined> = process.env,
+): string {
+  const given = env.SYNELIA_BUILD_SHA?.trim();
+  if (given && /^[0-9a-f]{7,40}$/i.test(given)) return given.toLowerCase();
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: __dirname,
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+function stampSyneliaVersion(sha: string): Plugin {
+  return {
+    name: "synelia-version",
+    transformIndexHtml(html) {
+      return html.includes('name="synelia-version"')
+        ? html
+        : html.replace(
+            "</head>",
+            `    <meta name="synelia-version" content="${sha}" />\n  </head>`,
+          );
+    },
+    generateBundle() {
+      this.emitFile({
+        type: "asset",
+        fileName: "version.json",
+        source: `${JSON.stringify({ sha })}\n`,
       });
     },
   };
@@ -171,6 +217,7 @@ export const routeBuildRollupOutputOptions = {
 export default defineConfig({
   plugins: [
     announceServerPort(apiPort.port),
+    stampSyneliaVersion(syneliaBuildSha()),
     tanstackRouter({
       autoCodeSplitting: true,
       codeSplittingOptions: routeCodeSplittingOptions,

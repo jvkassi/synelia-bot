@@ -12,25 +12,43 @@
  * nothing changes for the usual load, the Vite dev proxy, or the suites that match on `/api/...`.
  * Absolute and protocol-relative inputs are returned as they are: this helper never picks a host.
  */
-type PageLocation = Pick<Location, "href" | "origin">;
+type PageLocation = Pick<Location, "href" | "origin"> & {
+  /**
+   * The document's base URL. Chrome strips the userinfo from `location.href` but NOT from
+   * `document.baseURI`, and relative fetches resolve against the latter (measured: Chrome 155,
+   * page opened as `https://user:pass@host/` → href `https://host/`, baseURI `https://user:pass@host/`).
+   * Checking `href` alone is why 25439793 never fired in Chrome.
+   */
+  baseURI?: string;
+};
 
 function currentLocation(): PageLocation | undefined {
-  return typeof window !== "undefined" && window.location
-    ? window.location
-    : undefined;
+  if (typeof window === "undefined" || !window.location) return undefined;
+  const baseURI =
+    typeof document !== "undefined" ? document.baseURI : undefined;
+  return {
+    href: window.location.href,
+    origin: window.location.origin,
+    ...(baseURI ? { baseURI } : {}),
+  };
 }
 
-/** True when the page's own URL has a username or a password in it. */
-export function pageUrlHasCredentials(
-  location: PageLocation | null | undefined = currentLocation(),
-): boolean {
-  if (!location?.href) return false;
+function hasUserinfo(raw: string | undefined): boolean {
+  if (!raw) return false;
   try {
-    const url = new URL(location.href);
+    const url = new URL(raw);
     return url.username !== "" || url.password !== "";
   } catch {
     return false;
   }
+}
+
+/** True when the page's own URL (or the base URL relative paths resolve against) has userinfo. */
+export function pageUrlHasCredentials(
+  location: PageLocation | null | undefined = currentLocation(),
+): boolean {
+  if (!location) return false;
+  return hasUserinfo(location.href) || hasUserinfo(location.baseURI);
 }
 
 export function apiUrl(
