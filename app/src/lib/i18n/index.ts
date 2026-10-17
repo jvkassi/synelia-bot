@@ -340,6 +340,10 @@ const fr = {
         "Modification désactivée pendant le pilote. Les changements de rôle passent par l'équipe d'exploitation.",
     },
   },
+  /** Synelia fork: what this deployment lets the person use (`GET /api/admin/enterprise/me`). */
+  capabilities: {
+    loadFailed: "Impossible de charger les autorisations de ce déploiement.",
+  },
   /** Synelia fork: forced password change at first login (form owned by the Frontend Expert). */
   auth: {
     changePasswordTitle: "Changez votre mot de passe",
@@ -417,6 +421,11 @@ export const pilot = {
   shortOnboarding: PILOT_ON,
   /** No computer supervisor in this deployment: the "watch the computer" control is hidden. */
   hideComputerControls: PILOT_ON,
+  /**
+   * Same reason: the chat never offers the browser, navigate or computer tools, whatever
+   * `GET /api/admin/enterprise/me` answers (an unresolved switch would otherwise read as allowed).
+   */
+  hideComputerTools: PILOT_ON,
   hideBotPage: PILOT_ON,
   /** Voice calls are outside the pilot (their API answers 404). */
   hideVoice: PILOT_ON,

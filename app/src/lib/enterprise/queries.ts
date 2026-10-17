@@ -1,5 +1,6 @@
 import { queryOptions } from "@tanstack/react-query";
 import { client } from "@/lib/client";
+import { pilot, ui } from "@/lib/i18n";
 
 export type CapabilityKey =
   | "useBots"
@@ -162,8 +163,11 @@ export function myCapabilitiesQueryOptions() {
     queryFn: async (): Promise<MyCapabilities> =>
       (
         await client("/api/admin/enterprise/me", {
-          fallback: "Could not load what this deployment allows",
+          // Synelia fork: French.
+          fallback: ui.capabilities.loadFailed,
         })
       ).json(),
+    // Synelia fork: the pilot offers no computer tools whatever this says, so a failure is not retried.
+    ...(pilot.hideComputerTools ? { retry: false } : {}),
   });
 }

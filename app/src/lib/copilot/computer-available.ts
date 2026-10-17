@@ -4,6 +4,7 @@ import {
   type CapabilityKey,
   myCapabilitiesQueryOptions,
 } from "@/lib/enterprise/queries";
+import { pilot } from "@/lib/i18n";
 import { useDeclaredBotId } from "./active-bot";
 
 /** Which computer tools this conversation offers the Bot. */
@@ -43,6 +44,10 @@ export function computerToolsOffered({
   profile: { visibility: string; canManage: boolean } | undefined;
   capabilities: Partial<Record<CapabilityKey, boolean>> | undefined;
 }): ComputerToolsOffered {
+  // Synelia fork: no computer in the pilot, so nothing is offered whatever the switches say.
+  if (pilot.hideComputerTools) {
+    return { browser: false, navigate: false, computer: false };
+  }
   const mine = !profile || profile.visibility === "public" || profile.canManage;
   // An unresolved switch reads as allowed, for the same reason an unresolved profile does.
   const allows = (capability: CapabilityKey) =>
@@ -61,6 +66,9 @@ export function computerToolsOffered({
  * The first of the two questions above, on its own. `report_refusal` rides on it: recording that a
  * Bot declined something is audit bookkeeping rather than a computer action, so it stays offered
  * wherever the Bot is this person's to drive, whatever the computer switches say.
+ *
+ * Synelia fork: left as is in the pilot. It posts to `/api/agents/:id/declined`, never to the
+ * computer, and a failed post is caught and reported to the Bot as "could not be recorded".
  */
 export function useComputerAvailable(): boolean {
   const declared = useDeclaredBotId();
