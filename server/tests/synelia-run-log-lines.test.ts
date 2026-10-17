@@ -38,6 +38,14 @@ function agent(finish: Promise<void>) {
     async runAgent(input: { runId: string; threadId: string }, sub: { onEvent: (e: { event: unknown }) => void }) {
       sub.onEvent({ event: { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId } });
       await finish;
+      // Emit real assistant text so the finish is a genuine answer. Since item 1 the runner stores the
+      // adjusted events in memory, so an EMPTY finish (no text, no usage) is now classified as an
+      // empty_finish refusal (RUN_ERROR), not an answer — which is the whole point of item 1. This stub
+      // models an answered turn, so it must produce assistant output for `already_answered` to apply.
+      const messageId = crypto.randomUUID();
+      sub.onEvent({ event: { type: "TEXT_MESSAGE_START", messageId, role: "assistant", threadId: input.threadId, runId: input.runId } });
+      sub.onEvent({ event: { type: "TEXT_MESSAGE_CONTENT", messageId, delta: "ok", threadId: input.threadId, runId: input.runId } });
+      sub.onEvent({ event: { type: "TEXT_MESSAGE_END", messageId, threadId: input.threadId, runId: input.runId } });
       sub.onEvent({ event: { type: "RUN_FINISHED", threadId: input.threadId, runId: input.runId } });
     },
   };
