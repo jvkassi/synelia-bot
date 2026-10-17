@@ -30,3 +30,25 @@ test("pilot gate: outside-phase-0 surfaces are 404, chat/threads/models/auth pas
     expect((await app.request(path as string, { method })).status).toBe(200);
   expect(isPilotGated("GET", "/api/botsx")).toBe(false);
 });
+
+test("gate 10: tools are an allowlist (ask*/show* known names only)", async () => {
+  const { pilotTools, isPilotGatedTool } = await import(
+    "../src/synelia/pilot-gate"
+  );
+  const offered = [
+    "computer_navigate",
+    "computer_run_command",
+    "report_refusal",
+    "generateSandboxedUi",
+    "foo_tool",
+    "showTableX",
+    "askChoice",
+    "showTable",
+  ].map((name) => ({ name }));
+  expect(pilotTools(offered, true)?.map((tool) => tool.name)).toEqual([
+    "askChoice",
+    "showTable",
+  ]);
+  expect(isPilotGatedTool("foo_tool")).toBe(true);
+  expect(pilotTools(offered, false)).toBe(offered);
+});

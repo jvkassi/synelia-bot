@@ -1,4 +1,5 @@
 import type { ActivityMessage, Message } from "@ag-ui/core";
+import { pilot } from "@/lib/i18n";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { channelKeys } from "@/lib/channels/queries";
 import { client } from "@/lib/client";
@@ -29,6 +30,8 @@ const keys = {
 export function voiceSessionQueryOptions(channelId: string) {
   return queryOptions({
     queryKey: keys.saved(channelId),
+    // Synelia fork: no voice in the pilot, so nothing is fetched (the API answers 404).
+    enabled: !pilot.hideVoice,
     queryFn: async ({ signal }): Promise<VoiceSessionRecord[]> => {
       const sessions: VoiceSessionRecord[] = [];
       let cursor: string | null = null;

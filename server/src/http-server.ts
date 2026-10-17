@@ -1,4 +1,5 @@
 import { DICTATION_HTTP_IDLE_SECONDS } from "@openbot/shared/dictation";
+import { withSseHeartbeat } from "./synelia/sse-heartbeat";
 import { serve } from "bun";
 import { computerAccessCheck } from "./agents/computer-access";
 import type { AgentProfileStore } from "./agents/profile-store";
@@ -97,6 +98,10 @@ export function startHttpServer(deps: {
       }
       if (url.pathname === "/api/voice/calls") server.timeout(request, 30);
       if (url.pathname === "/api/voice/sessions") server.timeout(request, 30);
+      // Synelia fork: an AG-UI run/connect stream may be silent longer than Bun's 10 s idle limit
+      // while the model thinks; no idle limit there, and SSE heartbeats below (sse-heartbeat.ts).
+      if (url.pathname.startsWith("/api/copilotkit"))
+        server.timeout(request, 0);
       const streamBotId = streamPathBotId(url.pathname);
       if (
         streamBotId !== null &&
@@ -171,7 +176,7 @@ export function startHttpServer(deps: {
         }
         return new Response("Expected a WebSocket upgrade.", { status: 400 });
       }
-      return app.fetch(request, { server });
+      return withSseHeartbeat(await app.fetch(request, { server }));
     },
     websocket: {
       open(ws) {

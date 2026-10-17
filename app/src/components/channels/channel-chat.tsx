@@ -1,3 +1,5 @@
+import { dedupeById, isStreamCut } from "@/lib/copilot/stream-reattach";
+import { pilot, ui } from "@/lib/i18n";
 import type { Message } from "@ag-ui/core";
 import {
   SyneliaThreadModels,
@@ -527,6 +529,8 @@ export function ChannelChat({
 
   // Run failures arrive as events and are reported only for turns started in this mount.
   const [runError, setRunError] = useState<string | null>(null);
+  /** Synelia fork: set when the run's stream was cut by the network; see `deliver`. */
+  const streamCut = useRef<string | null>(null);
   // Synelia fork: after a reload the live error is gone; the stored one is drawn in its place.
   const lastMessage = agent.messages[agent.messages.length - 1];
   const storedRunError = useStoredRunError(
@@ -651,7 +655,8 @@ export function ChannelChat({
     setVoiceContextNotice(null);
     let voiceHistoryTimer: ReturnType<typeof setTimeout> | undefined;
     const priorCalls = await Promise.race([
-      loadVoiceArchive(channel.id),
+      // Synelia fork: no voice in the pilot, so no archive to wait for and no notice about it.
+      pilot.hideVoice ? Promise.resolve([]) : loadVoiceArchive(channel.id),
       new Promise<never>((_resolve, reject) => {
         voiceHistoryTimer = setTimeout(
           () => reject(new Error("Voice history timed out")),
@@ -743,9 +748,39 @@ export function ChannelChat({
 
     setRunsInFlight((count) => count + 1);
     try {
-      await withVoiceContext(copilotkit, target.agentId, voiceHistory, () =>
-        copilotkit.runAgent({ agent: target }),
-      );
+      try {
+        await withVoiceContext(copilotkit, target.agentId, voiceHistory, () =>
+          copilotkit.runAgent({ agent: target }),
+        );
+      } catch (error) {
+        // A cut stream may also reject here; it is handled below, not thrown.
+        if (streamCut.current === null && !isStreamCut(error)) throw error;
+        streamCut.current ??= stoppedReason(error);
+      }
+      /*
+       * Synelia fork: the stream was cut mid-run (proxy, Wi-Fi, laptop lid) while the server keeps
+       * running the turn. Instead of a fake error, reattach to the thread: `connect` replays what
+       * the server has and follows the run to its end (RUN_FINISHED / RUN_ERROR reach the
+       * subscription below as for a normal run). Messages are deduplicated by id afterwards, so
+       * the replay never shows the person's message twice.
+       */
+      if (streamCut.current !== null) {
+        const cutReason = streamCut.current;
+        streamCut.current = null;
+        try {
+          await copilotkit.connectAgent({ agent: target });
+          const deduped = dedupeById(target.messages);
+          if (deduped !== target.messages) target.setMessages(deduped);
+          if (awaitingReply.current) {
+            // Reattached but the run never reported an end: nothing more is coming.
+            awaitingReply.current = false;
+          }
+        } catch {
+          awaitingReply.current = false;
+          turnFailure.current = cutReason;
+          setRunError(cutReason);
+        }
+      }
     } finally {
       setRunsInFlight((count) => count - 1);
     }
@@ -840,7 +875,14 @@ export function ChannelChat({
       // Both surfaces fall back to the same sentence, from the same place, so a person who uses
       // both is not told two different things about the same silence.
       onRunErrorEvent: ({ event }) => fail(stoppedReason(event?.message)),
-      onRunFailed: ({ error }) => fail(stoppedReason(error)),
+      onRunFailed: ({ error }) => {
+        // Synelia fork: a transport cut is not the run failing; `deliver` reattaches instead.
+        if (awaitingReply.current && isStreamCut(error)) {
+          streamCut.current = stoppedReason(error);
+          return;
+        }
+        fail(stoppedReason(error));
+      },
       onRunFinishedEvent: () => {
         const wasOurs = awaitingReply.current;
         awaitingReply.current = false;
@@ -939,21 +981,25 @@ export function ChannelChat({
       >
         <ConversationProvider ask={askFromComponent}>
           <div className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col">
-            <VoiceCallWidget
-              call={call}
-              name={
-                agentProfiles?.find((profile) => profile.id === runtimeAgentId)
-                  ?.name ?? channel.name
-              }
-              avatarSeed={
-                agentProfiles?.find((profile) => profile.id === runtimeAgentId)
-                  ?.avatarSeed ?? runtimeAgentId
-              }
-              taskRunning={agent.isRunning || runsInFlight > 0}
-            />
+            {pilot.hideVoice ? null : (
+              <VoiceCallWidget
+                call={call}
+                name={
+                  agentProfiles?.find(
+                    (profile) => profile.id === runtimeAgentId,
+                  )?.name ?? channel.name
+                }
+                avatarSeed={
+                  agentProfiles?.find(
+                    (profile) => profile.id === runtimeAgentId,
+                  )?.avatarSeed ?? runtimeAgentId
+                }
+                taskRunning={agent.isRunning || runsInFlight > 0}
+              />
+            )}
             <ConversationView
               voiceCall={
-                call.available
+                !pilot.hideVoice && call.available
                   ? {
                       active: call.active,
                       supported: call.supported,
@@ -996,7 +1042,7 @@ export function ChannelChat({
                       }
                     }}
                   />
-                  {voiceArchive.error && (
+                  {!pilot.hideVoice && voiceArchive.error && (
                     <p className="pb-2 text-sm text-destructive" role="alert">
                       Voice chats couldn’t be loaded. Refresh to try again.
                     </p>
@@ -1087,6 +1133,13 @@ export function ChannelChat({
                */
               stopped={runError ?? storedRunError ?? undefined}
             />
+            {/* Synelia fork: the pilot data rule stays visible under the composer. */}
+            <p
+              className="px-4 pb-2 text-center text-muted-foreground text-xs"
+              data-testid="synelia-pilot-notice"
+            >
+              {ui.pilotNotice}
+            </p>
           </div>
         </ConversationProvider>
       </SyneliaThreadModels>

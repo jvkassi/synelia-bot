@@ -106,6 +106,13 @@ function RouteComponent() {
           <div className="mt-3">
             <SyneliaModelPicker startOnDefault />
           </div>
+          {/* Synelia fork: the pilot data rule, always visible before the first message. */}
+          <p
+            className="mt-2 text-muted-foreground text-xs"
+            data-testid="synelia-pilot-notice"
+          >
+            {ui.pilotNotice}
+          </p>
           {error ? (
             <p
               className="mt-2 w-full max-w-2xl text-sm text-destructive"

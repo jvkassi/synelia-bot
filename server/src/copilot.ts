@@ -1857,6 +1857,7 @@ export function mountCopilotRuntime(
           local as LocalIntelligence,
           identifyUser,
           basePath,
+          identifyActor,
         )
       : runtimeHandler,
     /** Synelia fork: the durable runner (also used for headless turns). */
@@ -1924,6 +1925,7 @@ function withRequestUser(
   store: LocalIntelligence,
   identifyUser: IdentifyUser,
   basePath: string,
+  identifyActor?: IdentifyActor,
 ) {
   const wrapper = new Hono();
   const prefix = basePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1942,7 +1944,13 @@ function withRequestUser(
       if (context.req.path.endsWith("/info")) return next();
       return context.json({ error: "Sign in to use this deployment." }, 401);
     }
-    return requestUser.run(user, async () => {
+    // The role travels too, for admin-only QA options (the hidden test model).
+    const role = identifyActor
+      ? await identifyActor(context.req.raw)
+          .then((actor) => actor.role)
+          .catch(() => undefined)
+      : undefined;
+    return requestUser.run({ ...user, ...(role ? { role } : {}) }, async () => {
       // Synelia fork: rename / archive / delete. The SSE runtime refuses them (422, they need
       // Intelligence), so they are answered here: owner-only (404 otherwise), and the runner's
       // thread index is updated by the store's change event.

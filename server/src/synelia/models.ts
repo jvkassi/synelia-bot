@@ -9,6 +9,7 @@ export type SyneliaModelOption = {
   provider: string;
   model: string;
   available?: boolean;
+  hidden?: boolean;
 };
 export type SyneliaModelList = {
   models: SyneliaModelOption[];
@@ -51,4 +52,24 @@ export function createModelListSource(
       return cached?.list;
     }
   };
+}
+
+/** Hidden (QA) options are for administrators only. */
+export function visibleModels(
+  list: SyneliaModelList,
+  admin: boolean,
+): SyneliaModelList {
+  return admin
+    ? list
+    : { ...list, models: list.models.filter((option) => !option.hidden) };
+}
+
+export function isHiddenModel(
+  picked: string | undefined,
+  list: SyneliaModelList | undefined,
+): boolean {
+  return Boolean(
+    picked &&
+      list?.models.some((option) => option.id === picked && option.hidden),
+  );
 }

@@ -341,9 +341,20 @@ class InvocationTransport extends AbstractAgent {
   }
 }
 
-/** Synelia fork: API keys never leave in an error text (OpenRouter / OpenAI style `sk-...`). */
+/**
+ * Synelia fork: secrets never leave in an error text: `sk-…` (OpenRouter/OpenAI), `glpat-…`
+ * (GitLab), `Bearer …`, and `token=` / `access_token=` / `private_token=` in URLs.
+ */
 export function redactSecrets(text: string): string {
-  return text.replace(/sk-[A-Za-z0-9_-]{6,}/g, "sk-***").slice(0, 300);
+  return text
+    .replace(/sk-[A-Za-z0-9_-]{6,}/g, "sk-***")
+    .replace(/glpat-[A-Za-z0-9_-]{6,}/g, "glpat-***")
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer ***")
+    .replace(
+      /([?&;\s](?:access_token|private_token|token)=)[^&\s"']+/gi,
+      "$1***",
+    )
+    .slice(0, 300);
 }
 
 /**

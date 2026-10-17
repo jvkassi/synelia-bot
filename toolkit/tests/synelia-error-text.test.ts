@@ -17,6 +17,23 @@ test("redactSecrets masks sk- keys", () => {
   expect(redactSecrets(`token ${KEY} end`)).toBe("token sk-*** end");
 });
 
+test("redactSecrets masks GitLab tokens, Bearer values and token query parameters", () => {
+  expect(redactSecrets("bad glpat-AbC_123-xyz789 here")).toBe(
+    "bad glpat-*** here",
+  );
+  expect(redactSecrets("Authorization: Bearer eyJhbGciOi.payload.sig")).toBe(
+    "Authorization: Bearer ***",
+  );
+  expect(
+    redactSecrets(
+      "GET https://gitlab.x/api/v4/projects?private_token=abc123&per_page=5",
+    ),
+  ).toBe("GET https://gitlab.x/api/v4/projects?private_token=***&per_page=5");
+  expect(redactSecrets("u?access_token=zz9&token=qq1")).toBe(
+    "u?access_token=***&token=***",
+  );
+});
+
 test("describeRunError: provider words + HTTP code, no key, no request body, no url", () => {
   const text = describeRunError(leaky);
   expect(text).toBe("User not found for key sk-*** (HTTP 401)");

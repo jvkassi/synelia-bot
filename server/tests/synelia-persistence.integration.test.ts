@@ -224,3 +224,35 @@ db("message_ids + per-thread badge map (I)", () => {
     ).toBe(404);
   });
 });
+
+describe("hidden QA model (admin only)", () => {
+  test("listed for admins only; recognised as hidden", async () => {
+    const { visibleModels, isHiddenModel } = await import(
+      "../src/synelia/models"
+    );
+    const withTest = {
+      ...list,
+      models: [
+        ...list.models,
+        {
+          id: "synelia-test:always-fails",
+          provider: "synelia-test",
+          model: "always-fails",
+          hidden: true,
+        },
+      ],
+    };
+    expect(
+      visibleModels(withTest, false).models.some((m) =>
+        m.id.startsWith("synelia-test"),
+      ),
+    ).toBe(false);
+    expect(
+      visibleModels(withTest, true).models.some((m) =>
+        m.id.startsWith("synelia-test"),
+      ),
+    ).toBe(true);
+    expect(isHiddenModel("synelia-test:always-fails", withTest)).toBe(true);
+    expect(isHiddenModel("router9:glm", withTest)).toBe(false);
+  });
+});

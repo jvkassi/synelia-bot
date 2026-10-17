@@ -30,7 +30,25 @@ export type ModelOption = {
   usage: string;
   /** False when the provider's key cannot run models (e.g. an OpenRouter management key). */
   available: boolean;
+  /** QA-only entry: the server shows it to administrators only and refuses it for anybody else. */
+  hidden?: boolean;
 };
+
+/**
+ * QA model, enabled by SYNELIA_TEST_MODEL=on: every call answers HTTP 401 with a provider-style
+ * body, so the error path (RUN_ERROR, French notice, stored technical text) can be exercised on
+ * demand without breaking a real provider. Admin-only (see server/src/persistence/postgres-runner.ts).
+ */
+export const TEST_MODEL_ID = "synelia-test:always-fails";
+const failingFetch: typeof fetch = async () =>
+  new Response(
+    JSON.stringify({ error: { message: "Synelia test model: always fails." } }),
+    {
+      status: 401,
+      headers: { "content-type": "application/json" },
+    },
+  );
+Object.assign(failingFetch, { preconnect: () => {} });
 
 const env = (name: string) => process.env[name]?.trim() || undefined;
 
@@ -91,6 +109,24 @@ export function syneliaProviders(): Map<string, Provider> {
 
 export function modelOptions(): ModelOption[] {
   const providers = syneliaProviders();
+  const test: ModelOption[] =
+    env("SYNELIA_TEST_MODEL") === "on"
+      ? [
+          {
+            id: TEST_MODEL_ID,
+            provider: "synelia-test",
+            providerLabel: "Test QA",
+            model: "always-fails",
+            usage: "échec forcé (admin)",
+            available: true,
+            hidden: true,
+          },
+        ]
+      : [];
+  return [...listed(providers), ...test];
+}
+
+function listed(providers: Map<string, Provider>): ModelOption[] {
   return (env("SYNELIA_MODELS") ?? "")
     .split(",")
     .map((entry) => entry.trim())
@@ -148,7 +184,9 @@ export async function probeProviders(force = false): Promise<void> {
 }
 
 export function defaultModelId(): string | undefined {
-  const options = modelOptions().filter((option) => option.available);
+  const options = modelOptions().filter(
+    (option) => option.available && !option.hidden,
+  );
   const wanted = env("SYNELIA_DEFAULT_MODEL");
   return options.find((option) => option.id === wanted)?.id ?? options[0]?.id;
 }
@@ -176,7 +214,16 @@ export function resolveSyneliaModel(picked: string | undefined) {
     }),
   );
   if (cached) return cached;
-  const provider = syneliaProviders().get(option.provider) as Provider;
+  const provider =
+    option.id === TEST_MODEL_ID
+      ? {
+          id: "synelia-test",
+          label: "Test QA",
+          baseURL: "http://synelia-test.invalid/v1",
+          apiKey: "none",
+          fetch: failingFetch,
+        }
+      : (syneliaProviders().get(option.provider) as Provider);
   const model = createOpenAI({
     baseURL: provider.baseURL,
     apiKey: provider.apiKey,

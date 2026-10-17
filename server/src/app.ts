@@ -1,4 +1,5 @@
 import type { Hono as HonoApp, MiddlewareHandler } from "hono";
+import { type SyneliaModelList, visibleModels } from "./synelia/models";
 import { createPilotGate, pilotEnabled } from "./synelia/pilot-gate";
 import { localIntelligence } from "./persistence/local-intelligence";
 import { Hono } from "hono";
@@ -1923,7 +1924,13 @@ export function createApp(
         signal: AbortSignal.timeout(5_000),
       });
       if (!response.ok) throw new Error(`status ${response.status}`);
-      return context.json(await response.json());
+      // The hidden QA model (synelia-test:always-fails) is listed for administrators only.
+      return context.json(
+        visibleModels(
+          (await response.json()) as SyneliaModelList,
+          context.var.actor.role === "admin",
+        ),
+      );
     } catch {
       return context.json({ error: "Model list unavailable." }, 502);
     }

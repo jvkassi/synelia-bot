@@ -54,16 +54,30 @@ export function createPilotGate(enabled = pilotEnabled()): MiddlewareHandler {
 }
 
 /**
- * Tools the browser offers the Bot that are outside the pilot: the agent computer (computer_*,
- * report_refusal, which belongs to it) and sandboxed generated UI (its API is gated above). The
- * in-chat questions (askApproval/askChoice/askForm) and display components (show*) stay.
+ * PERMANENT RULE (gate item 10): an ALLOWLIST. In the pilot the Bot may only use the in-chat
+ * questions and display components below; any other tool the browser offers (agent computer,
+ * sandboxed UI, anything added upstream later) is removed before the run.
  */
+export const PILOT_ALLOWED_TOOLS: ReadonlySet<string> = new Set([
+  "askApproval",
+  "askChoice",
+  "askForm",
+  "showActivityReport",
+  "showAreaChart",
+  "showBarChart",
+  "showChecklist",
+  "showLineChart",
+  "showMetrics",
+  "showNotice",
+  "showPieChart",
+  "showProgress",
+  "showQuote",
+  "showRecord",
+  "showTable",
+]);
+
 export function isPilotGatedTool(name: string): boolean {
-  return (
-    name.startsWith("computer_") ||
-    name === "report_refusal" ||
-    name === "generateSandboxedUi"
-  );
+  return !PILOT_ALLOWED_TOOLS.has(name);
 }
 
 export function pilotTools<T extends { name: string }>(

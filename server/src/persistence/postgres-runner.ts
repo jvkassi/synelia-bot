@@ -26,7 +26,11 @@ import type {
   LocalIntelligence,
   LocalThreadSummary,
 } from "./local-intelligence";
-import { resolveModel, type SyneliaModelList } from "../synelia/models";
+import {
+  isHiddenModel,
+  resolveModel,
+  type SyneliaModelList,
+} from "../synelia/models";
 import { pilotTools } from "../synelia/pilot-gate";
 import { requestUser } from "./request-user";
 
@@ -153,6 +157,24 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
             }
           }
           await this.hydrate(request.threadId);
+          // Synelia fork: the hidden QA model is honoured for administrators only. Anybody else
+          // who names it gets the default, exactly as for an id outside the allowlist.
+          const picked = pickedModel(request);
+          if (
+            picked &&
+            user?.role !== "admin" &&
+            isHiddenModel(picked, await this.#models().catch(() => undefined))
+          ) {
+            request = {
+              ...request,
+              input: {
+                ...request.input,
+                context: (request.input.context ?? []).filter(
+                  (entry) => entry.description !== "Synelia model",
+                ),
+              },
+            };
+          }
         })(),
       ),
     ).pipe(

@@ -65,6 +65,18 @@ on konnect behind Traefik + basicauth, with a Mastra Bot answering through OpenR
 | `deploy/synelia/deploy.sh` (new) | Refuses to deploy a dirty tree; writes DEPLOYED_COMMIT and a chmod-600 bundle only from a clean commit. |
 | tests | `server/tests/synelia-persistence.integration.test.ts` (needs `SYNELIA_TEST_DATABASE_URL`), `server/tests/synelia-pilot-gate.test.ts`, `toolkit/tests/synelia-error-text.test.ts`; e2e `e2e.sh ownership` and `e2e.sh gate` (outside the repo, /workspace/synelia-grokbot). |
 
+## Pass 3: long runs, reattach, pilot tightening
+| File | Why |
+|---|---|
+| `server/src/http-server.ts`, `server/src/synelia/sse-heartbeat.ts` (new) | Root cause of "network error" ~10-17 s into long runs: Bun.serve `idleTimeout` (10 s) closed the AG-UI stream while the model was silent (reproduced directly against the server container, not Traefik). `/api/copilotkit/*` gets `server.timeout(req, 0)`, and every `text/event-stream` response carries `: ping` every 5 s (`no-transform`, `X-Accel-Buffering: no`). |
+| `app/src/lib/copilot/stream-reattach.ts` (new), `components/channels/channel-chat.tsx` | A transport cut mid-run is not shown as an error: the client reattaches with `connectAgent` (replay + follow to RUN_FINISHED/RUN_ERROR) and deduplicates messages by id. |
+| `server/src/synelia/pilot-gate.ts` | Tools: ALLOWLIST (ask*/show* known names only), everything else removed. |
+| `toolkit/src/headless-tools.ts`, patch `@ag-ui/mastra` | Redaction also for `glpat-…`, `Bearer …`, `token=` / `access_token=` / `private_token=`. |
+| `agent-mastra/src/mastra/synelia-models.ts`, `server/src/synelia/models.ts`, `server/src/app.ts`, `server/src/copilot.ts`, `server/src/persistence/{postgres-runner,request-user}.ts` | Hidden QA model `synelia-test:always-fails` (SYNELIA_TEST_MODEL=on): always HTTP 401; listed and honoured for admins only (others get the default). QA: sign in as an admin account, pick "Test QA · always-fails · échec forcé (admin)" in the model picker, send any message. |
+| `app/src/lib/voice/archive.ts`, `channel-chat.tsx`, `lib/i18n/index.ts` (keys only) | Voice hidden under the pilot: no fetch, no widget, no voice notices. |
+| `routes/_authed/_app/index.tsx`, `channel/new.tsx`, `channel-chat.tsx` | Permanent notice "Pilote : données de test uniquement, pas de code ni de documents clients." (home, new conversation, under the composer). |
+| tests | `server/tests/synelia-sse-heartbeat.test.ts`, allowlist test with `foo_tool`, redaction tests, hidden-model test, `app/src/lib/copilot/stream-reattach.test.ts`; e2e `sselong.sh` (>60 s run through Traefik). |
+
 ## Gate ouverture 5 utilisateurs
 | # | Critère | Statut | Preuve |
 |---|---|---|---|
@@ -76,6 +88,9 @@ on konnect behind Traefik + basicauth, with a Mastra Bot answering through OpenR
 | 6 | erreurs sans fuite (requestBodyValues + clé sk- absents du RUN_ERROR et de la DB) | OK — 28f3c42 | `synelia-error-text.test.ts` (formatter + helper du patch exécuté) |
 | 7 | badge fiable (run >20 s, badge sans reload, pas de polling par message) | PARTIEL — 28f3c42 | requête unique par thread, invalidée en fin de run ; test navigateur >20 s à faire (Chief) |
 | 8 | CI front verte (format:check, 6 tests cassés, lang=fr, pas d'anglais login/composer/sidebar/picker) | OUVERT (Frontend Expert) | — |
+| 10 | outils : liste blanche ask*/show* (règle permanente) | OK — PASS3_HASH | `synelia-pilot-gate.test.ts` › "gate 10: tools are an allowlist" (`foo_tool` refusé) |
+| 11 | avant ouverture : clé d'inférence OpenRouter + ZDR sur le modèle par défaut, OU politique de données 9router vérifiée par écrit et validée par JV | OUVERT | — |
+| 12 | coupure du flux en cours de run : le client se rattache (connect), pas de fausse erreur, pas de doublon | PARTIEL — PASS3_HASH | `stream-reattach.test.ts` (détection + dédoublonnage) ; test navigateur avec coupure réelle à faire |
 | 9 | déploiement refusé si arbre sale ; DEPLOYED_COMMIT depuis arbre propre | OK — 28f3c42 | `deploy/synelia/deploy.sh` |
 
 ## Deployment

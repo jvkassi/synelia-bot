@@ -53,6 +53,9 @@ const fr = {
       "Chargez les conversations plus anciennes pour chercher plus loin.",
     nothingNamed: (term: string) => `Rien ne s'appelle « ${term} ».`,
   },
+  /** Pilot data rule, shown permanently on home, new conversation and under the composer. */
+  pilotNotice:
+    "Pilote : données de test uniquement, pas de code ni de documents clients.",
   conversation: {
     fallbackTitle: "Conversation",
     askAnything: "Posez votre question",
@@ -89,4 +92,6 @@ export const pilot = {
   /** No computer supervisor in this deployment: the "watch the computer" control is hidden. */
   hideComputerControls: true,
   hideBotPage: true,
+  /** Voice calls are outside the pilot (their API answers 404). */
+  hideVoice: true,
 } as const;
