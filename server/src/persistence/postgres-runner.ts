@@ -95,6 +95,12 @@ export function threadBusyEvents(request: AgentRunnerRunRequest): BaseEvent[] {
 export class PostgresAgentRunner extends InMemoryAgentRunner {
   readonly #store: LocalIntelligence;
   readonly #hydrated = new Map<string, Promise<void>>();
+  /**
+   * Synelia fork (item 1): the in-flight persistence for a thread's latest run. persist() both
+   * saves to Postgres AND rewrites the in-memory run's events to the adjusted ones, so a test (and
+   * nothing in production) can await that the in-memory store matches the DB before it reloads.
+   */
+  readonly #persisting = new Map<string, Promise<unknown>>();
   /** Thread index mirrored in memory, because the runtime's listThreads() is synchronous. */
   readonly #index = new Map<string, LocalThreadSummary>();
   readonly #global = ɵGLOBAL_STORE as unknown as GlobalStore;
@@ -124,6 +130,15 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
   /** For tests and the thread mutation route. */
   indexed(threadId: string): LocalThreadSummary | undefined {
     return this.#index.get(threadId);
+  }
+
+  /**
+   * Synelia fork (item 1) test seam: resolves after the most recent run's persistence settles — the
+   * Postgres save AND the in-memory adjustment that makes memory match the DB (so connect/replay and
+   * isAlreadyAnswered read the adjusted events). Not used in production.
+   */
+  ɵpersisted(threadId: string): Promise<unknown> {
+    return this.#persisting.get(threadId) ?? Promise.resolve();
   }
 
   /** Load the thread index at boot. Failure is logged, not fatal: the index fills as people talk. */
@@ -290,7 +305,7 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
           if (!run) return;
           // Synelia fork: a RUN_ERROR carries a stable code, and a finish with no text and no tool
           // call becomes a provider_refusal RUN_ERROR, so a reload still shows the French notice.
-          void this.#models()
+          const settled = this.#models()
             .catch(() => undefined)
             .then((list) => {
               const resolved = resolveModel(pickedModel(request), list);
@@ -325,6 +340,14 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
                   }),
                 );
               }
+              // Synelia fork (item 1): memory must match the DB. The in-memory runner appended the
+              // RAW events (English refusal text + a bare RUN_FINISHED); overwrite them in place with
+              // the adjusted events. In THIS process a reload goes through connect(), which replays
+              // from memory (not Postgres), so without this the refusal text and RUN_FINISHED would
+              // survive the reload and isAlreadyAnswered would treat the turn as answered — the
+              // resend would get an empty finished run. With it, replay hides the text and shows the
+              // provider_refusal RUN_ERROR, and a resend of the same message runs the model again.
+              run.events = adjusted.events;
               return this.#store.saveRun({
                 runId,
                 threadId: request.threadId,
@@ -353,6 +376,7 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
                 }),
               ),
             );
+          this.#persisting.set(request.threadId, settled);
         };
         // The stream is a ReplaySubject: a second subscriber sees the same events, and completes
         // after the in-memory store has appended the run, which is what `persist` reads.
