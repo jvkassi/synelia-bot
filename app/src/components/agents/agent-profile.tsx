@@ -5,6 +5,7 @@ import { AbstractAvatar } from "@/components/agents/abstract-avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { agentQueryOptions } from "@/lib/agents/queries";
+import { ui } from "@/lib/i18n";
 
 function Tag({ children }: { children: ReactNode }) {
   return (
@@ -82,14 +83,18 @@ export function AgentProfile({ agentId }: { agentId: string }) {
         </div>
 
         <div className="flex flex-wrap justify-center gap-1.5">
-          <Tag>{profile.visibility === "private" ? "Private" : "Public"}</Tag>
-          {profile.systemOwned ? <Tag>System owned</Tag> : null}
+          <Tag>
+            {profile.visibility === "private"
+              ? ui.profile.private
+              : ui.profile.public}
+          </Tag>
+          {profile.systemOwned ? <Tag>{ui.profile.systemOwned}</Tag> : null}
         </div>
       </header>
 
       <section className="grid gap-2">
         <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Role
+          {ui.profile.role}
         </h2>
         <p className="text-sm whitespace-pre-wrap text-pretty">
           {profile.roleDescription}
@@ -103,7 +108,7 @@ export function AgentProfile({ agentId }: { agentId: string }) {
             void navigate({ search: { agent: agentId }, to: "/channel/new" })
           }
         >
-          Start new channel
+          {ui.conversation.newChat}
         </Button>
         <Button
           className="w-full text-sm!"
@@ -112,7 +117,7 @@ export function AgentProfile({ agentId }: { agentId: string }) {
           )}
           variant="outline"
         >
-          Open {profile.name}
+          {ui.conversation.open(profile.name)}
         </Button>
       </div>
     </div>

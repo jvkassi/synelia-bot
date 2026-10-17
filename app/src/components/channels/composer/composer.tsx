@@ -1437,6 +1437,9 @@ export function Composer({
   const filePicker = attachmentsEnabled ? (
     <input
       accept={FILE_PICKER_ACCEPT}
+      // Synelia fork: driven by the visible `+` button, so kept out of the tab order and the
+      // accessibility tree (screen readers announced a second, English "Choose File" control).
+      aria-hidden="true"
       className="sr-only"
       // The input the `+` button clicks, shut along with it: a `click()` on a disabled input opens
       // no dialog, so the door is closed even to a caller that reaches past the button for the ref.
@@ -1444,6 +1447,7 @@ export function Composer({
       multiple
       onChange={handlePickedFiles}
       ref={fileInputRef}
+      tabIndex={-1}
       type="file"
     />
   ) : null;
