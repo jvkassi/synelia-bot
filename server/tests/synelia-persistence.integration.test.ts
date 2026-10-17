@@ -14,8 +14,15 @@ import {
   pickedModel,
 } from "../src/persistence/postgres-runner";
 import { resolveModel } from "../src/synelia/models";
+import { testDatabaseUrlFrom } from "./support/database";
 
-const url = process.env.SYNELIA_TEST_DATABASE_URL;
+// Same guard as the upstream integration suite: refuses a missing protocol/database and the live
+// openbot database, so this file can never run against the application DB.
+const url = process.env.SYNELIA_TEST_DATABASE_URL?.trim()
+  ? testDatabaseUrlFrom({
+      TEST_DATABASE_URL: process.env.SYNELIA_TEST_DATABASE_URL,
+    })
+  : undefined;
 const db = url ? describe : describe.skip;
 const id = () => crypto.randomUUID();
 
