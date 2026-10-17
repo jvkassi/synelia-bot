@@ -34,6 +34,8 @@ export function ConversationView({
   pending = false,
   autoFocus = false,
   stopped,
+  onRetry,
+  retryDisabled,
   serverRunning = false,
   stoppable,
   queueWhileBusy = false,
@@ -72,6 +74,9 @@ export function ConversationView({
   autoFocus?: boolean;
   /** Why the last turn ended without an answer. Drawn at the end of the transcript, not here. */
   stopped?: string;
+  /** Synelia fork: « Réessayer » under a failed turn, forwarded to the transcript. */
+  onRetry?: () => void;
+  retryDisabled?: boolean;
   /** Synelia fork: a turn started elsewhere is still running on the server (neutral indicator). */
   serverRunning?: boolean;
   /**
@@ -437,6 +442,7 @@ export function ConversationView({
           queued={queued}
           restoring={restoring}
           {...(stopped ? { stopped } : {})}
+          {...(onRetry ? { onRetry, retryDisabled } : {})}
           serverRunning={serverRunning}
         />
       </div>

@@ -25,7 +25,40 @@ export type StopNotice = {
   role: "status" | "alert";
   /** The raw reason is technical and goes to the console, never to the screen. */
   technical: boolean;
+  /**
+   * « Réessayer » is offered: the same turn is run again on the message already in the thread.
+   * Never for a refusal (the same words get the same answer; the server would also answer an
+   * already-finished message with an empty run) nor while the run may still be going server-side.
+   */
+  retry: boolean;
 };
+
+/**
+ * STABLE SERVER CODES, read before any wording. Carried on a RUN_ERROR event's `code`
+ * (channel-chat.tsx `onRunErrorEvent`) or on the stored run's `lastError.code` (GET
+ * /api/threads/:id, `threadStatusView` in synelia-model.tsx). `AGENT_STREAM_STALLED` is the code the
+ * stall watchdog already sends (server/src/channels/stall-guard.ts), read as `run_stalled`.
+ */
+const CODE_PREFIX = "synelia:code:";
+const KNOWN_CODES: Record<
+  string,
+  "provider_refusal" | "run_stalled" | "provider_unavailable"
+> = {
+  provider_refusal: "provider_refusal",
+  run_stalled: "run_stalled",
+  AGENT_STREAM_STALLED: "run_stalled",
+  provider_unavailable: "provider_unavailable",
+};
+
+/**
+ * The `stopped` reason for a turn: a known server code wins (encoded, never shown), otherwise the
+ * message as the server wrote it, for the fallback heuristics below.
+ */
+export function codedReason(code: unknown, message: unknown): string | null {
+  if (typeof code === "string" && KNOWN_CODES[code])
+    return `${CODE_PREFIX}${KNOWN_CODES[code]}`;
+  return typeof message === "string" && message.trim() ? message : null;
+}
 
 /** The browser's own wording for a request that never got an answer, across engines. */
 export function isNetworkFailure(reason: string): boolean {
@@ -80,37 +113,52 @@ export function stopNotice(
   reason: string,
   alternative: string | null,
 ): StopNotice {
-  if (reason === EMPTY_RUN)
-    return {
-      text: ui.conversation.declined(alternative),
-      role: "status",
-      technical: false,
-    };
+  const declined = (technical: boolean): StopNotice => ({
+    text: ui.conversation.declined(alternative),
+    role: "status",
+    technical,
+    retry: false,
+  });
+  const failed = (technical: boolean): StopNotice => ({
+    text: ui.conversation.runFailed,
+    role: "alert",
+    technical,
+    retry: true,
+  });
+  const unavailable = (technical: boolean): StopNotice => ({
+    text: ui.conversation.modelUnavailable,
+    role: "alert",
+    technical,
+    retry: true,
+  });
+  if (reason === EMPTY_RUN) return declined(false);
+  if (reason.startsWith(CODE_PREFIX)) {
+    const code = reason.slice(CODE_PREFIX.length);
+    if (code === "provider_refusal") return declined(false);
+    if (code === "provider_unavailable") return unavailable(false);
+    return failed(false);
+  }
+  // Nothing was reported: the generic failure, with its retry.
+  if (reason === ui.conversation.stoppedWithoutReason) return failed(false);
+  // The app's own French sentences (« Rechargez la page », « Renvoyez votre message »): already
+  // written for a person, and each says what to do, so no button competes with it.
   if (isOwnSentence(reason))
-    return { text: reason, role: "alert", technical: false };
+    return { text: reason, role: "alert", technical: false, retry: false };
+  /*
+   * TEMPORARY FALLBACK: wording heuristics for a RUN_ERROR that carries no code. Delete this block
+   * once the server emits `provider_refusal` / `run_stalled` / `provider_unavailable` on every
+   * RUN_ERROR and on the stored `lastError` (see the codes above).
+   */
   if (isNetworkFailure(reason))
+    // The stream dropped but the run goes on server-side: a retry would race it.
     return {
       text: ui.conversation.networkError,
       role: "alert",
       technical: true,
+      retry: false,
     };
-  if (isStall(reason))
-    return { text: ui.conversation.stalled, role: "alert", technical: true };
-  if (isProviderRefusal(reason))
-    return {
-      text: ui.conversation.declined(alternative),
-      role: "status",
-      technical: true,
-    };
-  if (isProviderError(reason))
-    return {
-      text: ui.conversation.modelUnavailable,
-      role: "alert",
-      technical: true,
-    };
-  return {
-    text: ui.conversation.runFailed(alternative),
-    role: "alert",
-    technical: true,
-  };
+  if (isStall(reason)) return failed(true);
+  if (isProviderRefusal(reason)) return declined(true);
+  if (isProviderError(reason)) return unavailable(true);
+  return failed(true);
 }

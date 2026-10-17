@@ -204,20 +204,19 @@ const fr = {
     stoppedWithoutReason: "L'assistant s'est arrêté sans donner de raison.",
     /**
      * The provider declined (content filter, moderation, Anthropic `refusal`) or the run finished with
-     * nothing in it. `model`: the label of another available model, « Alternatif » first.
+     * nothing in it. `model`: the label of another available model, « Alternatif » first. The picker
+     * sits in the conversation's header bar (routes/_authed/_app/channel/$channelId.tsx), hence
+     * « en haut de la conversation ».
      */
     declined: (model: string | null) =>
       model
-        ? `Je ne peux pas aider sur ce point. Reformulez ou essayez le modèle « ${model} ».`
-        : "Je ne peux pas aider sur ce point. Reformulez ou choisissez un autre modèle.",
-    /** Any other failure of the run; the technical text goes to the console only. */
-    runFailed: (model: string | null) =>
-      model
-        ? `La réponse n'a pas pu être générée. Réessayez ou essayez le modèle « ${model} ».`
-        : "La réponse n'a pas pu être générée. Réessayez ou choisissez un autre modèle.",
-    /** The stall watchdog ended the turn (server/src/channels/stall-guard.ts, English upstream). */
-    stalled:
-      "L'assistant ne répond plus, ce tour a été arrêté. Renvoyez votre message.",
+        ? `Je ne peux pas répondre à cette demande. Reformulez-la, ou essayez le modèle ${model} en haut de la conversation.`
+        : "Je ne peux pas répondre à cette demande. Reformulez-la, ou essayez un autre modèle en haut de la conversation.",
+    /** Any other failure of the run (stall included); offered with « Réessayer ». */
+    runFailed: "La réponse n'a pas pu aboutir.",
+    /** Runs the failed turn again on the message already sent. */
+    retry: "Réessayer",
+    retrying: "Nouvelle tentative…",
     networkError:
       "Connexion interrompue, la réponse continue d’être générée. Rechargez la page pour l’afficher.",
     loading: "Chargement de la conversation",

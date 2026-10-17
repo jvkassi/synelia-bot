@@ -19,6 +19,7 @@ import {
 import { apiUrl } from "@/lib/api-url";
 import { apiFetch } from "@/lib/api-fetch";
 import { client } from "@/lib/client";
+import { codedReason } from "@/lib/copilot/stop-notice";
 import { ui } from "@/lib/i18n";
 
 export type SyneliaModel = {
@@ -342,7 +343,10 @@ export function useStoredRunError(
       );
       if (!response.ok) return null;
       return (await response.json()) as {
-        lastError?: { message?: string | null } | null;
+        lastError?: {
+          message?: string | null;
+          code?: string | null;
+        } | null;
         activeRunId?: string | null;
         lostRunId?: string | null;
         interrupted?: boolean;
@@ -356,7 +360,8 @@ export function useStoredRunError(
 }
 
 export type ThreadStatusBody = {
-  lastError?: { message?: string | null } | null;
+  /** `code`: a stable server code (stop-notice.ts), read before the message when present. */
+  lastError?: { message?: string | null; code?: string | null } | null;
   activeRunId?: string | null;
   lostRunId?: string | null;
   interrupted?: boolean;
@@ -374,7 +379,9 @@ export function threadStatusView(
 ): { error: string | null; activeRunId: string | null; interrupted: boolean } {
   const activeRunId = data?.activeRunId ?? null;
   return {
-    error: endsOnUserMessage ? (data?.lastError?.message ?? null) : null,
+    error: endsOnUserMessage
+      ? codedReason(data?.lastError?.code, data?.lastError?.message)
+      : null,
     activeRunId,
     // Only a run the server KNOWS was lost (lock expired, run never stored). An idle thread, or
     // one whose last message is the person's for any other reason, is never "interrupted".

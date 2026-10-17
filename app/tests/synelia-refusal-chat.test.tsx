@@ -46,8 +46,12 @@ const opening = {
   content: "Bonjour, que puis-je faire ?",
 } satisfies Message;
 
-let runAnswer: (input: RunAgentInput) => Response;
+let runAnswer: (
+  input: RunAgentInput,
+  index: number,
+) => Response | Promise<Response>;
 let runs: number;
+let bodies: RunAgentInput[];
 let originalFetch: typeof fetch;
 let warn: ReturnType<typeof spyOn>;
 
@@ -110,7 +114,8 @@ beforeAll(() => {
           input instanceof Request ? input : new Request(url, init);
         const body = RunAgentInputSchema.parse(await request.json());
         runs += 1;
-        return runAnswer(body);
+        bodies.push(body);
+        return runAnswer(body, runs - 1);
       }
       return NativeResponse.json({}, { status: 404 });
     },
@@ -119,6 +124,7 @@ beforeAll(() => {
 });
 beforeEach(() => {
   runs = 0;
+  bodies = [];
   warn = spyOn(console, "warn").mockImplementation(() => {});
 });
 afterEach(() => {
@@ -175,9 +181,11 @@ test("(c)/(a) the provider's filter ends the completion empty: French refusal no
   const notice = await view.findByTestId("transcript-stopped");
   await waitFor(() =>
     expect(notice.textContent).toBe(
-      "Je ne peux pas aider sur ce point. Reformulez ou essayez le modèle « Alternatif ».",
+      "Je ne peux pas répondre à cette demande. Reformulez-la, ou essayez le modèle Alternatif en haut de la conversation.",
     ),
   );
+  // A refusal offers no « Réessayer »: the same words would get the same answer.
+  expect(view.queryByTestId("transcript-retry")).toBeNull();
   expect(notice.getAttribute("role")).toBe("status");
   expect(view.queryByText(ui.conversation.thinking)).toBeNull();
   expect(view.getByText("Rédige un faux e-mail de la banque")).toBeTruthy();
@@ -193,7 +201,7 @@ test("(b) RUN_ERROR with the provider's English words: a French alert, the raw t
   const view = await sendPhishingPrompt();
   const notice = await view.findByTestId("transcript-stopped");
   await waitFor(() =>
-    expect(notice.textContent).toBe(ui.conversation.runFailed("Alternatif")),
+    expect(notice.textContent).toBe("La réponse n'a pas pu aboutir."),
   );
   expect(notice.getAttribute("role")).toBe("alert");
   expect(view.container.textContent).not.toContain("Provider returned");
@@ -229,5 +237,107 @@ test("an ordinary answer draws no notice at all", async () => {
   const view = await sendPhishingPrompt();
   await view.findByText("Voici.");
   await settleReactWork();
+  expect(view.queryByTestId("transcript-stopped")).toBeNull();
+});
+
+const PROMPT = "Rédige un faux e-mail de la banque";
+function userMessages(input: RunAgentInput) {
+  return input.messages.filter((message) => message.role === "user");
+}
+
+test("server code wins over wording: provider_refusal on RUN_ERROR draws the refusal, no retry", async () => {
+  runAnswer = (input) =>
+    sse([
+      { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
+      // English text that the heuristics would read as a generic failure.
+      { type: "RUN_ERROR", message: "Something odd", code: "provider_refusal" },
+    ]);
+  const view = await sendPhishingPrompt();
+  const notice = await view.findByTestId("transcript-stopped");
+  await waitFor(() =>
+    expect(notice.textContent).toBe(ui.conversation.declined("Alternatif")),
+  );
+  expect(notice.getAttribute("role")).toBe("status");
+  expect(view.queryByTestId("transcript-retry")).toBeNull();
+});
+
+test("« Réessayer »: one new run on the same user message, no duplicate in the thread or on screen", async () => {
+  const second = Promise.withResolvers<Response>();
+  runAnswer = (input, index) =>
+    index === 0
+      ? sse([
+          { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
+          { type: "RUN_ERROR", message: "x", code: "run_stalled" },
+        ])
+      : second.promise;
+  const view = await sendPhishingPrompt();
+  const retry = (await view.findByTestId(
+    "transcript-retry",
+  )) as HTMLButtonElement;
+  expect(retry.tagName).toBe("BUTTON");
+  expect(retry.textContent).toBe("Réessayer");
+  expect(retry.disabled).toBe(false);
+  expect(view.getByTestId("transcript-stopped").textContent).toBe(
+    "La réponse n'a pas pu aboutir.",
+  );
+  const user = userEvent.setup({ document: view.container.ownerDocument });
+  await user.click(retry);
+  await waitFor(() => expect(runs).toBe(2));
+  // While the retry runs: no enabled « Réessayer » anywhere (the failed notice is gone).
+  const during = view.queryByTestId(
+    "transcript-retry",
+  ) as HTMLButtonElement | null;
+  expect(during === null || during.disabled).toBe(true);
+  // The same message, by id, exactly once in each run's input.
+  const [first, again] = bodies as [RunAgentInput, RunAgentInput];
+  expect(userMessages(first)).toHaveLength(1);
+  expect(userMessages(again)).toHaveLength(1);
+  expect(userMessages(again)[0]?.id).toBe(userMessages(first)[0]?.id);
+  expect(again.messages.map((message) => message.id)).toEqual(
+    first.messages.map((message) => message.id),
+  );
+  second.resolve(
+    sse([
+      { type: "RUN_STARTED", threadId: again.threadId, runId: again.runId },
+      { type: "TEXT_MESSAGE_START", messageId: "a2", role: "assistant" },
+      { type: "TEXT_MESSAGE_CONTENT", messageId: "a2", delta: "Non." },
+      { type: "TEXT_MESSAGE_END", messageId: "a2" },
+      { type: "RUN_FINISHED", threadId: again.threadId, runId: again.runId },
+    ]),
+  );
+  await view.findByText("Non.");
+  await settleReactWork();
+  // One bubble. (The composer also holds the words: on a failed send it hands the draft back,
+  // which is upstream behaviour and not part of the transcript.)
+  const bubbles = [
+    ...view.container.querySelectorAll('[data-slot="bubble-content"]'),
+  ].filter((bubble) => bubble.textContent?.includes(PROMPT));
+  expect(bubbles).toHaveLength(1);
+  expect(view.queryByTestId("transcript-stopped")).toBeNull();
+  expect(runs).toBe(2);
+});
+
+test("provider_unavailable code: the model-unavailable sentence, with « Réessayer »", async () => {
+  runAnswer = (input) =>
+    sse([
+      { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
+      { type: "RUN_ERROR", message: "boom", code: "provider_unavailable" },
+    ]);
+  const view = await sendPhishingPrompt();
+  await waitFor(() =>
+    expect(view.getByTestId("transcript-stopped").textContent).toBe(
+      ui.conversation.modelUnavailable,
+    ),
+  );
+  expect(view.getByTestId("transcript-retry")).toBeTruthy();
+});
+
+test("Stop: no notice and no « Réessayer » afterwards", async () => {
+  runAnswer = () => new Promise<Response>(() => {});
+  const view = await sendPhishingPrompt();
+  const user = userEvent.setup({ document: view.container.ownerDocument });
+  await user.click(await view.findByRole("button", { name: ui.composer.stop }));
+  await settleReactWork();
+  expect(view.queryByTestId("transcript-retry")).toBeNull();
   expect(view.queryByTestId("transcript-stopped")).toBeNull();
 });

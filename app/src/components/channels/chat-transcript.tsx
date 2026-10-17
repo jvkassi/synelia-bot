@@ -24,6 +24,7 @@ import {
 } from "react";
 import { Streamdown } from "streamdown";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -111,6 +112,12 @@ type ChatTranscriptProps = {
    * be told, and only the thing that ended the turn knows which one happened.
    */
   stopped?: string;
+  /**
+   * Synelia fork: « Réessayer » under a failed turn runs it again on the message already sent (see
+   * `retryLastTurn` in channel-chat.tsx). Absent: no button. `retryDisabled` while a run is going.
+   */
+  onRetry?: () => void;
+  retryDisabled?: boolean;
   /**
    * Synelia fork: the server is still writing a turn this page did not start (reload mid-run).
    * Drawn with the same neutral Thinking indicator, never the alert style of `stopped`.
@@ -204,7 +211,15 @@ function RestoringTranscript() {
  * and the conversation is sent back to the model on the next turn, so the Bot would then read its
  * own obituary as something it had written.
  */
-function Stopped({ reason }: { reason: string }) {
+function Stopped({
+  reason,
+  onRetry,
+  retryDisabled = false,
+}: {
+  reason: string;
+  onRetry?: () => void;
+  retryDisabled?: boolean;
+}) {
   // Synelia fork: never the raw reason. A provider refusal (content filter, moderation, or a run
   // that finished empty) says so in French and suggests another model; a provider error, a stall
   // or anything unrecognised gets a French sentence too. The technical text goes to the console
@@ -215,7 +230,7 @@ function Stopped({ reason }: { reason: string }) {
   useEffect(() => {
     if (notice.technical) console.warn("[synelia] turn ended:", reason);
   }, [notice.technical, reason]);
-  return (
+  const text = (
     <p
       className={cn(
         "text-sm",
@@ -226,6 +241,22 @@ function Stopped({ reason }: { reason: string }) {
     >
       {notice.text}
     </p>
+  );
+  if (!notice.retry || !onRetry) return text;
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      {text}
+      <Button
+        data-testid="transcript-retry"
+        disabled={retryDisabled}
+        onClick={onRetry}
+        size="sm"
+        type="button"
+        variant="outline"
+      >
+        {ui.conversation.retry}
+      </Button>
+    </div>
   );
 }
 
@@ -1560,6 +1591,8 @@ export function ChatTranscript({
   queued = EMPTY_QUEUE,
   restoring = false,
   stopped,
+  onRetry,
+  retryDisabled,
   serverRunning = false,
 }: ChatTranscriptProps) {
   /*
@@ -1696,7 +1729,11 @@ export function ChatTranscript({
              */}
             <div className="contents [&>*]:order-1">
               {stopped ? (
-                <Stopped reason={stopped} />
+                <Stopped
+                  onRetry={onRetry}
+                  reason={stopped}
+                  retryDisabled={retryDisabled}
+                />
               ) : waitingOnFirstToken || serverRunning ? (
                 <Thinking />
               ) : null}

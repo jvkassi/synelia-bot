@@ -36,7 +36,7 @@ import { observeApprovalAgent } from "@/lib/copilot/approval-context";
 import { ConversationProvider } from "@/lib/copilot/conversation";
 import { afterMs, joinWithin } from "@/lib/copilot/join-thread";
 import { repairUnansweredToolCalls } from "@/lib/copilot/repair-history";
-import { EMPTY_RUN } from "@/lib/copilot/stop-notice";
+import { codedReason, EMPTY_RUN } from "@/lib/copilot/stop-notice";
 import { stoppedReason } from "@/lib/copilot/stopped-turn";
 import {
   dedupeById,
@@ -723,6 +723,12 @@ export function ChannelChat({
     trimmed: string,
     skillInstructions: string[],
     attachments: Attachment[],
+    /**
+     * Synelia fork: « Réessayer ». Run the turn again on the person's message ALREADY last in the
+     * thread: nothing is added (no skill rows, no user message, no activity report), so the same
+     * message id goes out again and neither the transcript nor the server's thread gets a copy.
+     */
+    retry = false,
   ) => {
     // Wait briefly for the runtime agent instance before adding the message.
     if (!isReadyRef.current) {
@@ -792,7 +798,7 @@ export function ChannelChat({
      * `transcriptMessages` draws user and assistant turns, so this never appears on screen — the
      * chip is what says a skill was used, and it stays visible in the message they sent.
      */
-    for (const instruction of skillInstructions) {
+    for (const instruction of retry ? [] : skillInstructions) {
       target.addMessage({
         content: instruction,
         id: newId(),
@@ -820,6 +826,7 @@ export function ChannelChat({
      */
     const dangling = target.messages[target.messages.length - 1];
     if (
+      !retry &&
       dangling?.role === "user" &&
       attachments.length === 0 &&
       typeof dangling.content === "string" &&
@@ -828,12 +835,14 @@ export function ChannelChat({
       target.setMessages(target.messages.slice(0, -1));
     }
 
-    target.addMessage({
-      content: toMessageContent(trimmed, attachments),
-      id: newId(),
-      role: "user",
-    });
-    report(trimmed || describeAttachments(attachments), null);
+    if (!retry) {
+      target.addMessage({
+        content: toMessageContent(trimmed, attachments),
+        id: newId(),
+        role: "user",
+      });
+      report(trimmed || describeAttachments(attachments), null);
+    }
 
     // Providers reject later turns if prior tool calls have no result; repair before sending.
     const repaired = repairUnansweredToolCalls(target.messages);
@@ -1028,6 +1037,33 @@ export function ChannelChat({
     }
   };
 
+  /**
+   * Synelia fork: « Réessayer » under a failed turn. Only when the person's message is still the
+   * last one (nothing answered it) and nothing is running; the same turn counters as `say`, so the
+   * composer and the queue wait for it too. A failure is reported by the transcript as for any turn.
+   */
+  const retryLastTurn = async () => {
+    if (turnsRef.current > 0 || agentRef.current.isRunning) return;
+    if (!endedWithoutAnswer(agentRef.current.messages)) return;
+    noteSend();
+    turnsRef.current += 1;
+    setTurnsInFlight(turnsRef.current);
+    if (turnsRef.current === 1) {
+      void setChannelBusy({ channelId: channel.id, busy: true });
+    }
+    try {
+      await deliver("", [], [], true);
+    } catch {
+      // Already on screen: `fail` set `runError` before `deliver` threw.
+    } finally {
+      turnsRef.current -= 1;
+      setTurnsInFlight(turnsRef.current);
+      if (turnsRef.current === 0) {
+        void setChannelBusy({ channelId: channel.id, busy: false });
+      }
+    }
+  };
+
   useEffect(() => {
     const fail = (message: string) => {
       if (!awaitingReply.current) return;
@@ -1051,7 +1087,11 @@ export function ChannelChat({
       // both is not told two different things about the same silence.
       onRunErrorEvent: ({ event }) => {
         if (alreadyRunning(event)) return;
-        fail(stoppedReason(event?.message));
+        // Synelia fork: a stable server code wins over the wording (stop-notice.ts).
+        fail(
+          codedReason((event as { code?: unknown } | undefined)?.code, null) ??
+            stoppedReason(event?.message),
+        );
       },
       onRunFailed: ({ error }) => {
         // Synelia fork: a transport cut is not the run failing; `deliver` reattaches instead.
@@ -1060,7 +1100,10 @@ export function ChannelChat({
           return;
         }
         if (alreadyRunning(error)) return;
-        fail(stoppedReason(error));
+        fail(
+          codedReason((error as { code?: unknown } | undefined)?.code, null) ??
+            stoppedReason(error),
+        );
       },
       onRunFinishedEvent: () => {
         const wasOurs = awaitingReply.current;
@@ -1314,6 +1357,10 @@ export function ChannelChat({
                * run before closing it; see server/src/channels/stall-guard.ts.
                */
               stopped={runError ?? storedRunError ?? undefined}
+              onRetry={() => void retryLastTurn()}
+              retryDisabled={
+                turnsInFlight > 0 || agent.isRunning || showServerRun
+              }
               serverRunning={showServerRun && !runError}
             />
             {/* Synelia fork: the pilot data rule stays visible under the composer. */}
