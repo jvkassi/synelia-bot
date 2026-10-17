@@ -1,5 +1,4 @@
 import { DICTATION_HTTP_IDLE_SECONDS } from "@openbot/shared/dictation";
-import { withSseHeartbeat } from "./synelia/sse-heartbeat";
 import { serve } from "bun";
 import { computerAccessCheck } from "./agents/computer-access";
 import type { AgentProfileStore } from "./agents/profile-store";
@@ -10,6 +9,7 @@ import { streamPathBotId } from "./computer/stream-path";
 import type { DeploymentConfig } from "./config";
 import type { DemonstrationRecorder } from "./demonstrations/recording";
 import type { DemonstrationStore } from "./demonstrations/store";
+import { withSseHeartbeat } from "./synelia/sse-heartbeat";
 
 /**
  * The server's front door: one Bun server that hands ordinary requests to the Hono app, proxies the

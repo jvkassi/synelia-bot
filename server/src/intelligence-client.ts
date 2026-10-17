@@ -1,10 +1,10 @@
 import { CopilotKitIntelligence } from "@copilotkit/runtime/v2";
 import type { IntelligenceSettings } from "./config";
-import { localIntelligence } from "./persistence/local-intelligence";
 import {
   clearDesktopConnectionFailure,
   recordDesktopConnectionFailure,
 } from "./desktop-connection-failure";
+import { localIntelligence } from "./persistence/local-intelligence";
 
 /** Observe the SDK's typed HTTP errors before runtime handlers turn them into generic 500s. */
 export function observeIntelligenceAuthentication<

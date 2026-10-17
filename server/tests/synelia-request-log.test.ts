@@ -68,3 +68,25 @@ test("test accounts are matched by user id and flagged in the log", () => {
   expect(line.test).toBe(true);
   delete process.env.SYNELIA_TEST_ACCOUNTS;
 });
+
+test("no logged /api/auth path carries a segment longer than 20 chars (tokens in the path)", async () => {
+  const { requestLogLine } = await import("../src/synelia/request-log");
+  for (const raw of [
+    "/api/auth/reset-password/eyJhbGciOiJIUzI1NiJ9.abcdefghijklmnopqrstuvwxyz",
+    "/api/auth/callback/google?code=4%2F0AbcdefghijklmnopqrstuvwxyZ",
+    "/api/auth/verify-email/0123456789abcdef0123456789abcdef",
+    "/api/auth/sign-in/email",
+  ]) {
+    const { path } = JSON.parse(
+      requestLogLine({
+        at: new Date(),
+        method: "GET",
+        path: raw,
+        status: 200,
+        durationMs: 1,
+      }),
+    ) as { path: string };
+    expect(path.startsWith("/api/auth")).toBe(true);
+    expect(path.split("/").every((segment) => segment.length <= 20)).toBe(true);
+  }
+});

@@ -22,18 +22,27 @@ export const PILOT_ALLOWED_PREFIXES = [
   "/api/attachments",
   "/api/audio", // dictation in the composer
   "/api/settings",
+  "/api/approvals", // in-run decisions only; settings sub-routes closed below
   "/api/memory",
   "/api/route",
   "/api/admin", // admin screens; learning is closed below
 ] as const;
 /*
- * Deliberately NOT allowed (settings screens outside phase 0, gate item 6): approvals, connected
+ * Deliberately NOT allowed (settings screens outside phase 0, gate item 6): approval settings
+ * (rules, preferences, team: closed above), connected
  * accounts (/api/identity, /api/plugins/connections), passwords/credentials (/api/passwords,
  * /api/sign-in-requests), components gallery (/api/components). They answer 404.
  */
 
 /** Closed even under an allowed prefix. */
-const PILOT_CLOSED_PREFIXES = ["/api/admin/learning"] as const;
+const PILOT_CLOSED_PREFIXES = [
+  "/api/admin/learning",
+  // Approval SETTINGS are outside phase 0; /decision, /questions/*/respond and /computer/* stay
+  // open (inline-approval.tsx, waiting.tsx, approval-tools.tsx during a run).
+  "/api/approvals/rules",
+  "/api/approvals/preferences",
+  "/api/approvals/team",
+] as const;
 
 /**
  * Reads the conversation screen still makes for features the pilot hides: answered with a harmless

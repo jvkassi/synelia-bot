@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
-import { Hono } from "hono";
 import {
   DEFAULT_USER_PREFERENCES,
   type UserPreferences,
 } from "@openbot/shared/user-preferences";
+import { Hono } from "hono";
 import type { UserPreferencesStore } from "../src/user-preferences";
 import { userPreferencesRoutes } from "../src/user-preferences-routes";
 

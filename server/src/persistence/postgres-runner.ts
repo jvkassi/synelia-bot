@@ -59,6 +59,11 @@ export const isThreadAlreadyRunning = (error: unknown) =>
 export function threadBusyEvents(request: AgentRunnerRunRequest): BaseEvent[] {
   return [
     {
+      type: "RUN_STARTED",
+      threadId: request.threadId,
+      runId: request.input.runId,
+    } as BaseEvent,
+    {
       type: "RUN_ERROR",
       threadId: request.threadId,
       runId: request.input.runId,

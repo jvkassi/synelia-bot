@@ -26,6 +26,18 @@ export function threadIdFromPath(path: string): string | undefined {
   return undefined;
 }
 
+/**
+ * No query string, and under /api/auth only the first segment after it (`/api/auth/sign-in`,
+ * `/api/auth/reset-password`): Better Auth puts tokens in the path (reset-password/:token, callback
+ * codes), which must never reach the log.
+ */
+export function loggedPath(raw: string): string {
+  const path = raw.split("?")[0] ?? raw;
+  if (path === "/api/auth" || path.startsWith("/api/auth/"))
+    return path.split("/").slice(0, 4).join("/");
+  return path;
+}
+
 export function requestLogLine(entry: {
   at: Date;
   method: string;
@@ -34,7 +46,7 @@ export function requestLogLine(entry: {
   durationMs: number;
   userId?: string;
 }): string {
-  const path = entry.path.split("?")[0] ?? entry.path;
+  const path = loggedPath(entry.path);
   const threadId = threadIdFromPath(path);
   return `${JSON.stringify({
     ts: entry.at.toISOString(),

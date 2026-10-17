@@ -1,5 +1,4 @@
 import type { AbstractAgent } from "@ag-ui/client";
-import { createModelListSource } from "./synelia/models";
 import {
   CopilotKitIntelligence,
   IntelligenceAgentRunner,
@@ -69,6 +68,7 @@ import {
 } from "./audit";
 import { startRetentionSweeps } from "./audit-retention";
 import { createAuth } from "./auth";
+import { bootstrapPasswordUser } from "./auth/bootstrap-password-user";
 import { DEV_ACTOR, initializeDevActorUser } from "./auth/dev-actor";
 import type { AuthService } from "./auth/guards";
 import { createRoleRepository } from "./auth/guards";
@@ -160,6 +160,7 @@ import {
   createIntelligenceClient,
   observeIntelligenceAuthentication,
 } from "./intelligence-client";
+import { reportIntelligenceEntitlement } from "./intelligence-entitlement-check";
 import {
   createLearningAutoAssign,
   probeLearningContainer,
@@ -178,13 +179,15 @@ import { createMemoryDefaults } from "./memory/defaults";
 import { createMemoryIngestion } from "./memory/ingestion";
 import { createIntelligenceMemory } from "./memory/intelligence";
 import { createMemoryStore } from "./memory/store";
-import { reportModelAvailability } from "./model-availability-check";
 import { memoryTools } from "./memory/tools";
+import { reportModelAvailability } from "./model-availability-check";
 import { createSignInNotifier, createSignInResumer } from "./passwords/resume";
 import { createSignInService } from "./passwords/service";
 import { createPasswordStore } from "./passwords/store";
 import { createOnboardingStore } from "./people/onboarding";
 import { createPeopleStore } from "./people/store";
+import { localIntelligence } from "./persistence/local-intelligence";
+import { PostgresAgentRunner } from "./persistence/postgres-runner";
 import { createAccountModeSwitch } from "./plugins/account-mode";
 import { useRoutineTools } from "./plugins/builtin-routines";
 import { useComposioClient } from "./plugins/composio";
@@ -239,11 +242,8 @@ import { createRoutineRunner } from "./routines/runner";
 import { createRoutineStore } from "./routines/store";
 import { createIntentRouter } from "./routing/classify";
 import { createModelCompleter } from "./routing/model";
-import { reportIntelligenceEntitlement } from "./intelligence-entitlement-check";
-import { bootstrapPasswordUser } from "./auth/bootstrap-password-user";
-import { localIntelligence } from "./persistence/local-intelligence";
-import { PostgresAgentRunner } from "./persistence/postgres-runner";
 import { createSelfHostBanner } from "./self-host-banner";
+import { createModelListSource } from "./synelia/models";
 import { createTeamBots } from "./team-bots/team-bots";
 import {
   createPackageStatusReader,
