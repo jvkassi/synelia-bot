@@ -6,11 +6,29 @@
 # synelia_thread_lock rows) and warn if some remain; after it, run `e2e.sh ownership gate`; on
 # failure redeploy the previous DEPLOYED_COMMIT and exit non-zero.
 #   E2E=/path/to/e2e.sh (default ../e2e.sh next to the repo); SKIP_GUARD=1 only for a rollback.
+#
+# Drain (inflight-check.sh): chat runs take no lock and are stored only at their end, so right before
+# `up -d` the deploy waits (max 120 s, poll 10 s) until the request log shows no chat run in flight,
+# then recreates with no pause in between. Still in flight after 120 s: the runs that would be cut are
+# listed and the deploy ABORTS (images and compose file put back, nothing recreated), unless
+# --force-cut. After the recreate, the runs it cut (POST /run of the old process never completed,
+# including one that arrived between the check and the recreate) are printed as "RUN COUPÉ" lines,
+# to announce in the channel.
 set -euo pipefail
 HOST=${HOST:-konnect}; DIR=/srv/synelia-bot
+FORCE_CUT=${FORCE_CUT:-0}
+for arg in "$@"; do
+  case "$arg" in
+    --force-cut) FORCE_CUT=1 ;;
+    *) echo "usage: $0 [--force-cut]" >&2; exit 2 ;;
+  esac
+done
 cd "$(git rev-parse --show-toplevel)"
 # shellcheck source=served-check.sh
 . deploy/synelia/served-check.sh
+# shellcheck source=inflight-check.sh
+INFLIGHT_LIB=$(pwd)/deploy/synelia/inflight-check.sh
+. "$INFLIGHT_LIB"
 if [ -n "$(git status --porcelain)" ]; then
   echo "refus : arbre git non propre (git status --porcelain non vide). Commitez d'abord." >&2
   exit 1
@@ -37,9 +55,15 @@ ship() { # $1 = commit, run from a clean tree of that commit
     --exclude 'agent-mastra/.mastra' ./ "$HOST:$DIR/src/"
   # The compose file that runs is $DIR/docker-compose.yml: keep it equal to the committed one
   # (previous copy kept next to it, so a manual revert is one mv away).
-  ssh "$HOST" "cd $DIR && cmp -s src/deploy/synelia/docker-compose.yml docker-compose.yml || { cp -p docker-compose.yml docker-compose.yml.prev && cp src/deploy/synelia/docker-compose.yml docker-compose.yml && echo 'docker-compose.yml mis à jour depuis le commit'; }"
+  local compose_changed=0 old_start
+  if ssh "$HOST" "cd $DIR && cmp -s src/deploy/synelia/docker-compose.yml docker-compose.yml || { cp -p docker-compose.yml docker-compose.yml.prev && cp src/deploy/synelia/docker-compose.yml docker-compose.yml && echo 'docker-compose.yml mis à jour depuis le commit'; }" | grep -q 'mis à jour'; then
+    compose_changed=1; echo "docker-compose.yml mis à jour depuis le commit"
+  fi
   # SYNELIA_BUILD_SHA: stamped into the image and the front bundle (/version.json, <meta name="synelia-version">).
   ssh "$HOST" "cd $DIR && SYNELIA_BUILD_SHA=$1 docker compose --progress plain build server migrate agent-mastra > tmp/build-$1.log 2>&1"
+  # Request-log bind mount: owned by the image's unprivileged user, not world-readable. Done BEFORE
+  # the waits so nothing sits between the last in-flight check and the recreate.
+  ssh "$HOST" "cd $DIR && mkdir -p logs && chmod 750 logs && docker compose run --rm --no-deps --user root --entrypoint chown server openbot:openbot /app/logs >> tmp/build-$1.log 2>&1"
   if [ -z "${SKIP_GUARD:-}" ]; then
     for _ in $(seq 1 24); do
       n=$(active_locks); [ "$n" = "0" ] && break
@@ -49,10 +73,20 @@ ship() { # $1 = commit, run from a clean tree of that commit
     done
     n=$(active_locks)
     [ "$n" = "0" ] || echo "AVERTISSEMENT : verrous actifs = $n après ~120 s, redémarrage quand même." >&2
+    # Chat runs in flight (request log). Abort = nothing recreated: the freshly built images and the
+    # compose file are put back, so a later `up -d` (add-tester…) cannot start the unannounced build.
+    if ! inflight_gate 120; then
+      ssh "$HOST" "cd $DIR && { ! docker image inspect synelia-bot-server:previous >/dev/null 2>&1 || { docker image tag synelia-bot-server:previous synelia-bot-server:phase0 && docker image tag synelia-bot-mastra:previous synelia-bot-mastra:phase0; }; }"
+      [ "$compose_changed" = 0 ] || ssh "$HOST" "cd $DIR && cp -p docker-compose.yml.prev docker-compose.yml"
+      echo "déploiement abandonné avant recréation : images :phase0 et docker-compose.yml remis à l'état servi ; DEPLOYED_COMMIT inchangé." >&2
+      exit 3
+    fi
+    old_start=$INFLIGHT_LAST_STARTED
+  else
+    old_start=$(inflight_server_started)
   fi
-  # Request-log bind mount: owned by the image's unprivileged user, not world-readable.
-  ssh "$HOST" "cd $DIR && mkdir -p logs && chmod 750 logs && docker compose run --rm --no-deps --user root --entrypoint chown server openbot:openbot /app/logs >> tmp/build-$1.log 2>&1"
   ssh "$HOST" "cd $DIR && docker compose up -d >> tmp/build-$1.log 2>&1 && echo $1 > src/DEPLOYED_COMMIT && echo deployed $1"
+  inflight_cut_report "$old_start"
 }
 
 ENV_FILE=${E2E_ENV:-$(dirname "$E2E")/e2e.env}
@@ -88,7 +122,7 @@ if [ -z "${SKIP_GUARD:-}" ]; then
     elif [ -n "$PREVIOUS" ] && [ "$PREVIOUS" != "$COMMIT" ]; then
       echo "rollback vers $PREVIOUS" >&2
       TMP=$(mktemp -d); git worktree add -q --detach "$TMP" "$PREVIOUS"
-      (cd "$TMP" && SKIP_GUARD=1 HOST=$HOST bash -c "$(declare -f ship active_locks); DIR=$DIR; ship $PREVIOUS")
+      (cd "$TMP" && SKIP_GUARD=1 HOST=$HOST bash -c "$(declare -f ship active_locks); . '$INFLIGHT_LIB'; DIR=$DIR; ship $PREVIOUS")
       git worktree remove --force "$TMP"
     fi
     exit 1

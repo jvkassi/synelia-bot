@@ -9,6 +9,9 @@
 # other stacks are checked unchanged. Nothing secret is printed.
 # WARNING: recreates the synelia server container: run it only in an announced window.
 set -euo pipefail
+# --force-cut (first argument) or FORCE_CUT=1: recreate even if chat runs are still in flight after the
+# 120 s wait (see inflight-check.sh).
+if [ "${1:-}" = --force-cut ]; then FORCE_CUT=1; shift; fi
 DRY=0; [ "${1:-}" = --dry-run ] && { DRY=1; shift; }
 [ $# -eq 2 ] || { echo "usage: $0 [--dry-run] <email> user|admin" >&2; exit 2; }
 case "$2" in user|admin) ;; *) echo "rôle invalide: $2 (user|admin)" >&2; exit 2 ;; esac
@@ -20,6 +23,13 @@ if [ "$DRY" = 1 ]; then
 fi
 HOST=${HOST:-konnect}
 HERE=$(cd "$(dirname "$0")" && pwd)
+# Synelia fork: no chat run in flight before the recreate (bounded wait, abort unless --force-cut /
+# FORCE_CUT=1), then the runs the recreate cut, for the announcement. See inflight-check.sh.
+# shellcheck source=inflight-check.sh
+. "$(cd "$(dirname "$0")" && pwd)/inflight-check.sh"
+inflight_gate 120 || exit $?
+INFLIGHT_OLD_START=$INFLIGHT_LAST_STARTED
+set +e
 ssh "$HOST" "NEW_ROLE=$2 bash -s -- '$1'" < <(cat "$HERE/tester-common.sh"; cat <<'REMOTE'
 n=$(printf "SELECT count(*) FROM users WHERE email = :'email';\n" | psql_q | tr -d '[:space:]')
 [ "$n" = 1 ] || { echo "compte introuvable" >&2; exit 3; }
@@ -47,3 +57,7 @@ echo "rôle: $role ; INITIAL_ADMIN_EMAILS: $([ "$listed" = 0 ] && echo absent ||
 [ "$role" = "$NEW_ROLE" ] || { echo "rôle inattendu" >&2; exit 8; }
 REMOTE
 )
+remote_rc=$?
+set -e
+inflight_cut_report "$INFLIGHT_OLD_START"
+exit $remote_rc

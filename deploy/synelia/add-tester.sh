@@ -9,6 +9,7 @@
 #  --role admin : also appends the email to INITIAL_ADMIN_EMAILS in .env.server, so the account is
 #                 created with role admin (same mechanism as the operator admins); default role user.
 #  --dry-run    : checks the arguments and prints what would happen; touches nothing.
+#  --force-cut  : recreate even if chat runs are still in flight after the 120 s wait (see inflight-check.sh).
 # WARNING: recreates the synelia server container (a few seconds of 502 for everyone): run it only
 # in an announced window.
 set -euo pipefail
@@ -17,6 +18,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --role) ROLE=${2:-}; shift 2 ;;
     --dry-run) DRY=1; shift ;;
+    --force-cut) FORCE_CUT=1; shift ;;
     -*) echo "option inconnue: $1" >&2; exit 2 ;;
     *) [ -z "$EMAIL_ARG" ] || { echo "un seul email" >&2; exit 2; }; EMAIL_ARG=$1; shift ;;
   esac
@@ -31,6 +33,13 @@ if [ "$DRY" = 1 ]; then
 fi
 HOST=${HOST:-konnect}
 HERE=$(cd "$(dirname "$0")" && pwd)
+# Synelia fork: no chat run in flight before the recreate (bounded wait, abort unless --force-cut /
+# FORCE_CUT=1), then the runs the recreate cut, for the announcement. See inflight-check.sh.
+# shellcheck source=inflight-check.sh
+. "$(cd "$(dirname "$0")" && pwd)/inflight-check.sh"
+inflight_gate 120 || exit $?
+INFLIGHT_OLD_START=$INFLIGHT_LAST_STARTED
+set +e
 ssh "$HOST" "ROLE=$ROLE bash -s -- '$EMAIL_ARG'" < <(cat "$HERE/tester-common.sh"; cat <<'REMOTE'
 [ -e "$SECRET" ] && { echo "existe déjà: secrets/testers/$EMAIL.txt (jamais écrasé)" >&2; exit 3; }
 grep -q "^SYNELIA_TESTER_${SLUG}_EMAIL=" .env.server && { echo "testeur déjà présent dans .env.server" >&2; exit 3; }
@@ -83,3 +92,7 @@ echo "rôle: $role"
 echo "secrets: secrets/testers/$EMAIL.txt (chmod 600, non affichés)"
 REMOTE
 )
+remote_rc=$?
+set -e
+inflight_cut_report "$INFLIGHT_OLD_START"
+exit $remote_rc

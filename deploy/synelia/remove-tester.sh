@@ -5,10 +5,20 @@
 # later account with that address is not promoted at sign-in; recreates only the synelia server and
 # checks the other stacks did not move.
 set -euo pipefail
+# --force-cut (first argument) or FORCE_CUT=1: recreate even if chat runs are still in flight after the
+# 120 s wait (see inflight-check.sh).
+if [ "${1:-}" = --force-cut ]; then FORCE_CUT=1; shift; fi
 echo "AVERTISSEMENT : ce script recrée le conteneur server synelia (coupure de quelques secondes pour tous). Fenêtre annoncée uniquement. L'email est aussi retiré de INITIAL_ADMIN_EMAILS."
 [ $# -eq 1 ] || { echo "usage: $0 <email>" >&2; exit 2; }
 HOST=${HOST:-konnect}
 HERE=$(cd "$(dirname "$0")" && pwd)
+# Synelia fork: no chat run in flight before the recreate (bounded wait, abort unless --force-cut /
+# FORCE_CUT=1), then the runs the recreate cut, for the announcement. See inflight-check.sh.
+# shellcheck source=inflight-check.sh
+. "$(cd "$(dirname "$0")" && pwd)/inflight-check.sh"
+inflight_gate 120 || exit $?
+INFLIGHT_OLD_START=$INFLIGHT_LAST_STARTED
+set +e
 ssh "$HOST" "bash -s -- '$1'" < <(cat "$HERE/tester-common.sh"; cat <<'REMOTE'
 backup
 sed -i "/^SYNELIA_TESTER_${SLUG}_\(EMAIL\|PASSWORD\)=/d" .env.server
@@ -42,3 +52,7 @@ recreate_server
 echo "testeur retiré"
 REMOTE
 )
+remote_rc=$?
+set -e
+inflight_cut_report "$INFLIGHT_OLD_START"
+exit $remote_rc
