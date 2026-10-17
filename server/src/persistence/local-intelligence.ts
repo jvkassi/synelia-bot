@@ -351,13 +351,17 @@ export class LocalIntelligence {
     const rows = (await this.#sql`
       SELECT
         (SELECT run_id FROM synelia_thread_lock WHERE thread_id = ${params.threadId} AND expires_at > now()) AS locked_run,
-        (SELECT count(*) FROM synelia_thread_run WHERE thread_id = ${params.threadId})::int AS runs`) as {
+        (SELECT l.run_id FROM synelia_thread_lock l
+           WHERE l.thread_id = ${params.threadId} AND l.expires_at <= now()
+             AND NOT EXISTS (SELECT 1 FROM synelia_thread_run r
+                             WHERE r.thread_id = l.thread_id AND r.run_id = l.run_id)) AS lost_run`) as {
       locked_run: string | null;
-      runs: number;
+      lost_run: string | null;
     }[];
+    // lost: the lock expired (or was expired at boot) and the run never got stored.
     return {
       lockedRunId: rows[0]?.locked_run ?? null,
-      storedRuns: rows[0]?.runs ?? 0,
+      lostRunId: rows[0]?.lost_run ?? null,
     };
   }
 

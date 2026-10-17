@@ -21,7 +21,7 @@ import {
   InMemoryAgentRunner,
   ɵGLOBAL_STORE,
 } from "@copilotkit/runtime/v2";
-import { defer, from, type Observable, switchMap } from "rxjs";
+import { defer, from, type Observable, of, switchMap } from "rxjs";
 import {
   isHiddenModel,
   resolveModel,
@@ -187,6 +187,24 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
             ...request,
             input: { ...request.input, tools: tools ?? [] },
           };
+        // Synelia fork (idempotent send): the person's newest message was already answered by a
+        // finished run of this thread (double click, resend after a reconnect). Answer with an
+        // empty, finished run instead of running the model a second time.
+        const historic = this.#global.peek(request.threadId)?.historicRuns ?? [];
+        if (isAlreadyAnswered(request.input.messages, historic)) {
+          return of(
+            {
+              type: "RUN_STARTED",
+              threadId: request.threadId,
+              runId: request.input.runId,
+            } as BaseEvent,
+            {
+              type: "RUN_FINISHED",
+              threadId: request.threadId,
+              runId: request.input.runId,
+            } as BaseEvent,
+          );
+        }
         const stream = super.run(request);
         const runId = request.input.runId;
         const persist = (status: string) => {
@@ -313,4 +331,27 @@ export function liveRunId(threadId: string): string | undefined {
   return store?.isRunning && store.currentRunId
     ? store.currentRunId
     : undefined;
+}
+
+/**
+ * Synelia fork: true when the last message of `messages` is the person's and a FINISHED historic
+ * run already received it as input. A failed or stopped run does not count, so "send again" after
+ * an error still runs.
+ */
+export function isAlreadyAnswered(
+  messages: readonly { id: string; role: string }[] | undefined,
+  historicRuns: readonly { events: readonly BaseEvent[] }[],
+): boolean {
+  const last = messages?.at(-1);
+  if (!last || last.role !== "user") return false;
+  return historicRuns.some((run) => {
+    if (!run.events.some((event) => event.type === "RUN_FINISHED")) return false;
+    return run.events.some(
+      (event) =>
+        event.type === "RUN_STARTED" &&
+        (
+          (event as { input?: { messages?: { id: string }[] } }).input?.messages ?? []
+        ).some((message) => message.id === last.id),
+    );
+  });
 }

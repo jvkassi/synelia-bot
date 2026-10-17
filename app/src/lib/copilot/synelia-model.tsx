@@ -289,6 +289,7 @@ export function useStoredRunError(
       return (await response.json()) as {
         lastError?: { message?: string | null } | null;
         activeRunId?: string | null;
+        lostRunId?: string | null;
         interrupted?: boolean;
       };
     },
@@ -296,11 +297,33 @@ export function useStoredRunError(
     // While a run is still being written, look again every 3 s until it ends.
     refetchInterval: (query) => (query.state.data?.activeRunId ? 3_000 : false),
   });
-  if (!endsOnUserMessage)
-    return { error: null, activeRunId: null, interrupted: false };
+  return threadStatusView(data, endsOnUserMessage);
+}
+
+export type ThreadStatusBody = {
+  lastError?: { message?: string | null } | null;
+  activeRunId?: string | null;
+  lostRunId?: string | null;
+  interrupted?: boolean;
+} | null;
+
+/**
+ * What the page draws from `GET /api/threads/:id`. `activeRunId` and `lostRunId` are ALWAYS
+ * exposed: after F5 mid-run the replay restores the partial answer, so the last message is the
+ * Bot's, and gating on it hid the running turn (2a). Only the stored error and the "no answer"
+ * fallback depend on the person having spoken last.
+ */
+export function threadStatusView(
+  data: ThreadStatusBody | undefined,
+  endsOnUserMessage: boolean,
+): { error: string | null; activeRunId: string | null; interrupted: boolean } {
+  const activeRunId = data?.activeRunId ?? null;
   return {
-    error: data?.lastError?.message ?? null,
-    activeRunId: data?.activeRunId ?? null,
-    interrupted: Boolean(data?.interrupted) && !data?.lastError,
+    error: endsOnUserMessage ? (data?.lastError?.message ?? null) : null,
+    activeRunId,
+    interrupted:
+      !activeRunId &&
+      (Boolean(data?.lostRunId) ||
+        (endsOnUserMessage && Boolean(data?.interrupted) && !data?.lastError)),
   };
 }

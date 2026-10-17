@@ -54,7 +54,8 @@ export function componentListQueryOptions() {
 export function agentComponentsQueryOptions(agentId: string | undefined) {
   return queryOptions({
     queryKey: componentKeys.forAgent(agentId ?? ""),
-    enabled: Boolean(agentId),
+    // Synelia fork: components are hidden in the pilot; no 5 s poll of a closed route.
+    enabled: Boolean(agentId) && !pilot.hideBotsAndSkillsNav,
     refetchInterval: 5_000,
     // Refetched when the tab is looked at again, so a grant changed on another screen is not waiting
     // out an interval before it shows.

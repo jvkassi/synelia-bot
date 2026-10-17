@@ -40,7 +40,13 @@ export const Route = createFileRoute("/_authed/_app/channel/$channelId")({
 function RouteComponent() {
   const { channelId } = Route.useParams();
   const { settings, watch } = Route.useSearch();
-  const channel = useQuery(channelQueryOptions(channelId));
+  const channel = useQuery({
+    ...channelQueryOptions(channelId),
+    // Synelia fork: while the reconnecting banner is up, ask again every 5 s. Window focus does not
+    // refetch here (refetchOnWindowFocus is false app-wide); only the browser's reconnect event and
+    // this interval do, so a success clears the banner instead of leaving it up for good.
+    refetchInterval: (query) => (query.state.error ? 5_000 : false),
+  });
   const navigate = Route.useNavigate();
   const isSettingsOpen = settings === true;
   const prefersReducedMotion = useReducedMotion();
@@ -194,7 +200,7 @@ function ChannelBody({
   if (isPending) return null;
   // Synelia fork: only a conversation that NEVER loaded shows the error screen. A failed refetch
   // (offline, reconnect, a proxy blip) keeps the transcript on screen with a banner, and React
-  // Query retries on reconnect (`online` event) and focus; one reload recovers everything.
+  // Query retries on the browser's `online` event (refetchOnWindowFocus is false app-wide) and every 5 s while in error; one reload recovers everything.
   if (!channel) {
     return (
       <p className="p-8 text-sm text-destructive" role="alert">

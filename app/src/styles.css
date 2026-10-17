@@ -289,3 +289,49 @@ body {
 :where(div:has(> iframe.websandbox__frame)) {
   min-height: 200px;
 }
+
+/*
+ * Synelia fork: the "Le modèle réfléchit…" line, made easier to notice than the shimmer alone. A
+ * pulsing dot is drawn before the text (as a real colour, unaffected by the transparent glyph fill)
+ * and the shimmer band is darker. Reduced motion keeps a static dot and plain text.
+ */
+.synelia-thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background-image: linear-gradient(
+    100deg,
+    currentColor 35%,
+    color-mix(in oklab, currentColor 5%, transparent) 50%,
+    currentColor 65%
+  );
+}
+.synelia-thinking::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--color-primary, currentColor);
+  -webkit-text-fill-color: initial;
+  animation: synelia-thinking-pulse 1s ease-in-out infinite;
+}
+@keyframes synelia-thinking-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .synelia-thinking {
+    background-image: none;
+  }
+  .synelia-thinking::before {
+    animation: none;
+    opacity: 1;
+  }
+}

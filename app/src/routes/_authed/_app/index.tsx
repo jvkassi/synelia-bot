@@ -37,6 +37,8 @@ function RouteComponent() {
   const explore = agents?.filter(isSharedWithYou);
   const { start, startChosen, pending } = useStartChannel();
   const [error, setError] = useState<string | null>(null);
+  /** Synelia fork: the message being started, shown at once while routing and creation run. */
+  const [sending, setSending] = useState<string | null>(null);
 
   /** Default recipient when the composer draft has no mention. */
   const fallback = defaultAgentProfile(
@@ -67,6 +69,7 @@ function RouteComponent() {
               // With no `@`, the message is routed to the coworker it is for; if that routing cannot
               // run, it falls back to the same default the composer used to always use.
               setError(null);
+              setSending(draft.text);
               try {
                 if (draft.agentId) {
                   // Recorded and started as one sequence, shared with `/channel/new`: the person
@@ -75,7 +78,11 @@ function RouteComponent() {
                   return;
                 }
                 let agentId: string | undefined;
-                try {
+                // Synelia fork: with a single Bot to choose from there is nothing to route, and
+                // asking the router cost ~3.5 s of blank screen before the conversation opened.
+                const candidates = agents?.length ?? 0;
+                if (candidates <= 1 && fallback) agentId = fallback.id;
+                else try {
                   agentId = (await routeMessage(draft.text)).agentId;
                 } catch (caught) {
                   if (caught instanceof CoworkerRoutingRefusedError)
@@ -85,6 +92,7 @@ function RouteComponent() {
                 if (!agentId) return;
                 await start(agentId, draft.text);
               } catch (caught) {
+                setSending(null);
                 setError(
                   caught instanceof Error
                     ? caught.message
@@ -95,6 +103,23 @@ function RouteComponent() {
             }}
             pending={pending}
           />
+          {sending !== null ? (
+            <div
+              className="mt-4 flex w-full max-w-2xl flex-col gap-2"
+              data-testid="synelia-optimistic-send"
+            >
+              <p className="self-end max-w-[80%] whitespace-pre-wrap rounded-2xl bg-muted px-4 py-2 text-sm">
+                {sending}
+              </p>
+              <p
+                className="tool-line-running synelia-thinking text-muted-foreground text-sm"
+                role="status"
+                aria-live="polite"
+              >
+                {ui.conversation.thinking}
+              </p>
+            </div>
+          ) : null}
           {fallback ? (
             // Said out loud: a message that silently reaches somebody you did not choose is the
             // kind of surprise that costs trust the first time it happens.

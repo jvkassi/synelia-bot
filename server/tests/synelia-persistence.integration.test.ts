@@ -131,6 +131,10 @@ db("boot expires stale locks, row kept, acquire works again", () => {
     expect(
       (await booted.threadRunState({ threadId, userId: "u1" })).lockedRunId,
     ).toBeNull();
+    // Expired lock, no stored run for it: the turn is reported lost.
+    expect(
+      (await booted.threadRunState({ threadId, userId: "u1" })).lostRunId,
+    ).toBe(runId);
     await booted.ɵacquireThreadLock({
       threadId,
       runId: id(),

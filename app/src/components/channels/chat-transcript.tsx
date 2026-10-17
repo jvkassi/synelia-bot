@@ -189,7 +189,7 @@ function RestoringTranscript() {
 function Thinking() {
   return (
     <p
-      className="tool-line-running text-muted-foreground text-sm"
+      className="tool-line-running synelia-thinking text-muted-foreground text-sm"
       // `status` rather than `alert`: this is progress, not something that interrupts what somebody
       // is doing. The text says it, so a screen reader is told the same thing the shimmer implies.
       role="status"

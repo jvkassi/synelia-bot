@@ -93,7 +93,11 @@ export async function client<T>(
       .json()
       .then((body: { error?: string }) => body.error)
       .catch(() => undefined);
-    throw new Error(message ?? options.fallback ?? "That request failed.");
+    // Synelia fork: the status rides on the error so the query client can skip retrying a 404.
+    throw Object.assign(
+      new Error(message ?? options.fallback ?? "That request failed."),
+      { status: response.status },
+    );
   }
 
   if (key === undefined) return response;

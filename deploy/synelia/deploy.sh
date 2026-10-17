@@ -18,8 +18,10 @@ E2E=${E2E:-$(cd .. && pwd)/e2e.sh}
 PREVIOUS=$(ssh "$HOST" "cat $DIR/src/DEPLOYED_COMMIT 2>/dev/null || true")
 ssh "$HOST" "free -m | sed -n 2p; uptime"
 
-active_locks() {
-  ssh "$HOST" "cd $DIR && docker compose exec -T postgres sh -c 'psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"SELECT count(*) FROM synelia_thread_lock WHERE expires_at > now()\"' 2>/dev/null || echo 0" | tr -d '[:space:]'
+active_locks() { # prints a count, or "ERR" when the database could not be asked (fail closed)
+  local out
+  out=$(ssh "$HOST" "cd $DIR && docker compose exec -T postgres sh -c 'psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -tAc \"SELECT count(*) FROM synelia_thread_lock WHERE expires_at > now()\"'" 2>/dev/null | tr -d '[:space:]') || out=""
+  case "$out" in ''|*[!0-9]*) echo ERR ;; *) echo "$out" ;; esac
 }
 
 ship() { # $1 = commit, run from a clean tree of that commit
@@ -28,11 +30,13 @@ ship() { # $1 = commit, run from a clean tree of that commit
   ssh "$HOST" "cd $DIR && docker compose --progress plain build server migrate agent-mastra > tmp/build-$1.log 2>&1"
   if [ -z "${SKIP_GUARD:-}" ]; then
     for _ in $(seq 1 24); do
-      n=$(active_locks); [ "${n:-0}" = "0" ] && break
-      echo "attente : $n réponse(s) en cours (synelia_thread_lock actif)…"; sleep 5
+      n=$(active_locks); [ "$n" = "0" ] && break
+      if [ "$n" = ERR ]; then echo "attente : verrous illisibles (psql), on attend quand même…"
+      else echo "attente : $n réponse(s) en cours (synelia_thread_lock actif)…"; fi
+      sleep 5
     done
     n=$(active_locks)
-    [ "${n:-0}" = "0" ] || echo "AVERTISSEMENT : $n réponse(s) encore en cours, redémarrage quand même." >&2
+    [ "$n" = "0" ] || echo "AVERTISSEMENT : verrous actifs = $n après ~120 s, redémarrage quand même." >&2
   fi
   ssh "$HOST" "cd $DIR && docker compose up -d >> tmp/build-$1.log 2>&1 && echo $1 > src/DEPLOYED_COMMIT && echo deployed $1"
 }
@@ -51,6 +55,9 @@ if [ -z "${SKIP_GUARD:-}" ]; then
     fi
     exit 1
   fi
+  # Pilot routes the UI still calls (warning only): the gate logs the method and prefix, no ids.
+  blocked=$(ssh "$HOST" "cd $DIR && docker compose logs server --since 3m --no-log-prefix 2>/dev/null | grep -o 'pilot_blocked [A-Z]* /api/[^ ]*' | sort | uniq -c" || true)
+  [ -z "$blocked" ] || { echo "AVERTISSEMENT pilot_blocked depuis le redémarrage :"; echo "$blocked"; }
 fi
 
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)

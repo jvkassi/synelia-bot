@@ -550,8 +550,11 @@ export function ChannelChat({
         ? ui.conversation.runInterrupted
         : null);
   // Drawn as the neutral Thinking indicator (shimmer, role=status), not the alert of `stopped`.
+  // Only for a run this page is NOT streaming itself (reload mid-run, other tab).
   const serverRunning =
-    Boolean(threadStatus.activeRunId) && !threadStatus.error;
+    Boolean(threadStatus.activeRunId) &&
+    !threadStatus.error &&
+    !agent.isRunning;
   const sawActiveRun = useRef(false);
   useEffect(() => {
     if (threadStatus.activeRunId) {
@@ -559,6 +562,8 @@ export function ChannelChat({
       return;
     }
     if (!sawActiveRun.current || agent.isRunning) return;
+    // The server run ended (status poll): replay the thread once so the full answer replaces the
+    // partial one restored at load. Dedupe keeps the last version of each message id.
     sawActiveRun.current = false;
     void copilotkit
       .connectAgent({ agent })
@@ -568,6 +573,20 @@ export function ChannelChat({
       })
       .catch(() => undefined);
   }, [threadStatus.activeRunId, agent, copilotkit]);
+  /** Stop a run this page did not start: the runtime's thread stop, scoped to that run id. */
+  const stopServerRun = () => {
+    const runId = threadStatus.activeRunId;
+    if (!runId || !channel.threadId) return;
+    void fetch(
+      `/api/copilotkit/agent/${encodeURIComponent(agent.agentId ?? "")}/stop/${encodeURIComponent(channel.threadId)}`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ runId }),
+      },
+    ).catch(() => undefined);
+  };
   const awaitingReply = useRef(false);
   /**
    * WHY THIS TURN ENDED WITHOUT AN ANSWER, KEPT WHERE `deliver` CAN STILL SEE IT — because the one
@@ -629,6 +648,7 @@ export function ChannelChat({
   /* Authoritative once this screen unmounts, where `setTurnsInFlight` becomes a no-op. */
   const turnsRef = useRef(0);
   const [runsInFlight, setRunsInFlight] = useState(0);
+  const showServerRun = serverRunning && runsInFlight === 0;
 
   /**
    * Tell the roster what was just said. Failures here must not block the conversation.
@@ -1150,7 +1170,7 @@ export function ChannelChat({
                * Stop through the core so the abort signal reaches frontend tools; `say` repairs any
                * unanswered tool call before the next turn.
                */
-              onStop={stopTask}
+              onStop={showServerRun ? stopServerRun : stopTask}
               /*
                * The turn, not the run. A browser action ends one run and starts another, and telling the
                * conversation it is idle in between is what would drain a parked correction into the
@@ -1171,7 +1191,7 @@ export function ChannelChat({
                * controller does not exist until `say` has finished waiting for the runtime agent — so
                * this is the one place the narrower fact is the honest one to draw a button from.
                */
-              stoppable={agent.isRunning || runsInFlight > 0}
+              stoppable={agent.isRunning || runsInFlight > 0 || showServerRun}
               /*
                * At the END OF THE TRANSCRIPT rather than above the composer, which is where this used to
                * be. A turn that ends without an answer leaves a gap exactly where the reply was going to
@@ -1183,7 +1203,7 @@ export function ChannelChat({
                * run before closing it; see server/src/channels/stall-guard.ts.
                */
               stopped={runError ?? storedRunError ?? undefined}
-              serverRunning={serverRunning && !runError}
+              serverRunning={showServerRun && !runError}
             />
             {/* Synelia fork: the pilot data rule stays visible under the composer. */}
             <p

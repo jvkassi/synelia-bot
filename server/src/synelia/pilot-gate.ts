@@ -41,6 +41,11 @@ const PILOT_CLOSED_PREFIXES = ["/api/admin/learning"] as const;
 const PILOT_EMPTY_READS: { method: string; pattern: RegExp; body: unknown }[] =
   [
     { method: "GET", pattern: /^\/api\/sandboxed\/published$/, body: [] },
+  {
+    method: "GET",
+    pattern: /^\/api\/components\/for-agent\/[^/]+$/,
+    body: { components: [] },
+  },
     {
       method: "PUT",
       pattern: /^\/api\/components\/catalogue$/,
@@ -91,8 +96,12 @@ export function createPilotGate(enabled = pilotEnabled()): MiddlewareHandler {
     if (enabled) {
       const empty = pilotEmptyRead(context.req.method, context.req.path);
       if (empty) return context.json(empty.body as never, 200);
-      if (isPilotGated(context.req.method, context.req.path))
+      if (isPilotGated(context.req.method, context.req.path)) {
+        // Prefix only (two segments): no ids, no query string in the log.
+        const prefix = context.req.path.split("/").slice(0, 3).join("/");
+        console.warn(`pilot_blocked ${context.req.method} ${prefix}`);
         return context.json({ error: "Not found" }, 404);
+      }
     }
     await next();
   };
