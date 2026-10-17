@@ -77,6 +77,14 @@ on konnect behind Traefik + basicauth, with a Mastra Bot answering through OpenR
 | `routes/_authed/_app/index.tsx`, `channel/new.tsx`, `channel-chat.tsx` | Permanent notice "Pilote : données de test uniquement, pas de code ni de documents clients." (home, new conversation, under the composer). |
 | tests | `server/tests/synelia-sse-heartbeat.test.ts`, allowlist test with `foo_tool`, redaction tests, hidden-model test, `app/src/lib/copilot/stream-reattach.test.ts`; e2e `sselong.sh` (>60 s run through Traefik). |
 
+## Politique de données du pilote (décidée le 2026-10-17)
+Décision de Chief Of Staff, sur délégation de Jean-Vincent (2026-10-17), pour les items 5 et 11 du gate.
+- **Règle** : pendant le pilote (5 utilisateurs), données de test uniquement. Pas de données clients, pas de données personnelles ou sensibles, pas de code ni de documents clients.
+- **Bandeau** : la règle est affichée en permanence dans l'app (`ui.pilotNotice`, « Pilote : données de test uniquement, pas de code ni de documents clients. ») sur l'accueil, la nouvelle conversation et sous le composeur.
+- **OpenRouter** : uniquement des endpoints à rétention nulle qui n'entraînent pas sur les prompts. Chaque requête porte `provider: { data_collection: "deny", zdr: true }` (`agent-mastra/src/mastra/synelia-models.ts`). Ne pas mettre `OPENROUTER_PRIVACY=off` en pilote.
+- **9router** : autorisé pour les données de test seulement, puisque sa politique de rétention n'est pas vérifiée par écrit.
+- **Dépôt** : privé (`github.com/jvkassi/synelia-bot`). Aucun secret commité : scan gitleaks sur tout l'historique avant le push (seules des clés factices de tests sont détectées).
+
 ## Gate ouverture 5 utilisateurs
 | # | Critère | Statut | Preuve |
 |---|---|---|---|
@@ -84,12 +92,12 @@ on konnect behind Traefik + basicauth, with a Mastra Bot answering through OpenR
 | 2 | `thread_run.model` = modèle qui a réellement répondu après fallback | OK — 28f3c42 | `resolveModel (gate 2…)` (5 tests) + vérif DB après run prod |
 | 3 | B reçoit 404 sur threads/runs de A ; API Bots/Skills/ordinateur directe 404 | OK — 28f3c42 | `e2e.sh ownership`, `e2e.sh gate`, `synelia-pilot-gate.test.ts`, "other user: rename/delete answer 404" |
 | 4 | rename/archive/delete mettent à jour `#index` | OK — 28f3c42 | "index updated immediately, not at the next run" |
-| 5 | mots de passe tournés, credentials.txt supprimé, branche poussée sur remote privé | OUVERT | — |
+| 5 | mots de passe tournés, credentials.txt supprimé, branche poussée sur remote privé | PARTIEL — décidé par Chief Of Staff (délégation de Jean-Vincent, 2026-10-17) | Rotation faite le 2026-10-17 à 13:45 UTC : basic auth Traefik `synelia`, mots de passe de jv.test et jv.test2, mot de passe Postgres, `BETTER_AUTH_SECRET` (les 71 sessions sont invalidées). Ancien basic auth refusé (401), nouveaux logins OK, `e2e.sh ownership` et `e2e.sh gate` PASS après rotation. `credentials.txt` est conservé pour l'instant (chmod 600, nouvelles valeurs uniquement) sur décision de l'Architecture Reviewer. Remote privé retenu : `github.com/jvkassi/synelia-bot`, pas encore poussé (création du dépôt en attente). |
 | 6 | erreurs sans fuite (requestBodyValues + clé sk- absents du RUN_ERROR et de la DB) | OK — 28f3c42 | `synelia-error-text.test.ts` (formatter + helper du patch exécuté) |
 | 7 | badge fiable (run >20 s, badge sans reload, pas de polling par message) | PARTIEL — 28f3c42 | requête unique par thread, invalidée en fin de run ; test navigateur >20 s à faire (Chief) |
 | 8 | CI front verte (format:check, 6 tests cassés, lang=fr, pas d'anglais login/composer/sidebar/picker) | PARTIEL — branche `synelia/phase0-i18n` (abe9870, 61567ca, 0180b7a, 84e68fc, tests HEAD) | typecheck/format:check/build OK ; app tests : 16 échecs Synelia corrigés, 42 restants identiques à l'upstream 53a656b ; `i18n-shape.test.ts`, `network-error-message.test.ts`. Reste lint : 2 diagnostics préexistants à a627c86 (`local-intelligence.ts:347` useOptionalChain, `synelia-model.tsx:150` aria-label sur div) |
 | 10 | outils : liste blanche ask*/show* (règle permanente) | OK — 3aaa235 | `synelia-pilot-gate.test.ts` › "gate 10: tools are an allowlist" (`foo_tool` refusé) |
-| 11 | avant ouverture : clé d'inférence OpenRouter + ZDR sur le modèle par défaut, OU politique de données 9router vérifiée par écrit et validée par JV | OUVERT | — |
+| 11 | avant ouverture : clé d'inférence OpenRouter + ZDR sur le modèle par défaut, OU politique de données 9router vérifiée par écrit et validée par JV | OK (politique) — décidé par Chief Of Staff (délégation de Jean-Vincent, 2026-10-17) | Voir « Politique de données du pilote » ci-dessous. ZDR OpenRouter forcé dans le code (`synelia-models.ts`, `provider.data_collection=deny`, `zdr=true`, actif sauf `OPENROUTER_PRIVACY=off`). La clé OpenRouter actuelle est une clé de gestion, donc les modèles OpenRouter restent indisponibles jusqu'à l'arrivée d'une clé d'inférence. |
 | 12 | coupure du flux en cours de run : le client se rattache (connect), pas de fausse erreur, pas de doublon | PARTIEL — 3aaa235 | `stream-reattach.test.ts` (détection + dédoublonnage) ; test navigateur avec coupure réelle à faire |
 | 9 | déploiement refusé si arbre sale ; DEPLOYED_COMMIT depuis arbre propre | OK — 28f3c42 | `deploy/synelia/deploy.sh` |
 
