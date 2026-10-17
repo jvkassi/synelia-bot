@@ -120,7 +120,8 @@ export function channelHistoryNotice({
   historyAvailability,
   historyReadFailed = false,
   unreadable,
-  known,
+  lastMessageByUser = false,
+  lastLoadedIsUser = false,
   lastMessageRestorable = false,
 }: {
   restoring: boolean;
@@ -130,10 +131,13 @@ export function channelHistoryNotice({
   historyReadFailed?: boolean;
   unreadable: number;
   /**
-   * Synelia fork: whether the server knows this thread (GET /api/threads/:id). `false` only when the
-   * server answered that it has no such thread/run; `undefined` while the status is still loading.
+   * Synelia fork (item 8): the roster's most recent line in this channel is the person's own message
+   * (channels.last_message_agent_id is null — a person's turn, not a Bot's). Read from the roster
+   * cache by the caller.
    */
-  known?: boolean;
+  lastMessageByUser?: boolean;
+  /** Synelia fork (item 8): the last message currently loaded in the transcript is the person's own. */
+  lastLoadedIsUser?: boolean;
   /** Synelia fork: the unsent last message is the person's own, untruncated, and back in the composer. */
   lastMessageRestorable?: boolean;
 }): string | null {
@@ -147,13 +151,27 @@ export function channelHistoryNotice({
   }
 
   /*
-   * Synelia fork: the roster says something was last said here (`lastMessageAt`), history IS
-   * reachable (the branch above did not fire), yet the server has no record of this thread
-   * (`known === false`) and nothing loaded (`messageCount === 0`). The last message the person typed
-   * never reached the server — it was not sent. Said in French; « revenu dans la zone de saisie »
-   * only when the message is restorable (the person's own, untruncated, put back in the composer).
+   * Synelia fork (item 8): REOPEN not-sent. The roster's most recent line here is the person's own
+   * message (`lastMessageByUser`) but that message is NOT in the loaded transcript (`!lastLoadedIsUser`
+   * — the last loaded message is a Bot answer, or nothing loaded at all). So the roster's last message
+   * is NEWER than everything stored: it reached the channel activity log but no run persisted it — it
+   * was not sent. This covers both a brand-new thread (nothing stored) and a thread with earlier runs
+   * (the lost message is newer than the last answer). A message that WAS sent is in the history
+   * (`lastLoadedIsUser`, awaiting its answer) or was answered (the Bot authored the roster's last
+   * line), so neither fires this. History must be reachable: the branch above handles the unavailable
+   * case first.
+   *
+   * `lastMessageRestorable` stays false (see the caller): channels.last_message is written through
+   * previewOf -> oneLine, which COLLAPSES whitespace and TRUNCATES to 200 graphemes with an ellipsis,
+   * so it can never be guaranteed to equal the person's exact, untruncated text. « Renvoyez-le »
+   * (retype) is the honest instruction, not « revenu dans la zone de saisie ».
    */
-  if (known === false && messageCount === 0 && lastMessageAt !== null) {
+  if (
+    historyAvailability === "ready" &&
+    lastMessageAt !== null &&
+    lastMessageByUser &&
+    !lastLoadedIsUser
+  ) {
     return lastMessageRestorable
       ? ui.conversation.notSentReopenRestored
       : ui.conversation.notSentReopenPlain;
@@ -609,6 +627,19 @@ export function ChannelChat({
     channel.threadId ?? undefined,
     !agent.isRunning && lastMessage?.role === "user",
   );
+  /*
+   * Synelia fork (item 8): the roster's most recent line in this channel, read from the channel-list
+   * cache. `lastMessageAgentId === null` means a person authored it (a Bot's id is non-null). Compared
+   * with whether the loaded transcript's last message is the person's own, this tells a reopened
+   * conversation whose last message never reached the server (not sent) from a normal one.
+   */
+  const rosterSummary = queryClient
+    .getQueryData<{ pages: { channels: ChannelSummary[] }[] }>(
+      channelKeys.list(),
+    )
+    ?.pages.flatMap((page) => page.channels)
+    .find((row) => row.id === channel.id);
+  const lastLoadedMessage = agent.messages[agent.messages.length - 1];
   const historyNotice = channelHistoryNotice({
     restoring,
     messageCount: agent.messages.length,
@@ -616,9 +647,11 @@ export function ChannelChat({
     historyAvailability,
     historyReadFailed,
     unreadable,
-    known: threadStatus.known,
-    // The composer prefill on reopen is a follow-up; until it lands the honest notice is
-    // « Renvoyez-le », so this stays false even when the last message is the person's own.
+    lastMessageByUser: rosterSummary?.lastMessageAgentId === null,
+    lastLoadedIsUser: lastLoadedMessage?.role === "user",
+    // The composer prefill on reopen is a follow-up: channels.last_message is a collapsed, truncated
+    // preview (previewOf -> oneLine), never guaranteed to equal the exact text, so it stays false and
+    // the notice is « Renvoyez-le » (retype) rather than « revenu dans la zone de saisie ».
     lastMessageRestorable: false,
   });
   /*
