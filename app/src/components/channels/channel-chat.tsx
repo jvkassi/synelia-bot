@@ -51,6 +51,7 @@ import {
 import { readThreadMessages } from "@/lib/copilot/thread-messages";
 import { pilot, ui } from "@/lib/i18n";
 import { useSkillCommands } from "@/lib/plugins/skill-commands";
+import { perfMark } from "@/lib/synelia-perf";
 import {
   askChannelAgent,
   messageText,
@@ -350,6 +351,7 @@ export function ChannelChat({
   const historyReadVersion = useRef(0);
   useEffect(() => {
     if (isReady) openReadyGate.current();
+    if (isReady) perfMark("chat:ready"); // Synelia fork: dev-only timing.
   }, [isReady]);
 
   // Join the gateway socket, restore durable history, then release the first-message gate.
@@ -404,6 +406,7 @@ export function ChannelChat({
         if (current) setRestoring(false);
         // Release even on join/restore failure; the gate orders messages, not withholds them.
         openJoinGate.current();
+        perfMark("chat:joined"); // Synelia fork: dev-only timing.
       }
     })();
 
@@ -740,6 +743,7 @@ export function ChannelChat({
         return cachedVoiceArchive(channel.id);
       })
       .finally(() => clearTimeout(voiceHistoryTimer));
+    perfMark("chat:deliver"); // Synelia fork: dev-only timing, every wait is behind us.
     const target = agentRef.current;
     const existingMessageIds = new Set(
       target.messages.map((message) => message.id),

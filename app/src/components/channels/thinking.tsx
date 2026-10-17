@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ui } from "@/lib/i18n";
+import { perfMark } from "@/lib/synelia-perf";
 import { cn } from "@/lib/utils";
 
 /** No first token after this long: the line says the wait can last up to 30 seconds. */
@@ -41,13 +42,18 @@ export function Thinking({ className }: { className?: string }) {
   // Already past 8 s at mount (the conversation opened late): the long message at once.
   const [slow, setSlow] = useState(() => slowDelay() === 0);
   useEffect(() => {
+    // Unmounted by the first token (or the page changing): dev-only timing, a no-op otherwise.
+    const done = () => perfMark("thinking:end");
     const wait = slowDelay();
     if (wait === 0) {
       setSlow(true);
-      return;
+      return done;
     }
     const timer = setTimeout(() => setSlow(true), wait);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      done();
+    };
   }, []);
   return (
     <p
