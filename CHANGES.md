@@ -75,8 +75,14 @@ on konnect behind Traefik + basicauth, with a Mastra Bot answering through OpenR
 | 5 | mots de passe tournés, credentials.txt supprimé, branche poussée sur remote privé | OUVERT | — |
 | 6 | erreurs sans fuite (requestBodyValues + clé sk- absents du RUN_ERROR et de la DB) | OK — 28f3c42 | `synelia-error-text.test.ts` (formatter + helper du patch exécuté) |
 | 7 | badge fiable (run >20 s, badge sans reload, pas de polling par message) | PARTIEL — 28f3c42 | requête unique par thread, invalidée en fin de run ; test navigateur >20 s à faire (Chief) |
-| 8 | CI front verte (format:check, 6 tests cassés, lang=fr, pas d'anglais login/composer/sidebar/picker) | OUVERT (Frontend Expert) | — |
+| 8 | CI front verte (format:check, 6 tests cassés, lang=fr, pas d'anglais login/composer/sidebar/picker) | PARTIEL — branche `synelia/phase0-i18n` (abe9870, 61567ca, 0180b7a, 84e68fc, tests HEAD) | typecheck/format:check/build OK ; app tests : 16 échecs Synelia corrigés, 42 restants identiques à l'upstream 53a656b ; `i18n-shape.test.ts`, `network-error-message.test.ts`. Reste lint : 2 diagnostics préexistants à a627c86 (`local-intelligence.ts:347` useOptionalChain, `synelia-model.tsx:150` aria-label sur div) |
 | 9 | déploiement refusé si arbre sale ; DEPLOYED_COMMIT depuis arbre propre | OK — 28f3c42 | `deploy/synelia/deploy.sh` |
+
+## i18n pilote (Frontend Expert, branche synelia/phase0-i18n)
+- `<html lang="fr">` ; `UiStrings = Widen<typeof fr>` (chaînes élargies), `fr satisfies UiStrings` ; test de forme pour un futur `en`.
+- Textes restants en français via `ui.*` : composer, transcript, barre latérale (menu de conversation, pagination, compte), connexion, nouvelle conversation, vue conversation, sélecteur de modèle, bascule de barre latérale, défilement.
+- Erreur réseau brute (« network error », « Failed to fetch ») affichée comme `ui.conversation.networkError` (affichage seulement, transport inchangé).
+- Tests : assertions via `ui.*` ; Explore et `/bot` conditionnés par `pilot.*`.
 
 ## Deployment
 | File | Why |
