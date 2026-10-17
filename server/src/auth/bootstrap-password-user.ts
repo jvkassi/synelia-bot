@@ -26,11 +26,21 @@ export async function bootstrapPasswordUser(
   if (found?.accounts?.some((account) => account.providerId === "credential")) {
     return;
   }
+  // `createUser` runs OpenBot's `validateUserInfo`, which Better Auth only allows inside an endpoint
+  // context. A boot task has no request, so it opens one around the call. `@better-auth/core` is
+  // resolved from better-auth's own install: it is not a direct dependency of the server.
+  const { runWithEndpointContext } = (await import(
+    Bun.resolveSync("@better-auth/core/context", Bun.resolveSync("better-auth", import.meta.dir))
+  )) as {
+    runWithEndpointContext: <T>(context: unknown, fn: () => Promise<T>) => Promise<T>;
+  };
   const user =
     found?.user ??
-    (await context.internalAdapter.createUser(
-      { email, name, emailVerified: true },
-      { method: "admin" },
+    (await runWithEndpointContext({ context }, () =>
+      context.internalAdapter.createUser(
+        { email, name, emailVerified: true },
+        { method: "admin" },
+      ),
     ));
   await context.internalAdapter.linkAccount({
     userId: user.id,
