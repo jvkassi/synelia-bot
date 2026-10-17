@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { createOpenAI } from "@ai-sdk/openai";
 import { requestExtras, withRequestExtras } from "./synelia-models";
 
-test("only router9 Gemini Flash ('Rapide') gets reasoning_effort low", () => {
+test("only router9 Gemini Flash ('Réflexion') gets reasoning_effort low", () => {
   expect(requestExtras("router9", "gemini/gemini-3.8-flash")).toEqual({
     reasoning_effort: "low",
   });
@@ -44,4 +44,11 @@ test("the outgoing Chat Completions body built by the provider carries reasoning
   } as never);
   expect(sent?.reasoning_effort).toBe("low");
   expect(sent?.model).toBe("gemini/gemini-3.8-flash");
+});
+
+test("labels: Claude Sonnet is 'Rapide', Gemini Flash is 'Réflexion', never a provider name", async () => {
+  const { modelLabel } = await import("./synelia-models");
+  expect(modelLabel("cc/claude-sonnet-5-5", "rapide")).toBe("Rapide");
+  expect(modelLabel("gemini/gemini-3.8-flash", "reflexion")).toBe("Réflexion");
+  expect(modelLabel("z-ai/glm-5.3", "raisonnement")).toBe("Raisonnement");
 });

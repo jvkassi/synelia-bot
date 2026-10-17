@@ -2,8 +2,8 @@
  * Synelia fork: the models this Bot may answer with, and the one factory that builds them.
  *
  * Config, not code. `SYNELIA_MODELS` lists at most a handful of `provider:model@usage` entries, e.g.
- *   SYNELIA_MODELS=router9:gemini/gemini-3.8-flash@rapide,openrouter:z-ai/glm-5.3@raisonnement
- *   SYNELIA_DEFAULT_MODEL=router9:gemini/gemini-3.8-flash
+ *   SYNELIA_MODELS=router9:cc/claude-sonnet-5-5@rapide,router9:gemini/gemini-3.8-flash@reflexion
+ *   SYNELIA_DEFAULT_MODEL=router9:cc/claude-sonnet-5-5
  * Providers (all OpenAI-compatible Chat Completions):
  *   openrouter  enabled by OPENROUTER_API_KEY (OPENROUTER_BASE_URL optional)
  *   router9     enabled by ROUTER9_BASE_URL + ROUTER9_API_KEY (from secrets/router9.env)
@@ -170,7 +170,7 @@ export function syneliaProviders(): Map<string, Provider> {
 }
 
 /**
- * Extra Chat Completions fields per model. Gemini Flash ('Rapide') thinks before its first token,
+ * Extra Chat Completions fields per model. Gemini Flash ('Réflexion') thinks before its first token,
  * and 9router only answers once that token exists: `reasoning_effort: "low"` cut it from ~3.6 s to
  * ~1.5 s on a generative prompt (curl on konnect, 2026-10-17). "minimal"/"none" answer 400.
  */
@@ -201,10 +201,14 @@ export function withRequestExtras(
   return wrapped as typeof fetch;
 }
 
-/** 'Rapide' for Gemini Flash, 'Approfondi' for Claude Sonnet, else the configured usage. */
+/**
+ * 'Rapide' for Claude Sonnet (first content token ~0.7-2 s through 9router), 'Réflexion' for Gemini
+ * Flash (thinks first, ~1.4-5 s even at reasoning_effort low): measured on konnect with the app's
+ * real payload, 2026-10-17. Otherwise the configured usage. Never the provider name.
+ */
 export function modelLabel(model: string, usage: string): string {
-  if (/flash/i.test(model)) return "Rapide";
-  if (/claude|sonnet/i.test(model)) return "Approfondi";
+  if (/claude|sonnet/i.test(model)) return "Rapide";
+  if (/flash/i.test(model)) return "Réflexion";
   return usage.charAt(0).toUpperCase() + usage.slice(1);
 }
 

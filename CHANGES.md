@@ -278,10 +278,21 @@ Coupure réseau pendant un run : après 2 reconnexions sans fin de run, la page 
 - Chemin en mémoire : le « Thread already running » de l'`InMemoryAgentRunner` partait après le 200 SSE, donc le navigateur recevait un flux vide. `PostgresAgentRunner` émet maintenant `RUN_STARTED` puis `RUN_ERROR` avec `code: "thread_busy"` dans le flux (même schéma que `isAlreadyAnswered`).
 - `toolkit/src/copilotkit/thread-lock.ts` (409 → `null`) est le chemin des hand-offs en arrière-plan (réessai), pas une réponse HTTP au navigateur : laissé tel quel. Test front : Frontend Expert.
 
-**Libellés de modèles** : `label` dans `agent-mastra/src/mastra/synelia-models.ts` (`Rapide` pour Gemini Flash, `Approfondi` pour Claude Sonnet, sinon l'usage configuré ; jamais le fournisseur) ; transmis par `/api/synelia/models`, ajouté à `/api/synelia/runs/:id` et `/api/synelia/threads/:id/models`. Le sélecteur et le pied de réponse l'affichent quand il est présent (style : Frontend Expert).
+**Libellés de modèles** : `label` dans `agent-mastra/src/mastra/synelia-models.ts` (depuis la décision du 2026-10-17 15:00 UTC : `Rapide` pour Claude Sonnet, `Réflexion` pour Gemini Flash, sinon l'usage configuré ; jamais le fournisseur) ; transmis par `/api/synelia/models`, ajouté à `/api/synelia/runs/:id` et `/api/synelia/threads/:id/models`. Le sélecteur et le pied de réponse l'affichent quand il est présent (style : Frontend Expert).
 
 **Pilot gate** : `/api/identity`, `/api/passwords`, `/api/sign-in-requests` retirés de `PILOT_ALLOWED_PREFIXES` (comptes connectés, mots de passe/identifiants ; aucun des 15 outils autorisés ne les appelle, `sign-in-tool.tsx` n'est pas dans la liste). `/api/approvals` reste ouvert pour les décisions en cours de run (`/decision`, `/questions/*/respond`, `/computer/*`) ; seuls `/api/approvals/rules`, `/preferences` et `/team` sont fermés. La galerie de composants (`/api/components`) était déjà fermée. `e2e.sh gate` : ces routes répondent 404, et `POST /api/approvals/:id/decision` ne reçoit pas le 404 du pilot gate.
 
-**Gemini Flash (« Rapide »)** : `reasoning_effort: "low"` ajouté au corps envoyé à 9router (`requestExtras`/`withRequestExtras`, `agent-mastra/src/mastra/synelia-models.ts`, test sur le corps sortant). Mesuré sur konnect : premier jeton ~3,6 s → ~1,5 s sur un prompt génératif ; `minimal`/`none` répondent 400. claude-sonnet reste un choix, pas le défaut.
+**Gemini Flash (« Réflexion »)** : `reasoning_effort: "low"` ajouté au corps envoyé à 9router (`requestExtras`/`withRequestExtras`, `agent-mastra/src/mastra/synelia-models.ts`, test sur le corps sortant). Mesuré sur konnect : premier jeton ~3,6 s → ~1,5 s sur un prompt génératif ; `minimal`/`none` répondent 400. Claude Sonnet devient le modèle par défaut, libellé « Rapide » (décision de l'équipe, 2026-10-17).
+
+**Latence, charge utile réelle de l'app** (rejeu depuis konnect vers 9router ; prompt système réel capturé ; 12 outils composants ; 3 essais ; premier contenu en ms) :
+
+| Cas | Gemini Flash défaut | Gemini Flash `low` | Claude Sonnet |
+|---|---|---|---|
+| e2e (b) « 8 paragraphes sur les phares » | 22 166–23 714 | 1 178–1 982 | – |
+| Spécification / ticket | – | 1 343–1 540 | 1 081–1 832 |
+| Plan de test | – | 3 589–5 758 | 1 833–2 275 |
+| Expliquer un concept | – | 1 565–1 912 | 679–996 |
+
+Jetons d'entrée : Gemini ~4 250, Claude ~7 620. Claude est plus rapide sur 2 des 3 prompts du kit et en moyenne (≈ 1,4 s contre ≈ 2,7 s), d'où le changement. **À appliquer au déploiement** dans `/srv/synelia-bot/.env.mastra` : `SYNELIA_DEFAULT_MODEL=router9:cc/claude-sonnet-5-5` (et, pour l'usage affiché, `SYNELIA_MODELS=router9:cc/claude-sonnet-5-5@rapide,router9:gemini/gemini-3.8-flash@reflexion,…`).
 
 **Mesures de latence** : `run_timing` dans `requests-*.jsonl` (et `synelia_timing` sur stdout) par run, nombres et ids seulement : `routeMs`, `prepMs`, `firstEventMs`, `firstTextMs`, `sinceArrivalFirstTextMs`, `totalMs`, `tools`, `messages`, `contextBytes`, `inputBytes`. Côté Mastra, `synelia_timing {kind:"provider_call"}` : `sinceAgentRequestMs`, `headersMs`, `firstChunkMs`, `requestBytes`.
