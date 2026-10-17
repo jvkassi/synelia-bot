@@ -1,0 +1,23 @@
+# Synelia tenant package (phase 0). The main Bot is the Mastra server in this deployment
+# (agent-mastra), dialled over AG-UI; its model is picked per run from SYNELIA_MODELS.
+agents:
+  - id: synelia-assistant
+    name: ${PICKED_HARNESS_NAME:-Synelia Assistant}
+    title: Assistant Synelia
+    role_description: Répondre aux questions et aider au travail quotidien, en français, clairement et brièvement.
+    avatar_seed: synelia-assistant
+    type: ${PICKED_HARNESS_KIND:-remote-ag-ui}
+    endpoint: ${PICKED_HARNESS_URL:-}
+    remote_agent_id: openbot
+  # OpenBot's built-in Bot (CopilotKit runtime, OpenAI-compatible endpoint = 9router). Holds the
+  # coworker and skill authoring tools.
+  - id: general-assistant
+    name: General Assistant
+    title: Everyday Work
+    role_description: Help with everyday work using clear, concise, and accurate answers.
+    avatar_seed: general-assistant
+    type: built-in
+    system_prompt: You are a helpful general assistant. Give clear, concise, and accurate answers.
+    skills:
+      - bot-creator
+      - skill-creator

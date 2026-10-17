@@ -1,0 +1,108 @@
+# Synelia Bot, phase 0, on konnect (/srv/synelia-bot). See CHANGES.md at the repository root.
+#
+# - No CopilotKit Intelligence: OPENBOT_PERSISTENCE=postgres (threads/runs/locks in this Postgres).
+# - Postgres and the Mastra Bot are on an internal-only network; nothing publishes a host port.
+# - Only `server` joins Traefik's `proxy` network, behind a basicauth middleware.
+# - No docker.sock, no computer supervisor/sandbox (COMPUTER_SUPERVISOR_URL is never set).
+# - Secrets only in env files (chmod 600): .env.server, .env.mastra, .env.postgres, secrets/router9.env,
+#   and .env (compose interpolation: BASICAUTH_USERS hash only).
+name: synelia-bot
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    env_file: [.env.postgres]
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [internal]
+    mem_limit: 1g
+    cpus: 1.0
+    logging: *logging
+
+  migrate:
+    image: synelia-bot-server:phase0
+    build:
+      context: ./src
+      dockerfile: server/Dockerfile
+    env_file: [.env.server]
+    working_dir: /app/server
+    command: ["bunx", "drizzle-kit", "migrate", "--config=drizzle.config.ts"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+    restart: "no"
+    mem_limit: 512m
+    cpus: 0.5
+    logging: *logging
+
+  agent-mastra:
+    image: synelia-bot-mastra:phase0
+    build:
+      context: ./src
+      dockerfile: agent-mastra/Dockerfile.synelia
+    restart: unless-stopped
+    env_file:
+      - .env.mastra
+      - ./secrets/router9.env
+    networks: [internal, egress]
+    mem_limit: 768m
+    cpus: 1.0
+    logging: *logging
+
+  server:
+    image: synelia-bot-server:phase0
+    restart: unless-stopped
+    env_file:
+      - .env.server
+      - ./secrets/router9.env
+    # The built-in Bot speaks OpenAI-compatible: point it at 9router without copying the key into
+    # another file, and drop the ROUTER9_* names from the process afterwards.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        base="$${ROUTER9_BASE_URL%/}"
+        case "$$base" in */v1) ;; *) base="$$base/v1" ;; esac
+        export OPENAI_BASE_URL="$$base" OPENAI_API_KEY="$$ROUTER9_API_KEY"
+        unset ROUTER9_API_KEY ROUTER9_BASE_URL
+        exec bun src/production-entry.ts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      agent-mastra:
+        condition: service_started
+    networks: [internal, egress, proxy]
+    mem_limit: 1536m
+    cpus: 2.0
+    logging: *logging
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.synelia-bot.rule=Host(`synelia-bot.labs.synelia.tech`)
+      - traefik.http.routers.synelia-bot.entrypoints=https
+      - traefik.http.routers.synelia-bot.tls.certresolver=leresolver
+      - traefik.http.routers.synelia-bot.middlewares=synelia-bot-auth
+      - traefik.http.middlewares.synelia-bot-auth.basicauth.users=${BASICAUTH_USERS:?set BASICAUTH_USERS in .env}
+      - traefik.http.services.synelia-bot.loadbalancer.server.port=3001
+
+networks:
+  internal:
+    internal: true
+  egress: {}
+  proxy:
+    external: true

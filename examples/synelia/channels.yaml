@@ -1,0 +1,11 @@
+channels:
+  - id: synelia-assistant
+    name: Synelia Assistant
+    description: Discuter avec l'assistant Synelia (Mastra).
+    permitted_agents: [synelia-assistant]
+    allowed_groups: [all]
+  - id: general-assistant
+    name: General Assistant
+    description: Ask for help with everyday work.
+    permitted_agents: [general-assistant]
+    allowed_groups: [all]

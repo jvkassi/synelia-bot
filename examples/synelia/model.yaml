@@ -1,0 +1,6 @@
+# Synelia fork: the built-in Bot's model. The server maps 9router (secrets/router9.env) onto the
+# OpenAI-compatible settings at start (deploy/synelia/docker-compose.yml); BOT_MODEL overrides this.
+model:
+  provider: openai
+  credential_secret_ref: openai-api-key
+  default_model: gemini/gemini-3.8-flash
