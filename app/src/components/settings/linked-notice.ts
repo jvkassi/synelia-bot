@@ -1,3 +1,4 @@
+import { appConfig } from "@/lib/generated/application-config";
 export type LinkedNotice = { tone: "success" | "error"; text: string };
 
 /**
@@ -17,7 +18,7 @@ export function linkedNotice(value: string | undefined): LinkedNotice | null {
   if (value === "github-taken") {
     return {
       tone: "error",
-      text: "That GitHub account is already linked to another OpenBot user. Sign in to GitHub as a different account and connect again, or ask your OpenBot administrator for help.",
+      text: `That GitHub account is already linked to another ${appConfig.brand.productName} user. Sign in to GitHub as a different account and connect again, or ask your ${appConfig.brand.productName} administrator for help.`,
     };
   }
   return null;

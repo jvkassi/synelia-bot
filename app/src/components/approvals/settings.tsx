@@ -29,6 +29,7 @@ import { agentListQueryOptions } from "@/lib/agents/queries";
 import { currentUserQueryOptions } from "@/lib/auth/queries";
 import { queryClient } from "@/query-client";
 import { HOST_LABELS, LabelSelect, RuleForm, RuleRow } from "./rules";
+import { appConfig } from "@/lib/generated/application-config";
 
 /**
  * The person's own approval settings: whether their Bots ask before changing things, and the rules
@@ -155,8 +156,8 @@ export function ApprovalSettings() {
                       inbox.data.preferences.hostCommands
                       ? `Your team limits this to "${HOST_LABELS[inbox.data.hostCommands]}". `
                       : ""}
-                    The OpenBot desktop app still shows each command before it
-                    runs on your computer.
+                    The {appConfig.brand.productName} desktop app still shows
+                    each command before it runs on your computer.
                   </ItemDescription>
                 </ItemContent>
                 <ItemActions>
