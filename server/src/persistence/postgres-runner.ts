@@ -429,9 +429,9 @@ export function liveRunId(threadId: string): string | undefined {
 }
 
 /**
- * Synelia fork: true when the last message of `messages` is the person's and a FINISHED historic
- * run already received it as input. A failed or stopped run does not count, so "send again" after
- * an error still runs.
+ * Synelia fork: true when the last message of `messages` is the person's and a historic run that
+ * FINISHED cleanly (a RUN_FINISHED and no RUN_ERROR) already received it as input. A failed, stopped
+ * or refused run does not count, so "send again" after an error still runs.
  */
 export function isAlreadyAnswered(
   messages: readonly { id: string; role: string }[] | undefined,
@@ -440,7 +440,12 @@ export function isAlreadyAnswered(
   const last = messages?.at(-1);
   if (last?.role !== "user") return false;
   return historicRuns.some((run) => {
-    if (!run.events.some((event) => event.type === "RUN_FINISHED"))
+    // Answered = a clean finish. A run that also carries a RUN_ERROR did not answer (it is stored
+    // status "error", see persist() above), so "send again" after a refusal or failure still runs.
+    if (
+      !run.events.some((event) => event.type === "RUN_FINISHED") ||
+      run.events.some((event) => event.type === "RUN_ERROR")
+    )
       return false;
     return run.events.some(
       (event) =>

@@ -397,4 +397,64 @@ db("lastRunError carries the stable code (reload after a refusal)", () => {
         .catch((error) => (error as { status?: number }).status),
     ).toBe(404);
   });
+  test("retry after a refusal: two runs stored, the retry snapshot has exactly one user message", async () => {
+    const threadId = id();
+    const userMessageId = id();
+    // Run 1: the refused run (status error), the person's message is the only user message.
+    await store.saveRun({
+      runId: id(),
+      threadId,
+      agentId: "a",
+      parentRunId: null,
+      events: [
+        { type: "RUN_STARTED", threadId, runId: "r1" },
+        {
+          type: "RUN_ERROR",
+          threadId,
+          runId: "r1",
+          message: "content_filter",
+          code: "provider_refusal",
+        },
+      ],
+      createdAt: Date.now(),
+      messages: [{ id: userMessageId, role: "user", content: "demande" }],
+      status: "error",
+      userId: "u1",
+    } as never);
+    // Retry: same user message id (the front re-runs on the existing message, never a new one), now
+    // answered. The snapshot must carry that one user message once, plus the assistant reply.
+    await store.saveRun({
+      runId: id(),
+      threadId,
+      agentId: "a",
+      parentRunId: null,
+      events: [
+        { type: "RUN_STARTED", threadId, runId: "r2" },
+        { type: "TEXT_MESSAGE_CONTENT", delta: "voici" },
+        { type: "RUN_FINISHED", threadId, runId: "r2" },
+      ],
+      createdAt: Date.now() + 1,
+      messages: [
+        { id: userMessageId, role: "user", content: "demande" },
+        { id: id(), role: "assistant", content: "voici" },
+      ],
+      status: "done",
+      userId: "u1",
+    } as never);
+
+    const runs = await store.loadRuns(threadId);
+    expect(runs.length).toBe(2);
+    const retry = runs[1];
+    const users = (retry?.messages ?? []).filter(
+      (m) => (m as { role?: string }).role === "user",
+    );
+    expect(users.length).toBe(1);
+    expect((users[0] as { id?: string }).id).toBe(userMessageId);
+    // And the latest snapshot the thread exposes is the retry's, not a merge that duplicated it.
+    const latest = await store.getThreadMessages({ threadId, userId: "u1" });
+    expect(
+      latest.messages.filter((m) => (m as { role?: string }).role === "user")
+        .length,
+    ).toBe(1);
+  });
 });
