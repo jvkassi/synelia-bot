@@ -43,6 +43,7 @@ import {
 import {
   SyneliaThreadModels,
   serverRunStep,
+  showInterrupted,
   useStoredRunError,
 } from "@/lib/copilot/synelia-model";
 import { readThreadMessages } from "@/lib/copilot/thread-messages";
@@ -550,11 +551,6 @@ export function ChannelChat({
   /** A turn was sent from this page: an older lost run is history, never drawn over it. */
   const sentHere = useRef(false);
   if (agent.isRunning) sentHere.current = true;
-  const storedRunError =
-    threadStatus.error ??
-    (threadStatus.interrupted && !agent.isRunning && !sentHere.current
-      ? ui.conversation.runInterrupted
-      : null);
   // Drawn as the neutral Thinking indicator (shimmer, role=status), not the alert of `stopped`.
   // Only for a run this page is NOT streaming itself (reload mid-run, other tab).
   const serverRunning =
@@ -656,6 +652,18 @@ export function ChannelChat({
   const turnsRef = useRef(0);
   const [runsInFlight, setRunsInFlight] = useState(0);
   const showServerRun = serverRunning && runsInFlight === 0;
+  // After `turnsInFlight`: between send and the run actually starting, `agent.isRunning` is still
+  // false, and an older lost run must not be drawn over the turn this tab just sent.
+  const storedRunError =
+    threadStatus.error ??
+    (showInterrupted({
+      interrupted: threadStatus.interrupted,
+      localRunning: agent.isRunning,
+      sentHere: sentHere.current,
+      turnsInFlight,
+    })
+      ? ui.conversation.runInterrupted
+      : null);
 
   /**
    * Tell the roster what was just said. Failures here must not block the conversation.

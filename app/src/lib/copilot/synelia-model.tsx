@@ -328,6 +328,25 @@ export function threadStatusView(
 }
 
 /**
+ * Synelia fork: whether « Réponse interrompue » (a lost run) may be drawn. Never while this tab has a
+ * turn of its own in flight, including the gap between send and RUN_STARTED (`turnsInFlight` > 0
+ * while `agent.isRunning` is still false), nor once this page has sent a turn.
+ */
+export function showInterrupted(state: {
+  interrupted: boolean;
+  localRunning: boolean;
+  sentHere: boolean;
+  turnsInFlight: number;
+}): boolean {
+  return (
+    state.interrupted &&
+    !state.localRunning &&
+    !state.sentHere &&
+    state.turnsInFlight === 0
+  );
+}
+
+/**
  * Synelia fork (2a): one step of "a run is going on the server that this page is not streaming".
  * `indicator`: draw Thinking + Stop. `replay`: the run just ended, replay the thread once so the
  * full answer replaces the partial one restored at load.
