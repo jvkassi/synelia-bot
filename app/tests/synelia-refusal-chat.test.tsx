@@ -420,3 +420,80 @@ test("« Réessayer » after a partial answer: the half-written reply and its to
   expect(bubbles).toHaveLength(1);
   expect(runs).toBe(2);
 });
+
+function httpRefusal(
+  status: number,
+  body: Record<string, string>,
+  headers: Record<string, string> = {},
+) {
+  return () =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json", ...headers },
+    });
+}
+
+test("HTTP 401 on the run: the session-expired sentence, no « Réessayer »", async () => {
+  runAnswer = httpRefusal(401, { error: "Sign in to use this deployment." });
+  const view = await sendPhishingPrompt();
+  await waitFor(() =>
+    expect(view.getByTestId("transcript-stopped").textContent).toBe(
+      ui.home.sessionExpired,
+    ),
+  );
+  expect(view.getByTestId("transcript-stopped").getAttribute("role")).toBe(
+    "alert",
+  );
+  expect(view.queryByTestId("transcript-retry")).toBeNull();
+});
+
+test("masked 401 (403 + x-synelia-status: 401): the session-expired sentence, never « modèle indisponible »", async () => {
+  runAnswer = httpRefusal(
+    403,
+    { error: "Sign in to use this deployment." },
+    { "x-synelia-status": "401" },
+  );
+  const view = await sendPhishingPrompt();
+  await waitFor(() =>
+    expect(view.getByTestId("transcript-stopped").textContent).toBe(
+      ui.home.sessionExpired,
+    ),
+  );
+  expect(view.container.textContent).not.toContain(
+    ui.conversation.modelUnavailable,
+  );
+  expect(view.queryByTestId("transcript-retry")).toBeNull();
+});
+
+test("plain 403 (password_change_required): not the session sentence, keeps the usual failure handling", async () => {
+  runAnswer = httpRefusal(403, {
+    error: "Vous devez changer votre mot de passe.",
+    code: "password_change_required",
+  });
+  const view = await sendPhishingPrompt();
+  await waitFor(() =>
+    expect(view.getByTestId("transcript-stopped").textContent).toBe(
+      ui.conversation.runFailed,
+    ),
+  );
+  expect(view.container.textContent).not.toContain(ui.home.sessionExpired);
+  expect(view.container.textContent).not.toContain(
+    ui.conversation.modelUnavailable,
+  );
+});
+
+test("evidence: the run's HTTP error does not carry the response headers (CopilotKit 1.77 / @ag-ui/client)", async () => {
+  runAnswer = httpRefusal(
+    403,
+    { error: "some other body" },
+    { "x-synelia-status": "401" },
+  );
+  const view = await sendPhishingPrompt();
+  await view.findByTestId("transcript-stopped");
+  // A masked 401 whose body is not one of the server's 401 bodies is NOT recognised today: the
+  // header never reaches our code. Recorded so a runtime upgrade that exposes it shows up here.
+  expect(view.getByTestId("transcript-stopped").textContent).toBe(
+    ui.conversation.runFailed,
+  );
+  expect(String(warn.mock.calls.at(-1)?.[1])).toContain("HTTP 403");
+});

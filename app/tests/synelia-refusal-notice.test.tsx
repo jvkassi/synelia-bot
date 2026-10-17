@@ -12,6 +12,7 @@ import {
   codedReason,
   EMPTY_RUN,
   isProviderRefusal,
+  sessionExpiredReason,
   stopNotice,
 } from "@/lib/copilot/stop-notice";
 import { ui } from "@/lib/i18n";
@@ -346,4 +347,67 @@ test("retryKeepCount: cut back to the last user message only when what follows i
   // The user message itself must predate the failed run.
   expect(retryKeepCount(partial, new Set(["sys", "a0"]))).toBe(null);
   expect(retryKeepCount([{ id: "a", role: "assistant" }], before)).toBe(null);
+});
+
+test("sessionExpiredReason: 401, masked 403 (header or the server's 401 body), never a plain 403", () => {
+  const httpError = (
+    status: number,
+    payload: unknown,
+    extra: Record<string, unknown> = {},
+  ) =>
+    Object.assign(
+      new Error(`HTTP ${status}: ${JSON.stringify(payload)}`),
+      { status, payload },
+      extra,
+    );
+  const expired = {
+    text: ui.home.sessionExpired,
+    role: "alert" as const,
+    technical: false,
+    retry: false,
+  };
+  const r401 = sessionExpiredReason(httpError(401, { error: "x" }));
+  expect(stopNotice(r401 ?? "", "Alternatif")).toEqual(expired);
+  // As @ag-ui/client throws it today: status + body, no headers.
+  expect(
+    sessionExpiredReason(
+      httpError(403, { error: "Sign in to use this deployment." }),
+    ),
+  ).toBe(r401);
+  expect(
+    sessionExpiredReason(httpError(403, { error: "Authentication required." })),
+  ).toBe(r401);
+  // If a runtime ever exposes the headers, the masking header alone is enough.
+  expect(
+    sessionExpiredReason(
+      httpError(
+        403,
+        {},
+        { headers: new Headers({ "x-synelia-status": "401" }) },
+      ),
+    ),
+  ).toBe(r401);
+  // Message only (no .status), as a wrapped error might carry it.
+  expect(sessionExpiredReason(new Error("HTTP 401: {}"))).toBe(r401);
+  // Plain 403s and everything else: not this.
+  expect(
+    sessionExpiredReason(
+      httpError(403, {
+        error: "Vous devez changer votre mot de passe.",
+        code: "password_change_required",
+      }),
+    ),
+  ).toBe(null);
+  expect(
+    sessionExpiredReason(
+      httpError(
+        403,
+        {},
+        { headers: new Headers({ "x-synelia-status": "403" }) },
+      ),
+    ),
+  ).toBe(null);
+  expect(sessionExpiredReason(httpError(500, { error: "x" }))).toBe(null);
+  expect(sessionExpiredReason("HTTP 401")).toBe(null);
+  expect(sessionExpiredReason(null)).toBe(null);
 });

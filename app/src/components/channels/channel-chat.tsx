@@ -37,7 +37,11 @@ import { ConversationProvider } from "@/lib/copilot/conversation";
 import { afterMs, joinWithin } from "@/lib/copilot/join-thread";
 import { repairUnansweredToolCalls } from "@/lib/copilot/repair-history";
 import { retryKeepCount } from "@/lib/copilot/retry-turn";
-import { codedReason, EMPTY_RUN } from "@/lib/copilot/stop-notice";
+import {
+  codedReason,
+  EMPTY_RUN,
+  sessionExpiredReason,
+} from "@/lib/copilot/stop-notice";
 import { stoppedReason } from "@/lib/copilot/stopped-turn";
 import {
   dedupeById,
@@ -1113,7 +1117,11 @@ export function ChannelChat({
         }
         if (alreadyRunning(error)) return;
         fail(
-          codedReason((error as { code?: unknown } | undefined)?.code, null) ??
+          sessionExpiredReason(error) ??
+            codedReason(
+              (error as { code?: unknown } | undefined)?.code,
+              null,
+            ) ??
             stoppedReason(error),
         );
       },

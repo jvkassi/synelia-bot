@@ -42,12 +42,16 @@ export type StopNotice = {
 const CODE_PREFIX = "synelia:code:";
 const KNOWN_CODES: Record<
   string,
-  "provider_refusal" | "run_stalled" | "provider_unavailable"
+  | "provider_refusal"
+  | "run_stalled"
+  | "provider_unavailable"
+  | "session_expired"
 > = {
   provider_refusal: "provider_refusal",
   run_stalled: "run_stalled",
   AGENT_STREAM_STALLED: "run_stalled",
   provider_unavailable: "provider_unavailable",
+  session_expired: "session_expired",
 };
 
 /**
@@ -58,6 +62,61 @@ export function codedReason(code: unknown, message: unknown): string | null {
   if (typeof code === "string" && KNOWN_CODES[code])
     return `${CODE_PREFIX}${KNOWN_CODES[code]}`;
   return typeof message === "string" && message.trim() ? message : null;
+}
+
+/**
+ * The server's own 401 bodies (server/src/copilot.ts « Sign in to use this deployment. », the
+ * `requireUser` guard in server/src/auth/guards.ts « Authentication required. »). Masking leaves the
+ * body untouched (server/src/synelia/basic-auth-safe.ts), so a 403 carrying one of these IS a masked
+ * 401. Needed because the run's HTTP error keeps the status and body but not the headers (below).
+ */
+const SERVER_401_BODIES = new Set([
+  "Sign in to use this deployment.",
+  "Authentication required.",
+]);
+
+/**
+ * A run refused because the session is gone: HTTP 401, or the 403 + `x-synelia-status: 401` the
+ * server sends instead behind the basic-auth proxy (app/src/lib/client.ts `unmaskStatus`).
+ *
+ * WHAT THE RUN'S ERROR CARRIES. CopilotKit 1.77 sends runs through `@ag-ui/client`'s
+ * `runHttpRequest`; on a non-OK response it throws `Error("HTTP <status>: <body>")` with `.status`
+ * and `.payload` (the parsed JSON body) and DROPS the headers, and that same Error reaches
+ * `onRunFailed`. So the `x-synelia-status` header is read here only if a future runtime exposes it
+ * (`error.headers` / `error.response.headers`); today the masked 401 is recognised by its body.
+ * A plain 403 (`password_change_required`, …) is not this and keeps its usual handling.
+ */
+export function sessionExpiredReason(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null;
+  const failure = error as {
+    status?: unknown;
+    payload?: unknown;
+    message?: unknown;
+    headers?: { get?: (name: string) => string | null };
+    response?: { headers?: { get?: (name: string) => string | null } };
+  };
+  const statusFromMessage =
+    typeof failure.message === "string"
+      ? /^HTTP (\d{3}):/.exec(failure.message)?.[1]
+      : undefined;
+  const status =
+    typeof failure.status === "number"
+      ? failure.status
+      : statusFromMessage
+        ? Number(statusFromMessage)
+        : undefined;
+  const expired = `${CODE_PREFIX}session_expired`;
+  if (status === 401) return expired;
+  if (status !== 403) return null;
+  const headers = failure.headers ?? failure.response?.headers;
+  if (headers?.get?.("x-synelia-status") === "401") return expired;
+  const said =
+    typeof failure.payload === "object" && failure.payload !== null
+      ? (failure.payload as { error?: unknown }).error
+      : undefined;
+  return typeof said === "string" && SERVER_401_BODIES.has(said)
+    ? expired
+    : null;
 }
 
 /** The browser's own wording for a request that never got an answer, across engines. */
@@ -136,6 +195,14 @@ export function stopNotice(
     const code = reason.slice(CODE_PREFIX.length);
     if (code === "provider_refusal") return declined(false);
     if (code === "provider_unavailable") return unavailable(false);
+    // Signed out: say so, and no « Réessayer » (it would be refused the same way).
+    if (code === "session_expired")
+      return {
+        text: ui.home.sessionExpired,
+        role: "alert",
+        technical: false,
+        retry: false,
+      };
     return failed(false);
   }
   // Nothing was reported: the generic failure, with its retry.
