@@ -154,11 +154,7 @@ function RosterStep() {
 // Synelia fork: the pilot has no computers and no agent catalogue, so only the welcome step.
 const STEPS: Array<() => React.ReactNode> = pilot.shortOnboarding
   ? [() => <WelcomeStep />]
-  : [
-      () => <WelcomeStep />,
-      () => <ComputerUseStep />,
-      () => <RosterStep />,
-    ];
+  : [() => <WelcomeStep />, () => <ComputerUseStep />, () => <RosterStep />];
 
 /** A pane arrives from the side the journey is moving toward, and leaves out the other. */
 const variants = {

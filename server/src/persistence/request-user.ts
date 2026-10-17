@@ -7,4 +7,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * the person is set here by a middleware in front of the runtime handler (see `mountCopilotRuntime`)
  * and read by `PostgresAgentRunner` to own threads and filter listings.
  */
-export const requestUser = new AsyncLocalStorage<{ id: string; name: string }>();
+export const requestUser = new AsyncLocalStorage<{
+  id: string;
+  name: string;
+}>();
