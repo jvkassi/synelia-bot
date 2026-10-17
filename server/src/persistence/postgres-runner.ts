@@ -551,10 +551,15 @@ export function pickedModel(
  * Synelia fork (LIVE refusal): transform a run's outgoing stream so its terminal RUN_FINISHED is
  * replaced by a provider_refusal RUN_ERROR when the SAME decision as persistence (refusalReason, over
  * the accumulated events with the resolved provider/model) says the finish is a silent refusal —
- * never emitting both events. `resolveContext` is awaited before the terminal event is forwarded, so
- * an async model resolution is settled first. Exported and free of `this` so it is unit-testable with
- * a synthetic stream. The live RUN_ERROR carries metadata.retryable (computeRetryable); persistence
- * stores the same code/reason and retryable is (re)stamped by connect replay.
+ * never emitting both events. The live RUN_ERROR carries metadata.retryable (computeRetryable);
+ * persistence stores the same code/reason and retryable is (re)stamped by connect replay. Exported and
+ * free of `this` so it is unit-testable with a synthetic stream.
+ *
+ * SHORT-CIRCUIT (item 5): usage0 is the only refusal reason that needs the resolved provider/model.
+ * When the allowlist is empty — the default, usage0 OFF — it can never fire, so the decision is made
+ * from the events alone (only empty_finish is possible) and `resolveContext` (#models(), a network/DB
+ * hop) is NEVER awaited on a RUN_FINISHED. Only when the allowlist names a pair is the model resolved
+ * before the terminal event is forwarded.
  */
 export function liveRefusalTransform(
   stream: Observable<BaseEvent>,
@@ -563,25 +568,29 @@ export function liveRefusalTransform(
   allowlist: ReadonlySet<string> = usage0Allowlist(),
 ): Observable<BaseEvent> {
   const seen: BaseEvent[] = [];
+  const refusalError = (reason: string): BaseEvent =>
+    ({
+      type: "RUN_ERROR",
+      threadId: terminal.threadId,
+      runId: terminal.runId,
+      message: "content_filter",
+      code: SYNELIA_ERROR_CODES.providerRefusal,
+      metadata: { reason, retryable: computeRetryable(seen) },
+    }) as BaseEvent;
   return stream.pipe(
     concatMap((event) => {
       seen.push(event);
       if ((event as { type?: string }).type !== "RUN_FINISHED")
         return of(event);
+      // Short-circuit: no model resolution needed when usage0 is off.
+      if (allowlist.size === 0) {
+        const reason = refusalReason(seen, {}, allowlist);
+        return of(reason ? refusalError(reason) : event);
+      }
       return from(
         resolveContext().then((context): BaseEvent[] => {
           const reason = refusalReason(seen, context, allowlist);
-          if (!reason) return [event];
-          return [
-            {
-              type: "RUN_ERROR",
-              threadId: terminal.threadId,
-              runId: terminal.runId,
-              message: "content_filter",
-              code: SYNELIA_ERROR_CODES.providerRefusal,
-              metadata: { reason, retryable: computeRetryable(seen) },
-            } as BaseEvent,
-          ];
+          return reason ? [refusalError(reason)] : [event];
         }),
       ).pipe(concatMap((events) => from(events)));
     }),

@@ -121,3 +121,59 @@ describe("liveRefusalTransform (browser stream)", () => {
     );
   });
 });
+
+describe("liveRefusalTransform short-circuit (item 5: no #models() await when allowlist empty)", () => {
+  const empty = usage0Allowlist("");
+
+  const runWithSpy = async (events: BaseEvent[]) => {
+    let resolveCalls = 0;
+    const out = (await lastValueFrom(
+      liveRefusalTransform(
+        of(...events),
+        async () => {
+          resolveCalls += 1;
+          return ctx;
+        },
+        { runId: "r", threadId: "t" },
+        empty,
+      ).pipe(toArray()),
+    )) as { type: string; code?: string; metadata?: { reason?: string } }[];
+    return { out, resolveCalls };
+  };
+
+  test("a normal finish forwards RUN_FINISHED and NEVER resolves the model", async () => {
+    const { out, resolveCalls } = await runWithSpy([
+      started,
+      textContent,
+      finishedUsage(0),
+    ]);
+    expect(types(out)).toContain("RUN_FINISHED");
+    expect(out.some((e) => e.type === "RUN_ERROR")).toBe(false);
+    expect(resolveCalls).toBe(0);
+  });
+
+  test("an empty finish still becomes RUN_ERROR empty_finish without resolving the model", async () => {
+    const { out, resolveCalls } = await runWithSpy([started, finishedUsage(0)]);
+    expect(types(out)).not.toContain("RUN_FINISHED");
+    expect(out.find((e) => e.type === "RUN_ERROR")?.metadata?.reason).toBe(
+      "empty_finish",
+    );
+    expect(resolveCalls).toBe(0);
+  });
+
+  test("with a NON-empty allowlist the model IS resolved (contrast)", async () => {
+    let resolveCalls = 0;
+    await lastValueFrom(
+      liveRefusalTransform(
+        of(started, textContent, finishedUsage(0)),
+        async () => {
+          resolveCalls += 1;
+          return ctx;
+        },
+        { runId: "r", threadId: "t" },
+        on,
+      ).pipe(toArray()),
+    );
+    expect(resolveCalls).toBe(1);
+  });
+});
