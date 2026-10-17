@@ -1,6 +1,7 @@
 import { CopilotKitProvider } from "@copilotkit/react-core/v2";
 import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
+import { apiUrl } from "@/lib/api-url";
 import { deploymentCapabilitiesQueryOptions } from "@/lib/deployment/queries";
 import { a2uiProviderOptions } from "./a2ui";
 import { SignInTool } from "./sign-in-tool";
@@ -35,7 +36,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
 
   return (
     <CopilotKitProvider
-      runtimeUrl="/api/copilotkit"
+      runtimeUrl={apiUrl("/api/copilotkit")}
       credentials="include"
       // Synelia fork: "provider · model" under each answer.
       renderCustomMessages={[syneliaRunModelRenderer as never]}

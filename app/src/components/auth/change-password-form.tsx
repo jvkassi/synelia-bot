@@ -93,6 +93,19 @@ export function ChangePasswordForm(deps: ChangePasswordDeps) {
    * temporary password no longer works.
    */
   const [after, setAfter] = useState<"stale" | "unverified" | null>(null);
+  /**
+   * Changed AND get-session shows the flag lifted: `onChanged` has been called and the app is on its
+   * way out of this screen. The form is never offered again from here (see `submit`'s `finally`):
+   * navigation to `/` still has to read /api/me before it lands, and for that whole time the screen
+   * used to show the form again, re-enabled and relabelled.
+   */
+  const [succeeded, setSucceeded] = useState(false);
+  /**
+   * `forced` as it was when the change was submitted. Better Auth refetches get-session on its own
+   * after /change-password (its `$sessionSignal` matcher, better-auth client/config.mjs:76), so the
+   * prop flips to false mid-submit and the labels would switch from « provisoire » to « actuel ».
+   */
+  const forcedAtSubmit = useRef<boolean | null>(null);
   const inputs = useRef<
     Partial<Record<PasswordField, HTMLInputElement | null>>
   >({});
@@ -103,7 +116,10 @@ export function ChangePasswordForm(deps: ChangePasswordDeps) {
 
   const rulesId = `${id}-rules`;
   const temporaryHelpId = `${id}-temporary-help`;
-  const { forced } = deps;
+  const forced =
+    (pending || succeeded) && forcedAtSubmit.current !== null
+      ? forcedAtSubmit.current
+      : deps.forced;
   const errorId = (name: PasswordField) => `${id}-${name}-error`;
 
   const fail = (next: PasswordFieldErrors, extra?: string) => {
@@ -126,7 +142,9 @@ export function ChangePasswordForm(deps: ChangePasswordDeps) {
     }
     setErrors({});
     setSummary([]);
+    forcedAtSubmit.current = forced;
     setPending(true);
+    let done = false;
     try {
       const result = await deps.changePassword({
         currentPassword: values.currentPassword,
@@ -141,37 +159,45 @@ export function ChangePasswordForm(deps: ChangePasswordDeps) {
         );
         return;
       }
-      await confirmSession();
+      done = await confirmSession();
     } catch (error) {
       fail({}, mapChangePasswordError(error, forced).message);
     } finally {
-      setPending(false);
+      // Success stays pending until this screen unmounts: re-enabling here is what made the form
+      // flash back while the app navigated to `/` (and on to /onboarding).
+      if (!done) setPending(false);
     }
   }
 
-  /** After a successful change: only a session without the flag goes home. */
-  async function confirmSession() {
+  /**
+   * After a successful change: only a session without the flag goes home. True when it did, so the
+   * caller keeps the screen in its success state instead of handing the form back.
+   */
+  async function confirmSession(): Promise<boolean> {
     let session: Awaited<ReturnType<ChangePasswordDeps["refreshSession"]>>;
     try {
       session = await deps.refreshSession();
     } catch {
       setAfter("unverified");
-      return;
+      return false;
     }
     if (!session || session.mustChangePassword) {
       setAfter("stale");
-      return;
+      return false;
     }
     setAfter(null);
+    setSucceeded(true);
     deps.onChanged();
+    return true;
   }
 
   async function retrySession() {
     setPending(true);
+    let done = false;
     try {
-      await confirmSession();
+      done = await confirmSession();
     } finally {
-      setPending(false);
+      if (!done) setPending(false);
     }
   }
 
@@ -198,7 +224,15 @@ export function ChangePasswordForm(deps: ChangePasswordDeps) {
       <p className="mt-2 text-muted-foreground text-sm">
         {ui.auth.changePasswordRequired}
       </p>
-      {after ? (
+      {succeeded ? (
+        <p
+          aria-live="polite"
+          className="mt-6 text-muted-foreground text-sm"
+          role="status"
+        >
+          {ui.auth.changedRedirecting}
+        </p>
+      ) : after ? (
         <div
           className="mt-6 rounded-lg border border-destructive/40 p-3 text-destructive text-sm"
           role="alert"
@@ -340,7 +374,7 @@ export function ChangePasswordForm(deps: ChangePasswordDeps) {
           </Button>
         </form>
       )}
-      {after ? null : (
+      {after || succeeded ? null : (
         <Button
           className="mt-3 self-center"
           disabled={signingOut || pending}

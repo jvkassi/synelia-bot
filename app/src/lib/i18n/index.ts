@@ -385,6 +385,8 @@ const fr = {
     /** Changed, but get-session could not be read (503, network). */
     sessionUnverified:
       "Le mot de passe a été changé, mais la session n'a pas pu être vérifiée. Réessayez dans un instant.",
+    /** Changed and the session confirmed: shown while the app navigates away (no form any more). */
+    changedRedirecting: "Mot de passe changé. Ouverture de votre espace…",
     retry: "Réessayer",
     submitChange: "Changer le mot de passe",
     saving: "Enregistrement…",

@@ -16,6 +16,7 @@ import {
   useRef,
   useSyncExternalStore,
 } from "react";
+import { apiUrl } from "@/lib/api-url";
 import { client } from "@/lib/client";
 import { ui } from "@/lib/i18n";
 
@@ -243,7 +244,9 @@ function useThreadModels() {
     enabled: Boolean(threadId) && !running,
     queryFn: async () => {
       const response = await fetch(
-        `/api/synelia/threads/${encodeURIComponent(threadId ?? "")}/models`,
+        apiUrl(
+          `/api/synelia/threads/${encodeURIComponent(threadId ?? "")}/models`,
+        ),
         { credentials: "include" },
       );
       // Thrown, not `{}`: an empty map cached with an infinite staleTime hid every label of the
@@ -278,7 +281,7 @@ function RunModelLabel({ runId }: { runId: string }) {
     queryKey: ["synelia", "answer-model", runId],
     queryFn: async () => {
       const response = await fetch(
-        `/api/synelia/runs/${encodeURIComponent(runId)}`,
+        apiUrl(`/api/synelia/runs/${encodeURIComponent(runId)}`),
         {
           credentials: "include",
         },
@@ -333,7 +336,7 @@ export function useStoredRunError(
     enabled: Boolean(threadId),
     queryFn: async () => {
       const response = await fetch(
-        `/api/threads/${encodeURIComponent(threadId ?? "")}`,
+        apiUrl(`/api/threads/${encodeURIComponent(threadId ?? "")}`),
         { credentials: "include" },
       );
       if (!response.ok) return null;

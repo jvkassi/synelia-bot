@@ -19,6 +19,7 @@ import {
 import { VoiceCallWidget } from "@/components/channels/voice-call-widget";
 import { HandoffResumeNotice } from "@/components/computer/handoff-resume-notice";
 import { agentListQueryOptions } from "@/lib/agents/queries";
+import { apiUrl } from "@/lib/api-url";
 import { attachmentUrl } from "@/lib/channels/attachments";
 import {
   recordChannelActivityMutationOptions,
@@ -598,7 +599,9 @@ export function ChannelChat({
     const runId = threadStatus.activeRunId;
     if (!runId || !channel.threadId) return;
     void fetch(
-      `/api/copilotkit/agent/${encodeURIComponent(agent.agentId ?? "")}/stop/${encodeURIComponent(channel.threadId)}`,
+      apiUrl(
+        `/api/copilotkit/agent/${encodeURIComponent(agent.agentId ?? "")}/stop/${encodeURIComponent(channel.threadId)}`,
+      ),
       {
         method: "POST",
         credentials: "include",

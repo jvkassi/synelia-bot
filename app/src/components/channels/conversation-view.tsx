@@ -18,6 +18,7 @@ import {
   type QueuedMessage,
   reduceQueue,
 } from "@/components/channels/composer";
+import { apiUrl } from "@/lib/api-url";
 import { attachmentUrl } from "@/lib/channels/attachments";
 import { newId } from "../../lib/new-id";
 
@@ -538,7 +539,7 @@ function releaseStagedAttachment(attachment: Attachment): void {
   if (typeof metadata?.attachmentId !== "string") {
     return;
   }
-  void fetch(attachmentUrl(metadata.attachmentId), {
+  void fetch(apiUrl(attachmentUrl(metadata.attachmentId)), {
     method: "DELETE",
     credentials: "include",
   }).catch(() => undefined);

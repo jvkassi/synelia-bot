@@ -317,3 +317,51 @@ test("« Se déconnecter » signs out and leaves", async () => {
   await waitFor(() => expect(deps.onSignedOut).toHaveBeenCalledTimes(1));
   expect(deps.signOut).toHaveBeenCalledTimes(1);
 });
+
+test("success: the form never comes back while the app navigates away, even when get-session flips `forced`", async () => {
+  const session = Promise.withResolvers<{ mustChangePassword: boolean }>();
+  const { view, fill, submit, deps, field } = setup({
+    refreshSession: mock(() => session.promise),
+  });
+  await fill("provisoire-123", GOOD);
+  submit();
+  await waitFor(() => expect(deps.refreshSession).toHaveBeenCalledTimes(1));
+  // Better Auth refetches get-session by itself after /change-password: `forced` goes false while
+  // the screen is still pending. The labels must not switch to « Mot de passe actuel ».
+  view.rerender(<ChangePasswordForm {...deps} forced={false} />);
+  expect(field(ui.auth.temporaryPassword).disabled).toBe(true);
+  expect(view.queryByLabelText(ui.auth.currentPassword)).toBeNull();
+  session.resolve({ mustChangePassword: false });
+  await waitFor(() => expect(deps.onChanged).toHaveBeenCalledTimes(1));
+  // onChanged only starts the navigation (/ then /onboarding, through an /api/me read): until this
+  // screen unmounts it says the change worked and offers nothing to submit or sign out from.
+  const status = await view.findByRole("status");
+  expect(status.textContent).toBe(ui.auth.changedRedirecting);
+  expect(view.container.querySelector("form")).toBeNull();
+  expect(view.queryByRole("button", { name: ui.auth.submitChange })).toBeNull();
+  expect(view.queryByRole("button", { name: ui.auth.signOut })).toBeNull();
+  view.rerender(<ChangePasswordForm {...deps} forced={false} />);
+  expect(view.container.querySelector("form")).toBeNull();
+  expect(view.queryByRole("alert")).toBeNull();
+  expect(deps.onChanged).toHaveBeenCalledTimes(1);
+});
+
+test("a refused change still hands the form back, enabled", async () => {
+  const { view, fill, submit, field } = setup({
+    changePassword: mock(async () => ({
+      error: { code: "INVALID_PASSWORD", status: 400 },
+    })),
+  });
+  await fill("provisoire-123", GOOD);
+  submit();
+  await view.findByRole("alert");
+  expect(field(ui.auth.temporaryPassword).disabled).toBe(false);
+  expect(
+    (
+      view.getByRole("button", {
+        name: ui.auth.submitChange,
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(false);
+  expect(view.queryByRole("status")).toBeNull();
+});

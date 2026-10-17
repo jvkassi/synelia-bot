@@ -1,3 +1,5 @@
+import { apiUrl } from "@/lib/api-url";
+
 /**
  * The one place the browser talks to the API server.
  *
@@ -30,7 +32,7 @@ export type ClientOptions = {
 
 /** Every request in this app is authenticated, and every one of them is JSON or nothing. */
 async function send(path: string, options: ClientOptions): Promise<Response> {
-  return fetch(path, {
+  return fetch(apiUrl(path), {
     method: options.method,
     credentials: "include",
     headers:

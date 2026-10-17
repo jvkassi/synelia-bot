@@ -1,3 +1,4 @@
+import { apiUrl } from "@/lib/api-url";
 import type { ConnectVoice } from "./types";
 import { connectWebRtc } from "./webrtc";
 import { connectWebSocket } from "./websocket";
@@ -14,7 +15,7 @@ export const connectVoice: ConnectVoice = async (options) => {
     throw new Error(
       "Voice calls need a supported browser and HTTPS or localhost.",
     );
-  const response = await fetch("/api/voice/config", {
+  const response = await fetch(apiUrl("/api/voice/config"), {
     credentials: "include",
     signal: options.signal,
   });
