@@ -210,3 +210,34 @@ Coupure réseau pendant un run : après 2 reconnexions sans fin de run, la page 
   - Leurs lignes de journal portent `"test": true` ; les métriques du pilote filtrent ces lignes (`select(.test != true)`).
   - Un compte de test présent aussi dans `INITIAL_ADMIN_EMAILS` n'est jamais créé par le bootstrap. Les rôles admin ne viennent que de cette liste.
   - Valeur recommandée : `SYNELIA_TEST_ACCOUNTS=jv.e2e@synelia.tech,jv.test@synelia.tech,jv.testb@synelia.tech` (à ajuster aux comptes de test réels).
+
+## Access log Traefik : proposition NON appliquée
+
+**Constat (lecture seule)**
+- `traefik-traefik-1` (traefik 3.4.4) est démarré par **Dokku** (`com.docker.compose.project.config_files=/tmp/dokku-…-cmd-traefik-start…`).
+- Sa configuration statique est uniquement en arguments CLI, générés par le plugin Dokku : pas de fichier traefik.yml.
+- `/usr/bin/dokku` existe, mais aucun conteneur `dokku` ne tourne, donc `dokku traefik:report` échoue.
+- Il n'existe ni label par routeur ni configuration dynamique pour activer l'access log. `accessLog` est une option statique.
+- L'activer veut donc dire modifier le démarrage de Traefik géré par Dokku, puis **recréer le conteneur Traefik partagé** (coupure courte pour Jitsi, n8n, WAHA et les autres).
+- Ce n'est pas un changement « additif minimal » sur un fichier sauvegardable. Je ne l'ai pas fait, malgré l'accord de principe.
+
+**Changement proposé, à appliquer par JV ou le Chief dans la fenêtre Dokku/Traefik**
+1. Arguments statiques à ajouter (via la configuration Dokku traefik, ou le template de démarrage) :
+   ```
+   --accesslog=true
+   --accesslog.format=json
+   --accesslog.filepath=/data/access.log
+   --accesslog.fields.defaultmode=keep
+   --accesslog.fields.names.RequestPath=drop
+   --accesslog.fields.names.RequestAddr=drop
+   --accesslog.fields.headers.defaultmode=drop
+   --entrypoints.https.observability.accessLogs=false
+   --entrypoints.http.observability.accessLogs=false
+   ```
+   - `RequestPath` est supprimé parce que Traefik n'a pas de champ « chemin sans query string ». Les chemins sont dans le journal applicatif (`requests-*.jsonl`).
+   - Tous les en-têtes sont supprimés, donc jamais d'`Authorization`.
+   - Les points d'entrée sont désactivés par défaut : les autres stacks ne journalisent rien de plus.
+2. Label à ajouter sur `server` dans `deploy/synelia/docker-compose.yml` :
+   `traefik.http.routers.synelia-bot.observability.accesslogs=true`
+3. Rotation : `/var/lib/dokku/data/traefik/access.log` via logrotate (`daily`, `rotate 7`, `copytruncate`).
+4. Vérification avant et après : statut HTTP de Jitsi (meet.synelia.tech), n8n-webhook, WAHA et synelia-bot identique ; `access.log` ne contient que `RouterName=synelia-bot@docker`.
