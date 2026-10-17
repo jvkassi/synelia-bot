@@ -33,6 +33,9 @@ active_locks() { # prints a count, or "ERR" when the database could not be asked
 ship() { # $1 = commit, run from a clean tree of that commit
   rsync -az --delete --exclude node_modules --exclude .git --exclude DEPLOYED_COMMIT \
     --exclude 'agent-mastra/.mastra' ./ "$HOST:$DIR/src/"
+  # The compose file that runs is $DIR/docker-compose.yml: keep it equal to the committed one
+  # (previous copy kept next to it, so a manual revert is one mv away).
+  ssh "$HOST" "cd $DIR && cmp -s src/deploy/synelia/docker-compose.yml docker-compose.yml || { cp -p docker-compose.yml docker-compose.yml.prev && cp src/deploy/synelia/docker-compose.yml docker-compose.yml && echo 'docker-compose.yml mis à jour depuis le commit'; }"
   ssh "$HOST" "cd $DIR && docker compose --progress plain build server migrate agent-mastra > tmp/build-$1.log 2>&1"
   if [ -z "${SKIP_GUARD:-}" ]; then
     for _ in $(seq 1 24); do
