@@ -17,6 +17,7 @@ import {
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { type AgentProfile, agentKeys } from "@/lib/agents/queries";
 import { Route as HomeRoute } from "@/routes/_authed/_app/index";
+import { pilot, ui } from "@/lib/i18n";
 
 /**
  * The home screen reads `agentListQueryOptions()` and drew its empty state on a FAILED query, not
@@ -140,25 +141,25 @@ function renderHome(queryClient: QueryClient) {
 test("a failed roster on / reports the failure and explains the disabled composer", async () => {
   const view = renderHome(failingQueryClient());
 
-  expect(
-    await view.findByText(
-      "Agents shared with you couldn't be loaded.",
-      {},
-      HOME_FIND_TIMEOUT,
-    ),
-  ).toBeTruthy();
-  expect(
-    view.queryByText("Nobody has shared an agent with you yet."),
-  ).toBeNull();
+  // Synelia pilot: the shared-agents (Explore) section is hidden, so only the composer's alert is
+  // on screen; with Explore back on, its own failure card must be there too.
+  if (!pilot.hideExploreAgents) {
+    expect(
+      await view.findByText(
+        "Agents shared with you couldn't be loaded.",
+        {},
+        HOME_FIND_TIMEOUT,
+      ),
+    ).toBeTruthy();
+    expect(
+      view.queryByText("Nobody has shared an agent with you yet."),
+    ).toBeNull();
+  }
 
   // The composer goes `disabled={!fallback}` on the very same failure, with nothing on screen
   // saying why unless this alert renders.
   expect(
-    await view.findByText(
-      "Your coworkers couldn't be loaded, so there's no one to send this to yet.",
-      {},
-      HOME_FIND_TIMEOUT,
-    ),
+    await view.findByText(ui.home.agentsUnavailable, {}, HOME_FIND_TIMEOUT),
   ).toBeTruthy();
 });
 
@@ -174,23 +175,21 @@ test("a failed REFETCH on / keeps the roster and does not disclaim the composer"
   const view = renderHome(queryClient);
   await waitForFailedRefetch(queryClient);
 
-  expect(
-    await view.findByText("Shared Agent", {}, HOME_FIND_TIMEOUT),
-  ).toBeTruthy();
+  if (!pilot.hideExploreAgents) {
+    expect(
+      await view.findByText("Shared Agent", {}, HOME_FIND_TIMEOUT),
+    ).toBeTruthy();
+  }
   // Only renders while `fallback` is set, which the retained roster still supplies — the direct
   // evidence that the composer is not the disabled, nothing-to-send-to state its alert describes.
   expect(
     await view.findByText(
-      "Sent to the coworker it is for.",
+      ui.home.routedHint.split(".")[0],
       { exact: false },
       HOME_FIND_TIMEOUT,
     ),
   ).toBeTruthy();
-  expect(
-    view.queryByText(
-      "Your coworkers couldn't be loaded, so there's no one to send this to yet.",
-    ),
-  ).toBeNull();
+  expect(view.queryByText(ui.home.agentsUnavailable)).toBeNull();
   expect(
     view.queryByText("Agents shared with you couldn't be loaded."),
   ).toBeNull();
@@ -211,21 +210,28 @@ test("a failed REFETCH on / with explore empty shows it as empty, not broken", a
   const view = renderHome(queryClient);
   await waitForFailedRefetch(queryClient);
 
-  expect(
-    await view.findByText(
-      "Nobody has shared an agent with you yet.",
-      {},
-      HOME_FIND_TIMEOUT,
-    ),
-  ).toBeTruthy();
+  if (pilot.hideExploreAgents) {
+    // Explore is hidden in the pilot: the working composer (its routed hint) is the evidence.
+    expect(
+      await view.findByText(
+        ui.home.routedHint.split(".")[0],
+        { exact: false },
+        HOME_FIND_TIMEOUT,
+      ),
+    ).toBeTruthy();
+  } else {
+    expect(
+      await view.findByText(
+        "Nobody has shared an agent with you yet.",
+        {},
+        HOME_FIND_TIMEOUT,
+      ),
+    ).toBeTruthy();
+  }
   expect(
     view.queryByText("Agents shared with you couldn't be loaded."),
   ).toBeNull();
   // `agents` loaded (it holds "Mine Agent"), so `fallback` falls back to it and the composer is
   // enabled — the alert claiming a load failure must not appear beside that working composer.
-  expect(
-    view.queryByText(
-      "Your coworkers couldn't be loaded, so there's no one to send this to yet.",
-    ),
-  ).toBeNull();
+  expect(view.queryByText(ui.home.agentsUnavailable)).toBeNull();
 });

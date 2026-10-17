@@ -28,6 +28,7 @@ import type { PluginServer, PluginsPage } from "@/lib/plugins/queries";
 import { Route as AdminAppRoute } from "@/routes/_authed/admin/plugins/$key";
 import { Route as ConnectedAccountRoute } from "@/routes/_authed/settings/connected-accounts/$key";
 import { BROKERED_PROBE_OUTCOMES } from "../../server/src/plugins/store";
+import { ui } from "@/lib/i18n";
 
 /**
  * The brokered account row, on both screens that draw it.
@@ -2228,7 +2229,9 @@ test("a form reopened after the app changed its fields draws today's fields, and
     await within(first).findByLabelText("Subdomain"),
     "acme",
   );
-  await userEvent.click(within(first).getByRole("button", { name: "Close" }));
+  await userEvent.click(
+    within(first).getByRole("button", { name: ui.conversation.close }),
+  );
   await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
 
   // What the vendor publishes for this app now, which is not what it published above.
@@ -2300,7 +2303,9 @@ test("a form reopened while the app is being asked again opens on the list it al
   await userEvent.click(await view.findByRole("button", { name: "Connect" }));
   await within(await view.findByRole("dialog")).findByLabelText("Subdomain");
   await userEvent.click(
-    within(view.getByRole("dialog")).getByRole("button", { name: "Close" }),
+    within(view.getByRole("dialog")).getByRole("button", {
+      name: ui.conversation.close,
+    }),
   );
   await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
 
@@ -2368,7 +2373,9 @@ test("a form reopened against an app that cannot be asked shows the refusal, not
   await userEvent.click(await view.findByRole("button", { name: "Connect" }));
   await within(await view.findByRole("dialog")).findByLabelText("Subdomain");
   await userEvent.click(
-    within(view.getByRole("dialog")).getByRole("button", { name: "Close" }),
+    within(view.getByRole("dialog")).getByRole("button", {
+      name: ui.conversation.close,
+    }),
   );
   await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
 

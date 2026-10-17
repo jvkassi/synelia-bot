@@ -3,6 +3,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { Composer } from "@/components/channels/composer/composer";
 import { settleReactWork } from "./settle-react-work";
+import { ui } from "@/lib/i18n";
 
 /**
  * WHAT A FAILED SEND DOES TO THE WORDS, WHICH UNTIL NOW COULD NOT BE ASKED AT ALL.
@@ -99,7 +100,7 @@ test("a failed send puts the words back rather than throwing at nobody", async (
   );
 
   await act(async () => {
-    fireEvent.click(getByLabelText("Send message"));
+    fireEvent.click(getByLabelText(ui.composer.send));
   });
   // Cleared optimistically, which is the state the restore has to undo.
   expect(typedText(container)).toBe("");
@@ -108,7 +109,7 @@ test("a failed send puts the words back rather than throwing at nobody", async (
 
   expect(typedText(container)).toContain("ship it");
   // Back to a composer that can be sent from again, rather than one stuck mid-send.
-  expect((getByLabelText("Send message") as HTMLButtonElement).disabled).toBe(
+  expect((getByLabelText(ui.composer.send) as HTMLButtonElement).disabled).toBe(
     false,
   );
 });
@@ -129,7 +130,7 @@ test("a failed send keeps what was typed while it was in flight", async () => {
   );
 
   await act(async () => {
-    fireEvent.click(getByLabelText("Send message"));
+    fireEvent.click(getByLabelText(ui.composer.send));
   });
   expect(typedText(container)).toBe("");
 

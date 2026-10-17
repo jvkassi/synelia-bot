@@ -1,5 +1,4 @@
 import { IconSettings } from "@tabler/icons-react";
-import { pilot, ui } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { motion, useReducedMotion } from "motion/react";
@@ -9,7 +8,6 @@ import { BotPausedBanner } from "@/components/bot-profile/pause-banner";
 import { ChannelAvatar } from "@/components/channels/avatar";
 import { ChannelChat } from "@/components/channels/channel-chat";
 import { ComputerChatControls } from "@/components/computer/computer-controls";
-import { SyneliaModelPicker } from "@/lib/copilot/synelia-model";
 import { ComputerViewPanel } from "@/components/computer/computer-panel";
 import { useAutoWatchScreen } from "@/components/computer/use-auto-watch-screen";
 import { DetailPanel } from "@/components/layout/detail-panel";
@@ -17,6 +15,8 @@ import { SidebarToggle } from "@/components/layout/sidebar-toggle";
 import { Button } from "@/components/ui/button";
 import { useMarkOpenChannelRead } from "@/lib/channels/mark-read";
 import { type AgentChannel, channelQueryOptions } from "@/lib/channels/queries";
+import { SyneliaModelPicker } from "@/lib/copilot/synelia-model";
+import { pilot, ui } from "@/lib/i18n";
 
 const chatSearchSchema = z.object({
   settings: z.boolean().optional(),
@@ -85,7 +85,7 @@ function RouteComponent() {
       onClose={() => show(null)}
       open={(isSettingsOpen || isWatching) && agentId !== undefined}
       detailWidth={isWatching ? SCREEN_PANEL_WIDTH : undefined}
-      title={isWatching ? "Computer" : undefined}
+      title={isWatching ? ui.conversation.computer : undefined}
       detail={
         agentId === undefined ? null : isWatching ? (
           // Manual watch remains active even when there is no current browser action.
@@ -140,14 +140,14 @@ function RouteComponent() {
             <SyneliaModelPicker />
             {/* Synelia fork: no computers in the pilot. */}
             {pilot.hideComputerControls ? null : (
-            <ComputerChatControls
-              computerId={agentId}
-              open={isWatching}
-              onOpenChange={(open) => show(open ? "watch" : null)}
-            />
+              <ComputerChatControls
+                computerId={agentId}
+                open={isWatching}
+                onOpenChange={(open) => show(open ? "watch" : null)}
+              />
             )}
             <Button
-              aria-label="Channel coworker"
+              aria-label={ui.conversation.coworker}
               aria-pressed={isSettingsOpen}
               className={isSettingsOpen ? "bg-foreground/5" : undefined}
               disabled={agentId === undefined}
@@ -190,7 +190,7 @@ function ChannelBody({
   if (hasError || !channel) {
     return (
       <p className="p-8 text-sm text-destructive" role="alert">
-        Could not load this channel.
+        {ui.conversation.loadFailed}
       </p>
     );
   }

@@ -7,7 +7,6 @@
  * `provider:model`; Mastra picks the model from it and the server records it on the run.
  */
 import { useAgentContext } from "@copilotkit/react-core/v2";
-import { ui } from "@/lib/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
@@ -18,6 +17,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { client } from "@/lib/client";
+import { ui } from "@/lib/i18n";
 
 export type SyneliaModel = {
   id: string;
@@ -56,7 +56,7 @@ export function useModelList() {
     queryFn: async () =>
       (await (
         await client("/api/synelia/models", {
-          fallback: "Could not load models",
+          fallback: ui.model.loadFailed,
         })
       ).json()) as ModelList,
     // Unavailable providers (e.g. OpenRouter before an inference key) are not offered at all.

@@ -25,6 +25,7 @@ import {
   MAX_ATTACHMENTS_PER_MESSAGE,
 } from "@/lib/channels/attachments";
 import { settleReactWork } from "./settle-react-work";
+import { ui } from "@/lib/i18n";
 
 /**
  * WHAT THE QUEUE DOES TO AN ATTACHMENT BEHIND SOMEBODY'S BACK, AT BOTH ENDS OF THE SAME ROW.
@@ -217,8 +218,8 @@ function correction() {
 async function uploaded({ queryByLabelText }: RenderResult, name: string) {
   await waitFor(() => {
     expect(queryByLabelText(`Remove ${name}`)).not.toBeNull();
-    const button = (queryByLabelText("Send message") ??
-      queryByLabelText("Queue message")) as HTMLButtonElement | null;
+    const button = (queryByLabelText(ui.composer.send) ??
+      queryByLabelText(ui.composer.queue)) as HTMLButtonElement | null;
     expect(button?.disabled).toBe(false);
   });
 }
@@ -321,7 +322,7 @@ test("removing a ready attachment issues the DELETE through attachmentUrl(), not
 function chips({ container }: RenderResult): string[] {
   return Array.from(container.querySelectorAll("[aria-label^='Remove ']"))
     .map((button) => button.getAttribute("aria-label") ?? "")
-    .filter((label) => !label.startsWith("Remove queued message"));
+    .filter((label) => !label.startsWith(ui.conversation.removeQueued("")));
 }
 
 /** Drop `files` on the composer and wait for every one of them to finish uploading. */
@@ -329,8 +330,8 @@ async function dropAndWait(view: RenderResult, files: File[]) {
   drop(view.container.querySelector("form") as HTMLFormElement, files);
   await waitFor(() => expect(chips(view)).toHaveLength(files.length));
   await waitFor(() => {
-    const button = (view.queryByLabelText("Send message") ??
-      view.queryByLabelText("Queue message")) as HTMLButtonElement | null;
+    const button = (view.queryByLabelText(ui.composer.send) ??
+      view.queryByLabelText(ui.composer.queue)) as HTMLButtonElement | null;
     expect(button?.disabled).toBe(false);
   });
 }
@@ -358,7 +359,9 @@ test("taking a queued message back releases the rows it was carrying", async () 
   // Parked: off the composer's strip, onto the transcript, and now referenced by nothing else.
   await waitFor(() =>
     expect(
-      container.querySelector("[aria-label^='Remove queued message']"),
+      container.querySelector(
+        `[aria-label^='${ui.conversation.removeQueued("")}']`,
+      ),
     ).not.toBeNull(),
   );
   expect(chips(view)).toEqual([]);
@@ -369,7 +372,7 @@ test("taking a queued message back releases the rows it was carrying", async () 
   // the row's label ends at the colon with nothing after it to match on.
   fireEvent.click(
     container.querySelector(
-      "[aria-label^='Remove queued message']",
+      `[aria-label^='${ui.conversation.removeQueued("")}']`,
     ) as HTMLButtonElement,
   );
 
@@ -560,7 +563,9 @@ test("a drained turn whose send fails puts the queue back instead of releasing i
   // THE INVERSION. The parked message is back, carrying the same row, and nothing was deleted.
   await waitFor(() =>
     expect(
-      container.querySelector("[aria-label^='Remove queued message']"),
+      container.querySelector(
+        `[aria-label^='${ui.conversation.removeQueued("")}']`,
+      ),
     ).not.toBeNull(),
   );
   expect(deletes).toEqual([]);
@@ -573,7 +578,7 @@ test("a drained turn whose send fails puts the queue back instead of releasing i
   // The one gesture that still releases the row: taking the restored message back by hand.
   fireEvent.click(
     container.querySelector(
-      "[aria-label^='Remove queued message']",
+      `[aria-label^='${ui.conversation.removeQueued("")}']`,
     ) as HTMLElement,
   );
   await waitFor(() =>
@@ -613,7 +618,9 @@ test("walking away with a message still parked releases the rows it was holding"
 
   await waitFor(() =>
     expect(
-      container.querySelector("[aria-label^='Remove queued message']"),
+      container.querySelector(
+        `[aria-label^='${ui.conversation.removeQueued("")}']`,
+      ),
     ).not.toBeNull(),
   );
   expect(chips(view)).toEqual([]);
@@ -770,7 +777,7 @@ test("taking the parked message back frees the slots it was holding", async () =
 
   fireEvent.click(
     container.querySelector(
-      "[aria-label^='Remove queued message']",
+      `[aria-label^='${ui.conversation.removeQueued("")}']`,
     ) as HTMLButtonElement,
   );
   await waitFor(() =>
@@ -823,7 +830,9 @@ test("a disabled conversation keeps what is parked instead of draining it", asyn
   fireEvent.submit(container.querySelector("form") as HTMLFormElement);
   await waitFor(() =>
     expect(
-      container.querySelector("[aria-label^='Remove queued message']"),
+      container.querySelector(
+        `[aria-label^='${ui.conversation.removeQueued("")}']`,
+      ),
     ).not.toBeNull(),
   );
 
@@ -843,7 +852,9 @@ test("a disabled conversation keeps what is parked instead of draining it", asyn
   // a channel the notice under the composer has already said cannot reply.
   expect(attempted).toEqual([]);
   expect(
-    container.querySelector("[aria-label^='Remove queued message']"),
+    container.querySelector(
+      `[aria-label^='${ui.conversation.removeQueued("")}']`,
+    ),
   ).not.toBeNull();
   // And nothing was released either — the message is still there to be taken back by hand, so its
   // rows still have something pointing at them.

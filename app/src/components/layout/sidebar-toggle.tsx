@@ -1,5 +1,4 @@
 import { IconLayoutSidebar } from "@tabler/icons-react";
-
 import { Button } from "@/components/ui/button";
 import { useOptionalSidebar } from "@/components/ui/sidebar";
 import {
@@ -7,6 +6,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { ui } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 /**
@@ -76,8 +76,8 @@ export function SidebarToggle({ className }: { className?: string }) {
 
   // The label says what the click will do, not what is on screen.
   const label = (isMobile ? openMobile : open)
-    ? "Hide sidebar"
-    : "Show sidebar";
+    ? ui.layout.hideSidebar
+    : ui.layout.showSidebar;
 
   return (
     <Tooltip>

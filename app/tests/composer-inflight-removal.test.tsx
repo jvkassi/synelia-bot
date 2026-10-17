@@ -10,6 +10,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { Composer } from "@/components/channels/composer/composer";
 import { settleReactWork } from "./settle-react-work";
+import { ui } from "@/lib/i18n";
 
 /**
  * A CHIP REMOVED WHILE ITS UPLOAD IS STILL IN THE AIR, WHICH USED TO LEAVE A ROW NOBODY COULD SEE.
@@ -186,7 +187,7 @@ test("an upload nobody removed keeps its row", async () => {
   // carrying an upload in flight, so a live Send is an upload that has been answered.
   await waitFor(() =>
     expect(
-      (view.getByLabelText("Send message") as HTMLButtonElement).disabled,
+      (view.getByLabelText(ui.composer.send) as HTMLButtonElement).disabled,
     ).toBe(false),
   );
 
@@ -226,7 +227,7 @@ test("a message that was sent keeps the rows it carried", async () => {
   // has been answered — and a submit fired before that would be a no-op.
   await waitFor(() =>
     expect(
-      (view.getByLabelText("Send message") as HTMLButtonElement).disabled,
+      (view.getByLabelText(ui.composer.send) as HTMLButtonElement).disabled,
     ).toBe(false),
   );
 
@@ -269,7 +270,7 @@ test("a parked message keeps the rows it is carrying", async () => {
   releaseUploads();
   await waitFor(() =>
     expect(
-      (view.getByLabelText("Queue message") as HTMLButtonElement).disabled,
+      (view.getByLabelText(ui.composer.queue) as HTMLButtonElement).disabled,
     ).toBe(false),
   );
 

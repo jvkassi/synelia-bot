@@ -17,6 +17,7 @@ import {
 import { Composer } from "@/components/channels/composer/composer";
 import type { ComposerDraft } from "@/components/channels/composer/draft";
 import { settleReactWork } from "./settle-react-work";
+import { ui } from "@/lib/i18n";
 
 /**
  * WHAT HAPPENS TO A STAGED FILE AFTER IT IS STAGED: the send it rides on, and the Remove that
@@ -117,9 +118,9 @@ async function uploaded(
 ) {
   await waitFor(() => {
     expect(queryByLabelText(`Remove ${name}`)).not.toBeNull();
-    expect((getByLabelText("Send message") as HTMLButtonElement).disabled).toBe(
-      false,
-    );
+    expect(
+      (getByLabelText(ui.composer.send) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 }
 
@@ -158,7 +159,7 @@ test("a send in flight takes its attachment off the composer, so a second press 
   // twice for the length of the run, and `canSendDraft` unlocks on attachments alone, so the empty
   // text box was not what kept the button from going again.
   expect(queryByLabelText("Remove notes.txt")).toBeNull();
-  expect((getByLabelText("Send message") as HTMLButtonElement).disabled).toBe(
+  expect((getByLabelText(ui.composer.send) as HTMLButtonElement).disabled).toBe(
     true,
   );
 

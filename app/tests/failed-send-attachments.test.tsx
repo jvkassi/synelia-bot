@@ -32,6 +32,7 @@ import {
 } from "@/lib/channels/queries";
 import { queryClient } from "@/query-client";
 import { settleReactWork } from "./settle-react-work";
+import { ui } from "@/lib/i18n";
 
 /**
  * WHAT A FAILED SEND DOES TO THE FILES IT WAS CARRYING, DRIVEN THROUGH THE REAL CHANNEL.
@@ -276,8 +277,8 @@ async function uploaded(view: RenderResult, names: readonly string[]) {
     for (const name of names) {
       expect(view.queryByLabelText(`Remove ${name}`)).not.toBeNull();
     }
-    const button = (view.queryByLabelText("Send message") ??
-      view.queryByLabelText("Queue message")) as HTMLButtonElement | null;
+    const button = (view.queryByLabelText(ui.composer.send) ??
+      view.queryByLabelText(ui.composer.queue)) as HTMLButtonElement | null;
     expect(button?.disabled).toBe(false);
   });
 }
@@ -286,7 +287,7 @@ async function uploaded(view: RenderResult, names: readonly string[]) {
 function chips({ container }: RenderResult) {
   return Array.from(container.querySelectorAll("[aria-label^='Remove ']"))
     .map((element) => element.getAttribute("aria-label") ?? "")
-    .filter((label) => !label.startsWith("Remove queued message"))
+    .filter((label) => !label.startsWith(ui.conversation.removeQueued("")))
     .map((label) => label.slice("Remove ".length));
 }
 
@@ -322,23 +323,25 @@ test("a drained turn whose send fails keeps the rows behind the message the tran
   const user = userEvent.setup({ document: view.container.ownerDocument });
 
   await user.type(
-    view.getByRole("textbox", { name: "Message" }),
+    view.getByRole("textbox", { name: ui.composer.message }),
     "Get started",
   );
-  await user.click(view.getByRole("button", { name: "Send message" }));
+  await user.click(view.getByRole("button", { name: ui.composer.send }));
   await waitFor(() => expect(runs).toHaveLength(1));
 
   // A correction typed at a Bot that is already working, with a file under it.
   drop(form(view), [named("plan.txt")]);
   await uploaded(view, ["plan.txt"]);
   await user.type(
-    view.getByRole("textbox", { name: "Message" }),
+    view.getByRole("textbox", { name: ui.composer.message }),
     "Use the attached plan",
   );
-  await user.click(view.getByRole("button", { name: "Queue message" }));
+  await user.click(view.getByRole("button", { name: ui.composer.queue }));
   await waitFor(() =>
     expect(
-      view.container.querySelector("[aria-label^='Remove queued message']"),
+      view.container.querySelector(
+        `[aria-label^='${ui.conversation.removeQueued("")}']`,
+      ),
     ).not.toBeNull(),
   );
   expect(deletes).toEqual([]);
@@ -368,7 +371,7 @@ test("a drained turn whose send fails keeps the rows behind the message the tran
   // Read off the queued ROW rather than off the button's label, which names the words only: the
   // claim is that the file came back with them, and the file is a tile inside that row.
   const parked = view.container
-    .querySelector("[aria-label^='Remove queued message']")
+    .querySelector(`[aria-label^='${ui.conversation.removeQueued("")}']`)
     ?.closest("[data-slot='message']");
   expect(parked).not.toBeNull();
   expect(parked?.textContent).toContain("Use the attached plan");
@@ -425,7 +428,7 @@ test("a failed send restored beside a second batch cannot be retried over the pe
 
   // THE FINDING. Sixteen attachments is not a message this deployment accepts, and the button that
   // sends it must say so rather than letting the retry discover it as a rejected request.
-  const send = view.getByLabelText("Send message") as HTMLButtonElement;
+  const send = view.getByLabelText(ui.composer.send) as HTMLButtonElement;
   expect(send.disabled).toBe(true);
   expect(
     view.getByText(new RegExp(`at most ${MAX_ATTACHMENTS_PER_MESSAGE}`, "i")),
@@ -444,7 +447,7 @@ test("a failed send restored beside a second batch cannot be retried over the pe
   await waitFor(() => {
     expect(chips(view)).toHaveLength(MAX_ATTACHMENTS_PER_MESSAGE);
     expect(
-      (view.getByLabelText("Send message") as HTMLButtonElement).disabled,
+      (view.getByLabelText(ui.composer.send) as HTMLButtonElement).disabled,
     ).toBe(false);
   });
   await waitFor(() =>
@@ -475,26 +478,28 @@ test("the next turn carries a restored message, with its file, ahead of the newe
   const user = userEvent.setup({ document: view.container.ownerDocument });
 
   await user.type(
-    view.getByRole("textbox", { name: "Message" }),
+    view.getByRole("textbox", { name: ui.composer.message }),
     "Get started",
   );
-  await user.click(view.getByRole("button", { name: "Send message" }));
+  await user.click(view.getByRole("button", { name: ui.composer.send }));
   await waitFor(() => expect(runs).toHaveLength(1));
 
   drop(form(view), [named("plan.txt")]);
   await uploaded(view, ["plan.txt"]);
   await user.type(
-    view.getByRole("textbox", { name: "Message" }),
+    view.getByRole("textbox", { name: ui.composer.message }),
     "Use the attached plan",
   );
-  await user.click(view.getByRole("button", { name: "Queue message" }));
+  await user.click(view.getByRole("button", { name: ui.composer.queue }));
 
   // The turn ends, the queue drains, and the drained send fails.
   firstRun.settle(finished(runs[0] as RunAgentInput));
   await waitFor(() => expect(runs).toHaveLength(2));
   await waitFor(() =>
     expect(
-      view.container.querySelector("[aria-label^='Remove queued message']"),
+      view.container.querySelector(
+        `[aria-label^='${ui.conversation.removeQueued("")}']`,
+      ),
     ).not.toBeNull(),
   );
 
@@ -505,10 +510,10 @@ test("the next turn carries a restored message, with its file, ahead of the newe
 
   // The next thing sent takes it along.
   await user.type(
-    view.getByRole("textbox", { name: "Message" }),
+    view.getByRole("textbox", { name: ui.composer.message }),
     "And the summary too",
   );
-  await user.click(view.getByRole("button", { name: "Send message" }));
+  await user.click(view.getByRole("button", { name: ui.composer.send }));
   await waitFor(() => expect(runs).toHaveLength(3));
 
   const sent = runs[2]?.messages.at(-1);
@@ -522,7 +527,9 @@ test("the next turn carries a restored message, with its file, ahead of the newe
 
   // Carried, not copied: the queue gave it up to the run, so nothing is left waiting to run again.
   expect(
-    view.container.querySelector("[aria-label^='Remove queued message']"),
+    view.container.querySelector(
+      `[aria-label^='${ui.conversation.removeQueued("")}']`,
+    ),
   ).toBeNull();
   expect(deletes).toEqual([]);
 });

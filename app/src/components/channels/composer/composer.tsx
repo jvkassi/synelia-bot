@@ -3,7 +3,6 @@ import {
   type AttachmentsConfig,
   useAttachments,
 } from "@copilotkit/react-core/v2";
-import { ui } from "@/lib/i18n";
 import {
   IconArrowUp,
   IconPlayerStopFilled,
@@ -36,6 +35,7 @@ import {
   mediaTypeOf,
   shouldClaimPaste,
 } from "@/lib/channels/attachments";
+import { ui } from "@/lib/i18n";
 import { newId } from "@/lib/new-id";
 import { cn } from "@/lib/utils";
 import { Button } from "../../ui/button";
@@ -1339,7 +1339,7 @@ export function Composer({
    * the two it is about to do. "Send" on a button that will not send for another minute is a small
    * lie told to exactly the people who cannot see the queue it lands in.
    */
-  const sendLabel = parking ? "Queue message" : "Send message";
+  const sendLabel = parking ? ui.composer.queue : ui.composer.send;
   const callAction =
     draft.isEmpty && draft.attachments.length === 0 ? voiceCall : undefined;
   const actionClassName = cn(
@@ -1348,7 +1348,7 @@ export function Composer({
   );
   const primaryAction = canStop ? (
     <Button
-      aria-label="Stop the Bot"
+      aria-label={ui.composer.stop}
       className={actionClassName}
       data-testid="composer-stop"
       onClick={onStop}
@@ -1359,13 +1359,15 @@ export function Composer({
     </Button>
   ) : callAction ? (
     <Button
-      aria-label={callAction.active ? "Show voice call" : "Start voice call"}
+      aria-label={
+        callAction.active ? ui.composer.showCall : ui.composer.startCall
+      }
       title={
         callAction.supported
           ? callAction.active
-            ? "Show voice call"
-            : "Call this agent"
-          : "Voice calls need HTTPS or localhost and microphone support"
+            ? ui.composer.showCall
+            : ui.composer.callAgent
+          : ui.composer.callNeedsHttps
       }
       className={actionClassName}
       disabled={disabled || dictation.busy || !callAction.supported}
@@ -1523,7 +1525,7 @@ export function Composer({
             <div className="flex items-center gap-3">
               {attachmentsEnabled ? (
                 <Button
-                  aria-label="Attach a file"
+                  aria-label={ui.composer.attach}
                   className="self-end"
                   // The button stays, and stays labelled: a conversation that cannot take another
                   // message has not lost the ability to attach, it has lost the message. Swapping it
@@ -1538,7 +1540,7 @@ export function Composer({
                 </Button>
               ) : (
                 <Button
-                  aria-label="More message options unavailable"
+                  aria-label={ui.composer.moreOptionsUnavailable}
                   className="self-end disabled:opacity-100"
                   disabled
                   size="icon"
@@ -1549,7 +1551,7 @@ export function Composer({
                 </Button>
               )}
               <PromptArea
-                aria-label="Message"
+                aria-label={ui.composer.message}
                 className={cn(
                   "min-w-0 flex-1 border-0 bg-transparent p-0 text-sm shadow-none",
                   editorClassName,
@@ -1606,7 +1608,7 @@ export function Composer({
               onRemove={discardAttachment}
             />
             <PromptArea
-              aria-label="Message"
+              aria-label={ui.composer.message}
               autoGrow
               className={cn(
                 "w-full border-0 bg-transparent p-0 text-sm shadow-none",
@@ -1627,7 +1629,7 @@ export function Composer({
           <div className="flex items-center justify-between">
             {attachmentsEnabled ? (
               <Button
-                aria-label="Attach a file"
+                aria-label={ui.composer.attach}
                 className="size-7 rounded-full p-0"
                 disabled={disabled}
                 onClick={() => fileInputRef.current?.click()}

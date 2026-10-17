@@ -14,6 +14,7 @@ import {
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { type AgentProfile, agentKeys } from "@/lib/agents/queries";
 import { Route as ChannelNewRoute } from "@/routes/_authed/_app/channel/new";
+import { ui } from "@/lib/i18n";
 
 beforeAll(() => GlobalRegistrator.register());
 
@@ -143,7 +144,7 @@ async function expectMessageComposerDisabled(
 ) {
   const editor = await view.findByRole("textbox", {
     hidden: true,
-    name: "Message",
+    name: ui.composer.message,
   });
   await waitFor(() =>
     expect(editor.getAttribute("aria-disabled") === "true").toBe(disabled),
@@ -160,7 +161,7 @@ test("/channel/new reports a failed initial roster load", async () => {
   const view = renderChannelNew(queryClientWithFailingAgents());
 
   expect((await view.findByRole("alert")).textContent).toBe(
-    "Coworkers couldn't be loaded.",
+    ui.newConversation.coworkersFailed,
   );
   expect(view.queryByText("No agents found.")).toBeNull();
   await expectMessageComposerDisabled(view, true);
@@ -175,7 +176,7 @@ test("/channel/new reports a failed URL-selected hidden detail load", async () =
   );
 
   expect((await view.findByRole("alert")).textContent).toBe(
-    "Coworker couldn't be loaded.",
+    ui.newConversation.coworkerFailed,
   );
   expect(view.queryByText("No agents found.")).toBeNull();
   await expectMessageComposerDisabled(view, true);
