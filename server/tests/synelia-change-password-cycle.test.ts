@@ -2,7 +2,10 @@ import { expect, test } from "bun:test";
 import { betterAuth } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { Hono } from "hono";
-import { clearMustChangePasswordAfter } from "../src/auth/index";
+import {
+  clearMustChangePasswordAfter,
+  confirmedPasswordChangeUserId,
+} from "../src/auth/index";
 import { createPasswordChangeGate } from "../src/synelia/password-change-gate";
 
 /**
@@ -10,7 +13,7 @@ import { createPasswordChangeGate } from "../src/synelia/password-change-gate";
  * gate 403 -> change-password with revokeOtherSessions -> flag false -> /api/me 200 with the NEW
  * session cookie; the old cookie no longer signs in.
  */
-test("forced password change: full cycle clears the flag and the new session passes the gate", async () => {
+async function flaggedAccount() {
   const db: Record<string, Record<string, unknown>[]> = {
     user: [],
     session: [],
@@ -85,6 +88,11 @@ test("forced password change: full cycle clears the flag and the new session pas
     (await app.request("/api/me", { headers: { cookie: oldCookie } })).status,
   ).toBe(403);
 
+  return { app, db, origin, cookieOf, oldCookie };
+}
+
+test("forced password change: full cycle clears the flag and the new session passes the gate", async () => {
+  const { app, db, origin, cookieOf, oldCookie } = await flaggedAccount();
   const change = await app.request("/api/auth/change-password", {
     method: "POST",
     headers: { ...origin, cookie: oldCookie },
@@ -108,4 +116,83 @@ test("forced password change: full cycle clears the flag and the new session pas
     ((await session.json()) as { user: { mustChangePassword: boolean } }).user
       .mustChangePassword,
   ).toBe(false);
+});
+
+test("wrong current/temporary password: change refused, flag stays true in DB, gate still 403", async () => {
+  const { app, db, origin, oldCookie } = await flaggedAccount();
+  const change = await app.request("/api/auth/change-password", {
+    method: "POST",
+    headers: { ...origin, cookie: oldCookie },
+    body: JSON.stringify({
+      currentPassword: "not-the-temporary-password",
+      newPassword: "second-password-2",
+      revokeOtherSessions: true,
+    }),
+  });
+  expect(change.status).toBeGreaterThanOrEqual(400);
+  expect(db.user?.[0]?.mustChangePassword).toBe(true);
+  expect(
+    (await app.request("/api/me", { headers: { cookie: oldCookie } })).status,
+  ).toBe(403);
+  // The temporary password still works and still lands on the gate.
+  const again = await app.request("/api/auth/sign-in/email", {
+    method: "POST",
+    headers: origin,
+    body: JSON.stringify({ email: "t@x.io", password: "first-password-1" }),
+  });
+  expect(again.status).toBe(200);
+});
+
+test("the hook clears only on a confirmed success", () => {
+  const session = { user: { id: "u1" } };
+  const ok = { token: "t", user: { id: "u1" } };
+  expect(
+    confirmedPasswordChangeUserId({ returned: ok, newSession: session }),
+  ).toBe("u1");
+  expect(confirmedPasswordChangeUserId({ returned: ok, session })).toBe("u1");
+  // Failures, whatever shape a future Better Auth gives them.
+  expect(
+    confirmedPasswordChangeUserId({
+      returned: new Error("INVALID_PASSWORD"),
+      session,
+    }),
+  ).toBeNull();
+  expect(
+    confirmedPasswordChangeUserId({
+      returned: new Response("{}", { status: 400 }),
+      session,
+    }),
+  ).toBeNull();
+  expect(
+    confirmedPasswordChangeUserId({
+      returned: new Response("{}", { status: 200 }),
+      session,
+    }),
+  ).toBeNull();
+  expect(
+    confirmedPasswordChangeUserId({
+      returned: { status: 400, user: { id: "u1" } },
+      session,
+    }),
+  ).toBeNull();
+  expect(
+    confirmedPasswordChangeUserId({
+      returned: { statusCode: 401, user: { id: "u1" } },
+      session,
+    }),
+  ).toBeNull();
+  expect(
+    confirmedPasswordChangeUserId({ returned: { message: "bad" }, session }),
+  ).toBeNull();
+  expect(
+    confirmedPasswordChangeUserId({ returned: undefined, session }),
+  ).toBeNull();
+  // No session, or the result names somebody else.
+  expect(confirmedPasswordChangeUserId({ returned: ok })).toBeNull();
+  expect(
+    confirmedPasswordChangeUserId({
+      returned: { token: "t", user: { id: "u2" } },
+      session,
+    }),
+  ).toBeNull();
 });

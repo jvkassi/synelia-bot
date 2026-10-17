@@ -589,18 +589,40 @@ export function createAuth(
  * read from the rotated session first (`newSession`, set when revokeOtherSessions issues a new
  * one), then from the request's session, so it always clears. Exported for the full-cycle test.
  */
+/**
+ * The user id whose forced password change is CONFIRMED by the change-password result, or null.
+ * Cleared only on a confirmed success, so a future Better Auth change that runs after-hooks on a
+ * failure (wrong current password, revoked session) can never lift the gate: the returned value must
+ * not be an Error nor a Response with status >= 400, must carry `user.id` (Better Auth returns
+ * `{ token, user }` on success), and that id must match the session (new one first) of the request.
+ */
+export function confirmedPasswordChangeUserId(context: {
+  returned?: unknown;
+  newSession?: { user?: { id?: string } } | null;
+  session?: { user?: { id?: string } } | null;
+}): string | null {
+  const returned = context.returned;
+  if (returned == null || returned instanceof Error) return null;
+  if (returned instanceof Response) return null; // success is a JSON value, never a raw Response
+  if (typeof returned !== "object") return null;
+  const status =
+    (returned as { status?: unknown; statusCode?: unknown }).statusCode ??
+    (returned as { status?: unknown }).status;
+  if (typeof status === "number" && status >= 400) return null;
+  const returnedId = (returned as { user?: { id?: unknown } }).user?.id;
+  if (typeof returnedId !== "string" || !returnedId) return null;
+  const sessionId = context.newSession?.user?.id ?? context.session?.user?.id;
+  return sessionId === returnedId ? returnedId : null;
+}
+
 export function clearMustChangePasswordAfter(
   clear: (userId: string) => Promise<void>,
 ) {
   return createAuthMiddleware(async (ctx) => {
     if (ctx.path !== "/change-password") return;
-    const returned = ctx.context.returned as unknown;
-    if (returned instanceof Error) return;
-    const context = ctx.context as {
-      newSession?: { user?: { id?: string } } | null;
-      session?: { user?: { id?: string } } | null;
-    };
-    const userId = context.newSession?.user?.id ?? context.session?.user?.id;
+    const userId = confirmedPasswordChangeUserId(
+      ctx.context as Parameters<typeof confirmedPasswordChangeUserId>[0],
+    );
     if (userId) await clear(userId);
   });
 }
