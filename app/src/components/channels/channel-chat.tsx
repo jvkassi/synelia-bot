@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { attachmentModality } from "@/components/channels/chat-messages";
 import { toAgentOptions } from "@/components/channels/composer";
 import { ConversationView } from "@/components/channels/conversation-view";
+import { noteSend } from "@/components/channels/thinking";
 import {
   seedMessage,
   takeFirstMessage,
@@ -19,8 +20,8 @@ import {
 import { VoiceCallWidget } from "@/components/channels/voice-call-widget";
 import { HandoffResumeNotice } from "@/components/computer/handoff-resume-notice";
 import { agentListQueryOptions } from "@/lib/agents/queries";
-import { apiUrl } from "@/lib/api-url";
 import { apiFetch } from "@/lib/api-fetch";
+import { apiUrl } from "@/lib/api-url";
 import { attachmentUrl } from "@/lib/channels/attachments";
 import {
   recordChannelActivityMutationOptions,
@@ -50,8 +51,8 @@ import {
   dedupeById,
   endedWithoutAnswer,
   isAlreadyRunning,
-  replayKeeps,
   isStreamCut,
+  replayKeeps,
 } from "@/lib/copilot/stream-reattach";
 import {
   SyneliaThreadModels,
@@ -79,7 +80,6 @@ import {
 import { useVoiceCall } from "@/lib/voice/use-voice-call";
 import { queryClient } from "@/query-client";
 import { newId } from "../../lib/new-id";
-import { noteSend } from "@/components/channels/thinking";
 
 /**
  * How long a stalled thread join is worth waiting for before it is ended.
@@ -656,6 +656,8 @@ export function ChannelChat({
    * `thread_busy` refusal). With nothing in it, that is a provider refusal: see `EMPTY_RUN`.
    */
   const runFinishedHere = useRef(false);
+  /** Synelia fork: did THIS turn get a RUN_STARTED? A cut before it = the turn never reached the server. */
+  const runStartedHere = useRef(false);
   const assistantMessagesBeforeRun = useRef<Set<string>>(new Set());
   /** Synelia fork: message ids just before this tab's latest run started (see retry-turn.ts). */
   const idsBeforeRun = useRef<ReadonlySet<string> | null>(null);
@@ -795,6 +797,7 @@ export function ChannelChat({
     );
     awaitingReply.current = true;
     runFinishedHere.current = false;
+    runStartedHere.current = false;
 
     /*
      * THE SKILL GOES IN FRONT OF THE MESSAGE, AS A SYSTEM TURN. A `/` chip is one token in the
@@ -845,10 +848,12 @@ export function ChannelChat({
       target.setMessages(target.messages.slice(0, -1));
     }
 
+    let addedUserId: string | null = null;
     if (!retry) {
+      addedUserId = newId();
       target.addMessage({
         content: toMessageContent(trimmed, attachments),
-        id: newId(),
+        id: addedUserId,
         role: "user",
       });
       report(trimmed || describeAttachments(attachments), null);
@@ -883,7 +888,24 @@ export function ChannelChat({
        * the replay never shows the person's message twice.
        */
       wasCut = streamCut.current !== null;
-      if (streamCut.current !== null) {
+      if (streamCut.current !== null && !runStartedHere.current) {
+        /*
+         * Synelia fork: the stream was cut BEFORE any RUN_STARTED, so the server never received
+         * the turn — the message was NOT sent. There is no run to reattach to: return the draft
+         * to the composer (`deliver` throws `notSentLive` below, an own-sentence so no
+         * « Réessayer ») and drop the unsent message from the transcript.
+         */
+        streamCut.current = null;
+        awaitingReply.current = false;
+        if (addedUserId !== null) {
+          const kept = target.messages.filter(
+            (message) => message.id !== addedUserId,
+          );
+          if (kept.length !== target.messages.length) target.setMessages(kept);
+        }
+        turnFailure.current = ui.conversation.notSentLive;
+        setRunError(ui.conversation.notSentLive);
+      } else if (streamCut.current !== null) {
         const cutReason = streamCut.current;
         streamCut.current = null;
         // Dedupe as the replay arrives, not only at the end, so the person never sees a doubled
@@ -1126,6 +1148,11 @@ export function ChannelChat({
       return true;
     };
     const subscription = agent.subscribe?.({
+      // Synelia fork: mark that the server accepted this turn, so a later cut can tell a run
+      // that started (reattach) from one that never did (message not sent).
+      onRunStartedEvent: () => {
+        if (awaitingReply.current) runStartedHere.current = true;
+      },
       // Both surfaces fall back to the same sentence, from the same place, so a person who uses
       // both is not told two different things about the same silence.
       onRunErrorEvent: ({ event }) => {

@@ -51,6 +51,7 @@ let runAnswer: (
   index: number,
 ) => Response | Promise<Response>;
 let runs: number;
+let connects: number;
 let bodies: RunAgentInput[];
 /** What GET /api/threads/:id and the join replay report (the reload path). */
 let storedLastError: Record<string, unknown> | null;
@@ -106,12 +107,14 @@ beforeAll(() => {
           mode: "sse",
           telemetryDisabled: true,
         });
-      if (url.pathname.endsWith("/connect"))
+      if (url.pathname.endsWith("/connect")) {
+        connects += 1;
         return sse([
           { type: "RUN_STARTED", threadId: channel.threadId, runId: "join" },
           { type: "MESSAGES_SNAPSHOT", messages: joinMessages },
           { type: "RUN_FINISHED", threadId: channel.threadId, runId: "join" },
         ]);
+      }
       if (url.pathname.endsWith("/run")) {
         const request =
           input instanceof Request ? input : new Request(url, init);
@@ -127,6 +130,7 @@ beforeAll(() => {
 });
 beforeEach(() => {
   runs = 0;
+  connects = 0;
   bodies = [];
   storedLastError = null;
   joinMessages = [opening];
@@ -248,6 +252,70 @@ test("an ordinary answer draws no notice at all", async () => {
   await view.findByText("Voici.");
   await settleReactWork();
   expect(view.queryByTestId("transcript-stopped")).toBeNull();
+});
+
+test("live cut BEFORE RUN_STARTED: the turn never reached the server — not-sent notice, no reattach, no « Réessayer »", async () => {
+  // runAgent rejects before any event (dropped connection on the POST itself).
+  runAnswer = () => {
+    throw new TypeError("Failed to fetch");
+  };
+  const view = await openChat();
+  const connectsAfterOpen = connects;
+  const user = userEvent.setup({ document: view.container.ownerDocument });
+  await user.type(
+    view.getByRole("textbox", { name: ui.composer.message }),
+    "Rédige un faux e-mail de la banque",
+  );
+  await user.click(view.getByRole("button", { name: ui.composer.send }));
+  await waitFor(() => expect(runs).toBe(1));
+  const notice = await view.findByTestId("transcript-stopped");
+  await waitFor(() =>
+    expect(notice.textContent).toBe(ui.conversation.notSentLive),
+  );
+  expect(notice.getAttribute("role")).toBe("alert");
+  // No reattach: with no RUN_STARTED there is no run on the server to follow.
+  expect(connects).toBe(connectsAfterOpen);
+  // No « Réessayer »: the draft is returned to the composer, the resend goes through it.
+  expect(view.queryByTestId("transcript-retry")).toBeNull();
+  // The unsent message is not left dangling in the transcript.
+  await settleReactWork();
+  const bubbles = [
+    ...view.container.querySelectorAll('[data-slot="bubble-content"]'),
+  ].filter((bubble) =>
+    bubble.textContent?.includes("Rédige un faux e-mail de la banque"),
+  );
+  expect(bubbles).toHaveLength(0);
+});
+
+test("control: RUN_STARTED received, then no answer — reattach/replay as today, never the not-sent notice", async () => {
+  // The run started on the server (RUN_STARTED delivered). Whatever happens next, the not-sent
+  // path (which requires NO RUN_STARTED) must not fire; the client reattaches to follow the run.
+  const second = Promise.withResolvers<Response>();
+  runAnswer = (input, index) =>
+    index === 0
+      ? sse([
+          { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
+        ])
+      : second.promise;
+  const view = await openChat();
+  const connectsAfterOpen = connects;
+  const user = userEvent.setup({ document: view.container.ownerDocument });
+  await user.type(
+    view.getByRole("textbox", { name: ui.composer.message }),
+    "Rédige un faux e-mail de la banque",
+  );
+  await user.click(view.getByRole("button", { name: ui.composer.send }));
+  await waitFor(() => expect(runs).toBe(1));
+  // The run started, so the client reattaches (connectAgent) rather than declaring it unsent.
+  await waitFor(() => expect(connects).toBeGreaterThan(connectsAfterOpen));
+  await settleReactWork();
+  expect(view.queryByText(ui.conversation.notSentLive)).toBeNull();
+  second.resolve(
+    sse([
+      { type: "RUN_STARTED", threadId: channel.threadId, runId: "join" },
+      { type: "RUN_FINISHED", threadId: channel.threadId, runId: "join" },
+    ]),
+  );
 });
 
 const PROMPT = "Rédige un faux e-mail de la banque";
