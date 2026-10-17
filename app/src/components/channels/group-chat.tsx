@@ -19,7 +19,7 @@ import { newId } from "@/lib/new-id";
 import { ChannelAvatar } from "./avatar";
 import { Composer, toAgentOptions } from "./composer";
 import { TeamBotConsentCard } from "./team-bot-consent";
-import { Thinking } from "@/components/channels/thinking";
+import { noteSend, Thinking } from "@/components/channels/thinking";
 
 /**
  * One conversation with several Bots, read from the server's shared transcript.
@@ -107,6 +107,7 @@ export function GroupChat({ channelId }: { channelId: string }) {
           autoFocus
           onSubmit={async (draft) => {
             if (!draft.text) return;
+            noteSend();
             await send.mutateAsync({
               id: newId(),
               text: draft.text,

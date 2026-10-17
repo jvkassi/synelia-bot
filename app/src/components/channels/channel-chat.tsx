@@ -67,6 +67,7 @@ import {
 import { useVoiceCall } from "@/lib/voice/use-voice-call";
 import { queryClient } from "@/query-client";
 import { newId } from "../../lib/new-id";
+import { noteSend } from "@/components/channels/thinking";
 
 /**
  * How long a stalled thread join is worth waiting for before it is ended.
@@ -1212,6 +1213,8 @@ export function ChannelChat({
                 </>
               }
               onSubmit={async (draft) => {
+                // Synelia fork: the « jusqu'à 30 secondes » delay counts from here, not from mount.
+                noteSend();
                 // `draft.agentId` carries the @mentioned coworker, but nothing routes on it yet: this
                 // channel is pinned to one `runtimeAgentId` for the life of its thread, so honouring a
                 // per-message mention is a change to that binding, not to the composer.

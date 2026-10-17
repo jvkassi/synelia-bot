@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { act, cleanup, render } from "@testing-library/react";
 import {
+  noteSend,
+  slowDelay,
   THINKING_SLOW_AFTER_MS,
   Thinking,
 } from "@/components/channels/thinking";
@@ -18,6 +20,7 @@ afterAll(() => GlobalRegistrator.unregister());
 
 test("no first token after 8 s: the same status line says it can take up to 30 seconds", () => {
   jest.useFakeTimers();
+  noteSend();
   const view = render(<Thinking />);
   const status = view.getByRole("status");
   expect(status.textContent).toBe(ui.conversation.thinking);
@@ -34,10 +37,44 @@ test("no first token after 8 s: the same status line says it can take up to 30 s
 
 test("first token before 8 s (the line unmounts): the timer is cleared", () => {
   jest.useFakeTimers();
+  noteSend();
   const view = render(<Thinking />);
   expect(jest.getTimerCount()).toBe(1);
   view.unmount();
   expect(jest.getTimerCount()).toBe(0);
+});
+
+test("the 8 s count from the SEND: the home page hands over to the conversation at 1.5 s, the long message still comes at 8 s", () => {
+  jest.useFakeTimers();
+  const sent = Date.now();
+  noteSend(sent);
+  // Home page: optimistic bubble + indicator.
+  const home = render(<Thinking />);
+  act(() => jest.advanceTimersByTime(1_500));
+  expect(home.getByRole("status").textContent).toBe(ui.conversation.thinking);
+  home.unmount();
+  // The conversation opens and draws its own indicator, mounted fresh.
+  const channel = render(<Thinking />);
+  const status = channel.getByRole("status");
+  act(() => jest.advanceTimersByTime(6_499));
+  expect(Date.now() - sent).toBe(7_999);
+  expect(status.textContent).toBe(ui.conversation.thinking);
+  act(() => jest.advanceTimersByTime(1));
+  expect(status.textContent).toBe(ui.conversation.thinkingSlow);
+});
+
+test("more than 8 s already gone at mount: the long message at once; an old send does not count", () => {
+  jest.useFakeTimers();
+  noteSend(Date.now() - 9_000);
+  const late = render(<Thinking />);
+  expect(late.getByRole("status").textContent).toBe(
+    ui.conversation.thinkingSlow,
+  );
+  expect(jest.getTimerCount()).toBe(0);
+  late.unmount();
+  // A send from minutes ago (a run the server started itself): counted from mount.
+  noteSend(Date.now() - 5 * 60_000);
+  expect(slowDelay()).toBe(THINKING_SLOW_AFTER_MS);
 });
 
 /** sRGB channel (0..1) → relative luminance component. */
