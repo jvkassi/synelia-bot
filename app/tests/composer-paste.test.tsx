@@ -136,7 +136,7 @@ async function uploaded(
   name: string,
 ) {
   await waitFor(() => {
-    expect(queryByLabelText(`Remove ${name}`)).not.toBeNull();
+    expect(queryByLabelText(ui.composer.removeFile(name))).not.toBeNull();
     expect(
       (getByLabelText(ui.composer.send) as HTMLButtonElement).disabled,
     ).toBe(false);
@@ -308,7 +308,9 @@ test("a full-size composer stages an image pasted alongside text", async () => {
   });
 
   await waitFor(() =>
-    expect(queryByLabelText("Remove chart.png")).not.toBeNull(),
+    expect(
+      queryByLabelText(ui.composer.removeFile("chart.png")),
+    ).not.toBeNull(),
   );
   // All the way through the upload rather than stalled as a placeholder: the tile only draws an
   // `<img>` once `onUpload` has answered with a URL to point it at.
@@ -421,7 +423,9 @@ test("a compact composer stages an image pasted alongside text", async () => {
   );
 
   await waitFor(() =>
-    expect(view.queryByLabelText("Remove chart.png")).not.toBeNull(),
+    expect(
+      view.queryByLabelText(ui.composer.removeFile("chart.png")),
+    ).not.toBeNull(),
   );
   expect(uploads).toEqual(["chart.png"]);
 });

@@ -115,7 +115,7 @@ async function uploaded(
   name: string,
 ) {
   await waitFor(() => {
-    expect(queryByLabelText(`Remove ${name}`)).not.toBeNull();
+    expect(queryByLabelText(ui.composer.removeFile(name))).not.toBeNull();
     expect(
       (getByLabelText(ui.composer.send) as HTMLButtonElement).disabled,
     ).toBe(false);
@@ -195,8 +195,8 @@ test("a composer with no channel keeps the button that says so, and takes no fil
 
   // Only the file dropped once there was somewhere to put it.
   expect(uploads.map((upload) => upload.name)).toEqual(["kept.txt"]);
-  expect(queryByLabelText("Remove ignored.txt")).toBeNull();
-  expect(queryByLabelText("Remove logo.svg")).toBeNull();
+  expect(queryByLabelText(ui.composer.removeFile("ignored.txt"))).toBeNull();
+  expect(queryByLabelText(ui.composer.removeFile("logo.svg"))).toBeNull();
   /*
    * AND THE SVG WAS NEVER SCREENED FOR BEING AN SVG, which is the claim this line still carries
    * after the assertion above it changed. `screenPickedFiles` phrases that particular refusal with
@@ -293,7 +293,7 @@ test("a disabled composer takes no dropped file, and offers no way to pick one",
   await uploaded(view, "kept.txt");
 
   expect(uploads.map((upload) => upload.name)).toEqual(["kept.txt"]);
-  expect(queryByLabelText("Remove refused.txt")).toBeNull();
+  expect(queryByLabelText(ui.composer.removeFile("refused.txt"))).toBeNull();
   /*
    * REFUSED OUT LOUD RATHER THAN SWALLOWED, and this line used to pin the swallow.
    *

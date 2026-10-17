@@ -115,6 +115,10 @@ const fr = {
     /** The indicator between sending and the first token (1:1 and group transcripts). */
     thinking: "Le modèle réfléchit…",
     remove: "Retirer",
+    /** A responsibility's turn, drawn as one compact line (chat-transcript.tsx). */
+    responsibilityRan: "Responsabilité exécutée.",
+    trigger: "Déclencheur :",
+    details: "Détails",
     removeQueued: (description: string) =>
       `Retirer le message en attente : ${description}`,
     attachment: "Pièce jointe",
@@ -148,6 +152,8 @@ const fr = {
       "Les appels vocaux nécessitent HTTPS (ou localhost) et un micro.",
     attach: "Joindre un fichier",
     attachments: "Pièces jointes",
+    /** The × on a staged attachment chip: « Retirer » (`conversation.remove`) plus the file name. */
+    removeFile: (name: string) => `Retirer ${name}`,
     moreOptionsUnavailable: "Autres options du message indisponibles",
   },
   newConversation: {

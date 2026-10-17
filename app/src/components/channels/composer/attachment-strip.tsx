@@ -226,7 +226,7 @@ function RemoveButton({
 }) {
   return (
     <button
-      aria-label={`Remove ${name}`}
+      aria-label={ui.composer.removeFile(name)}
       className="absolute top-1 right-1 grid size-5 place-items-center rounded-full border border-border bg-background/90 text-muted-foreground shadow-sm transition-colors hover:text-foreground"
       onClick={onRemove}
       type="button"

@@ -11,6 +11,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { Composer } from "@/components/channels/composer/composer";
 import { settleReactWork } from "./settle-react-work";
+import { ui } from "@/lib/i18n";
 
 /**
  * THE COMPOSER ON A DEPLOYMENT THAT IS NOT A SECURE CONTEXT.
@@ -114,7 +115,9 @@ test("a pick-time refusal still names the file with no crypto.randomUUID", async
   ).not.toBeNull();
   // The rest of the gesture survived the refusal, which is the part the throw used to take with it.
   await waitFor(() =>
-    expect(view.queryByLabelText("Remove notes.txt")).not.toBeNull(),
+    expect(
+      view.queryByLabelText(ui.composer.removeFile("notes.txt")),
+    ).not.toBeNull(),
   );
 });
 

@@ -199,7 +199,10 @@ test("/channel/new without a URL recipient leaves the To: field empty", async ()
 
   await expectMessageComposerDisabled(view, true);
   expect(
-    view.queryByRole("button", { hidden: true, name: /^Remove / }),
+    view.queryByRole("button", {
+      hidden: true,
+      name: new RegExp(`^${ui.composer.removeFile("")}`),
+    }),
   ).toBeNull();
 });
 

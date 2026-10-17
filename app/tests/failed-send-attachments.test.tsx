@@ -275,7 +275,9 @@ function named(name: string) {
 async function uploaded(view: RenderResult, names: readonly string[]) {
   await waitFor(() => {
     for (const name of names) {
-      expect(view.queryByLabelText(`Remove ${name}`)).not.toBeNull();
+      expect(
+        view.queryByLabelText(ui.composer.removeFile(name)),
+      ).not.toBeNull();
     }
     const button = (view.queryByLabelText(ui.composer.send) ??
       view.queryByLabelText(ui.composer.queue)) as HTMLButtonElement | null;
@@ -285,10 +287,12 @@ async function uploaded(view: RenderResult, names: readonly string[]) {
 
 /** Every attachment chip on the composer's strip, by the name on its Remove button. */
 function chips({ container }: RenderResult) {
-  return Array.from(container.querySelectorAll("[aria-label^='Remove ']"))
+  return Array.from(
+    container.querySelectorAll(`[aria-label^='${ui.composer.removeFile("")}']`),
+  )
     .map((element) => element.getAttribute("aria-label") ?? "")
     .filter((label) => !label.startsWith(ui.conversation.removeQueued("")))
-    .map((label) => label.slice("Remove ".length));
+    .map((label) => label.slice(ui.composer.removeFile("").length));
 }
 
 /** What the last user turn on the agent is carrying, as the wire sees it. */
@@ -442,7 +446,7 @@ test("a failed send restored beside a second batch cannot be retried over the pe
   // AND IT IS A GATE, NOT A DEAD END. Taking the second batch off by hand — the gesture that HAS
   // always justified releasing a row — puts the draft back inside the cap and Send comes back on.
   for (const file of second) {
-    fireEvent.click(view.getByLabelText(`Remove ${file.name}`));
+    fireEvent.click(view.getByLabelText(ui.composer.removeFile(file.name)));
   }
   await waitFor(() => {
     expect(chips(view)).toHaveLength(MAX_ATTACHMENTS_PER_MESSAGE);
