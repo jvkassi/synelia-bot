@@ -37,7 +37,7 @@ import {
   mediaTypeOf,
   shouldClaimPaste,
 } from "@/lib/channels/attachments";
-import { ui } from "@/lib/i18n";
+import { pilot, ui } from "@/lib/i18n";
 import { newId } from "@/lib/new-id";
 import { cn } from "@/lib/utils";
 import { Button } from "../../ui/button";
@@ -464,7 +464,8 @@ export function Composer({
 
   const attachmentsConfig = useMemo(
     () =>
-      channelId
+      // Synelia fork: no config in the pilot, so the hook installs nothing (see `channelId`).
+      channelId && !pilot.hideAttachments
         ? attachmentsConfigFor(
             channelId,
             uploadGroup,
@@ -1544,7 +1545,7 @@ export function Composer({
                 >
                   <IconPlus className="size-5" />
                 </Button>
-              ) : (
+              ) : pilot.hideAttachments ? null : (
                 <Button
                   aria-label={ui.composer.moreOptionsUnavailable}
                   className="self-end disabled:opacity-100"

@@ -451,6 +451,8 @@ export const pilot = {
   hideBotPage: PILOT_ON,
   /** Voice calls are outside the pilot (their API answers 404). */
   hideVoice: PILOT_ON,
+  /** Attachments (P1): no `+`, no paste, no drop, no file input in the composer. */
+  hideAttachments: PILOT_ON,
   /** Settings tabs outside the pilot (approvals, connected accounts, passwords, gallery). */
   hideSettingsExtras: PILOT_ON,
   /**
