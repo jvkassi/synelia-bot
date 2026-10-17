@@ -65,3 +65,61 @@ test("gate 10: tools are an allowlist (ask*/show* known names only)", async () =
   expect(isPilotGatedTool("foo_tool")).toBe(true);
   expect(pilotTools(offered, false)).toBe(offered);
 });
+
+test("pilot: /api/admin is exact METHOD + path (GET people, GET status); everything else 404", async () => {
+  const { requireAdmin } = await import("../src/auth/guards");
+  // Same order as the app: pilot gate, then a requireUser stand-in, then the real handlers' guard.
+  const build = (role: "admin" | "user") => {
+    const app = new Hono();
+    app.use("/api/*", createPilotGate(true));
+    app.use("/api/*", async (c, next) => {
+      (c as unknown as { set: (k: string, v: unknown) => void }).set("actor", {
+        id: "u",
+        role,
+      });
+      await next();
+    });
+    app.all("/api/admin/*", (c) => requireAdmin(c as never) ?? c.text("ok"));
+    return app;
+  };
+  const closed: [string, string][] = [
+    ["POST", "/api/admin/people/u2/role"],
+    ["POST", "/api/admin/people/u2/access"],
+    ["GET", "/api/admin/credentials"],
+    ["POST", "/api/admin/credentials"],
+    ["POST", "/api/admin/credentials/c1/rotate"],
+    ["POST", "/api/admin/credentials/c1/revoke"],
+    ["GET", "/api/admin/identity-providers"],
+    ["PUT", "/api/admin/identity-providers/google"],
+    ["DELETE", "/api/admin/identity-providers/google"],
+    ["GET", "/api/admin/enterprise"],
+    ["GET", "/api/admin/enterprise/me"],
+    ["POST", "/api/admin/enterprise/network"],
+    ["GET", "/api/admin/package"],
+    ["GET", "/api/admin/audit-events"],
+    ["GET", "/api/admin/learning/settings"],
+    ["POST", "/api/admin/people"],
+    ["DELETE", "/api/admin/people"],
+    ["POST", "/api/admin/status"],
+    ["GET", "/api/admin/people/u2"],
+    ["GET", "/api/admin"],
+    ["GET", "/api/admin/some-future-router"],
+  ];
+  const admin = build("admin");
+  for (const [method, path] of closed)
+    expect([
+      method,
+      path,
+      (await admin.request(path, { method })).status,
+    ]).toEqual([method, path, 404]);
+  for (const path of ["/api/admin/people", "/api/admin/status"])
+    expect((await admin.request(path)).status).toBe(200);
+  expect((await admin.request("/api/admin/people?cursor=x")).status).toBe(200);
+  const user = build("user");
+  for (const [method, path] of [
+    ...closed,
+    ["GET", "/api/admin/people"],
+    ["GET", "/api/admin/status"],
+  ] as [string, string][])
+    expect([403, 404]).toContain((await user.request(path, { method })).status);
+});
