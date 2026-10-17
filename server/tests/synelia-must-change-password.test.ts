@@ -62,11 +62,18 @@ test("tester entries come in EMAIL/PASSWORD pairs from SYNELIA_TESTER_<SLUG>_*",
 
 test("fail closed: a session cookie whose lookup throws gets 503 session_unavailable", async () => {
   const app = new Hono();
-  app.use("/api/*", createPasswordChangeGate(async () => { throw new Error("db down"); }));
+  app.use(
+    "/api/*",
+    createPasswordChangeGate(async () => {
+      throw new Error("db down");
+    }),
+  );
   app.all("/api/*", (c) => c.json({ ok: true }));
   const response = await app.request("/api/me", cookie);
   expect(response.status).toBe(503);
-  expect(((await response.json()) as { code: string }).code).toBe("session_unavailable");
+  expect(((await response.json()) as { code: string }).code).toBe(
+    "session_unavailable",
+  );
   // No cookie: nothing to look up, unchanged behaviour.
   expect((await app.request("/api/me")).status).toBe(200);
 });

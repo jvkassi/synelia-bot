@@ -57,9 +57,14 @@ describe("resolveModel (gate 2: model stored = model that answered)", () => {
       model: "gemini/flash",
     });
   });
-  test("no pick → default; no list → nothing claimed", () => {
+  test("no pick → default; no list → the picked id, never an invented one", () => {
     expect(resolveModel(undefined, list).model).toBe("gemini/flash");
-    expect(resolveModel("router9:glm", undefined)).toEqual({});
+    // List unreachable at save time: the allowlisted pick is stored rather than NULL.
+    expect(resolveModel("router9:glm", undefined)).toEqual({
+      provider: "router9",
+      model: "glm",
+    });
+    expect(resolveModel(undefined, undefined)).toEqual({});
   });
   test("pickedModel reads the raw context entry", () => {
     const request = {

@@ -11,14 +11,27 @@ import { createPasswordChangeGate } from "../src/synelia/password-change-gate";
  * session cookie; the old cookie no longer signs in.
  */
 test("forced password change: full cycle clears the flag and the new session passes the gate", async () => {
-  const db: Record<string, Record<string, unknown>[]> = { user: [], session: [], account: [], verification: [] };
+  const db: Record<string, Record<string, unknown>[]> = {
+    user: [],
+    session: [],
+    account: [],
+    verification: [],
+  };
   const auth = betterAuth({
     baseURL: "http://localhost:3001",
     secret: "test-secret-test-secret-test-secret-123",
     database: memoryAdapter(db),
     emailAndPassword: { enabled: true },
     session: { cookieCache: { enabled: true, maxAge: 300 } },
-    user: { additionalFields: { mustChangePassword: { type: "boolean", defaultValue: false, input: false } } },
+    user: {
+      additionalFields: {
+        mustChangePassword: {
+          type: "boolean",
+          defaultValue: false,
+          input: false,
+        },
+      },
+    },
     hooks: {
       after: clearMustChangePasswordAfter(async (userId) => {
         const row = db.user?.find((user) => user.id === userId);
@@ -30,31 +43,69 @@ test("forced password change: full cycle clears the flag and the new session pas
   app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
   app.use(
     "/api/*",
-    createPasswordChangeGate(async (headers) =>
-      (await auth.api.getSession({ headers, query: { disableCookieCache: true } }))?.user as never,
+    createPasswordChangeGate(
+      async (headers) =>
+        (
+          await auth.api.getSession({
+            headers,
+            query: { disableCookieCache: true },
+          })
+        )?.user as never,
     ),
   );
   app.get("/api/me", (c) => c.json({ ok: true }));
-  const origin = { origin: "http://localhost:3001", "content-type": "application/json" };
+  const origin = {
+    origin: "http://localhost:3001",
+    "content-type": "application/json",
+  };
   const cookieOf = (response: Response) =>
-    response.headers.getSetCookie().map((c) => c.split(";")[0]).filter((c) => !c.endsWith("=")).join("; ");
+    response.headers
+      .getSetCookie()
+      .map((c) => c.split(";")[0])
+      .filter((c) => !c.endsWith("="))
+      .join("; ");
 
-  await app.request("/api/auth/sign-up/email", { method: "POST", headers: origin, body: JSON.stringify({ email: "t@x.io", password: "first-password-1", name: "t" }) });
+  await app.request("/api/auth/sign-up/email", {
+    method: "POST",
+    headers: origin,
+    body: JSON.stringify({
+      email: "t@x.io",
+      password: "first-password-1",
+      name: "t",
+    }),
+  });
   (db.user?.[0] as Record<string, unknown>).mustChangePassword = true;
-  const signIn = await app.request("/api/auth/sign-in/email", { method: "POST", headers: origin, body: JSON.stringify({ email: "t@x.io", password: "first-password-1" }) });
+  const signIn = await app.request("/api/auth/sign-in/email", {
+    method: "POST",
+    headers: origin,
+    body: JSON.stringify({ email: "t@x.io", password: "first-password-1" }),
+  });
   const oldCookie = cookieOf(signIn);
-  expect((await app.request("/api/me", { headers: { cookie: oldCookie } })).status).toBe(403);
+  expect(
+    (await app.request("/api/me", { headers: { cookie: oldCookie } })).status,
+  ).toBe(403);
 
   const change = await app.request("/api/auth/change-password", {
     method: "POST",
     headers: { ...origin, cookie: oldCookie },
-    body: JSON.stringify({ currentPassword: "first-password-1", newPassword: "second-password-2", revokeOtherSessions: true }),
+    body: JSON.stringify({
+      currentPassword: "first-password-1",
+      newPassword: "second-password-2",
+      revokeOtherSessions: true,
+    }),
   });
   expect(change.status).toBe(200);
   expect(db.user?.[0]?.mustChangePassword).toBe(false);
   const newCookie = cookieOf(change);
   expect(newCookie).toContain("session_token");
-  expect((await app.request("/api/me", { headers: { cookie: newCookie } })).status).toBe(200);
-  const session = await app.request("/api/auth/get-session", { headers: { cookie: newCookie } });
-  expect(((await session.json()) as { user: { mustChangePassword: boolean } }).user.mustChangePassword).toBe(false);
+  expect(
+    (await app.request("/api/me", { headers: { cookie: newCookie } })).status,
+  ).toBe(200);
+  const session = await app.request("/api/auth/get-session", {
+    headers: { cookie: newCookie },
+  });
+  expect(
+    ((await session.json()) as { user: { mustChangePassword: boolean } }).user
+      .mustChangePassword,
+  ).toBe(false);
 });

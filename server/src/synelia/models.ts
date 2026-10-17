@@ -96,9 +96,10 @@ export function labelFor(
 }
 
 /** `router9:gemini/gemini-3.8-flash` -> { provider: "router9", model: "gemini/gemini-3.8-flash" }. */
-export function splitModelId(
-  id: string | undefined,
-): { provider?: string; model?: string } {
+export function splitModelId(id: string | undefined): {
+  provider?: string;
+  model?: string;
+} {
   const colon = id?.indexOf(":") ?? -1;
   if (!id || colon <= 0 || colon === id.length - 1) return {};
   return { provider: id.slice(0, colon), model: id.slice(colon + 1) };
