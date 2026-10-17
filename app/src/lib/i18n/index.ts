@@ -283,6 +283,63 @@ const fr = {
     default: "défaut",
     loadFailed: "Impossible de charger les modèles",
   },
+  /** Synelia fork: the admin area (sidebar chrome and People). */
+  adminArea: {
+    backToApp: "Retour à l'application",
+    overview: "Vue d'ensemble",
+    groups: {
+      reach: "Ce que les assistants peuvent atteindre",
+      do: "Ce que les assistants peuvent faire",
+      access: "Qui peut entrer",
+      happened: "Ce qui s'est passé",
+    },
+    nav: {
+      credentials: "Identifiants",
+      boundaries: "Limites",
+      approvals: "Approbations",
+      computers: "Ordinateurs",
+      plugins: "Plugins",
+      skills: "Compétences",
+      components: "Composants d'interface",
+      playground: "Bac à sable",
+      people: "Membres",
+      identityProviders: "Fournisseurs d'identité",
+      audit: "Journal d'audit",
+    },
+    people: {
+      title: "Membres",
+      description:
+        "Toutes les personnes qui se sont connectées. Les administrateurs accèdent à ces écrans ; les autres discutent avec les assistants.",
+      sectionTitle: "Qui est là",
+      sectionDescription:
+        "Une adresse listée dans INITIAL_ADMIN_EMAILS est administratrice quoi qu'indique cet écran : elle ne peut pas être modifiée ici.",
+      searchLabel: "Rechercher des membres",
+      searchPlaceholder: "Rechercher par nom ou adresse",
+      loadFailed: "Impossible de charger les membres.",
+      noMatch: (query: string) => `Personne ne correspond à « ${query} ».`,
+      empty:
+        "Personne ne s'est encore connecté. Les membres apparaissent ici après leur première connexion.",
+      lastSignedIn: (date: string) => `dernière connexion le ${date}`,
+      neverSignedIn: "jamais connecté",
+      noProvider: "aucun fournisseur",
+      accessRemoved: "Accès retiré",
+      adminByConfiguration: "Administrateur par configuration",
+      stopComputers: "Arrêter les ordinateurs",
+      stopped: (stopped: number, failed: number) =>
+        `${stopped} ordinateur${stopped > 1 ? "s" : ""} arrêté${stopped > 1 ? "s" : ""}${failed > 0 ? `, ${failed} n'ont pas pu l'être` : ""}. Leurs disques sont conservés.`,
+      remove: "Retirer l'accès",
+      restore: "Rétablir l'accès",
+      administrator: (email: string) => `Administrateur : ${email}`,
+      loading: "Chargement…",
+      showMore: "Afficher plus",
+      updateFailed: "Impossible de modifier ce membre.",
+      /** A role/access call the pilot server answers 404. */
+      pilotUnavailable: "Action indisponible pendant le pilote.",
+      /** Shown, and referenced by aria-describedby, when a pilot flag disables a control. */
+      editDisabledInPilot:
+        "Modification désactivée pendant le pilote. Les changements de rôle passent par l'équipe d'exploitation.",
+    },
+  },
   /** Synelia fork: forced password change at first login (form owned by the Frontend Expert). */
   auth: {
     changePasswordTitle: "Changez votre mot de passe",
@@ -349,6 +406,10 @@ export const ui: UiStrings = fr satisfies UiStrings;
  */
 const env = (import.meta as { env?: Record<string, string | undefined> }).env;
 const PILOT_ON = env?.NODE_ENV !== "test" || env?.SYNELIA_PILOT === "1";
+/** Pilot server allows POST /api/admin/people/:id/role. */
+const PILOT_PEOPLE_ROLE = false;
+/** Pilot server allows POST /api/admin/people/:id/access. */
+const PILOT_PEOPLE_ACCESS = false;
 
 export const pilot = {
   hideExploreAgents: PILOT_ON,
@@ -366,7 +427,29 @@ export const pilot = {
    * `/api/delivery` and `/api/bots/routing` answer 404 there.
    */
   hideNotificationsSettings: PILOT_ON,
+  /** Admin area: only People in the pilot; every other admin screen's API is closed. */
+  hideAdminExtras: PILOT_ON,
+  /** Bots, Skills, Routines, team Bots and groups: redirected home (their APIs answer 404). */
+  hideOutsideRoutes: PILOT_ON,
+  /**
+   * People actions, matched to the server's pilot allowlist for POST /api/admin/people/:id/role
+   * and /access: flip PILOT_PEOPLE_ROLE / PILOT_PEOPLE_ACCESS below. Always on outside the pilot.
+   */
+  adminPeopleRoleEnabled: !PILOT_ON || PILOT_PEOPLE_ROLE,
+  adminPeopleAccessEnabled: !PILOT_ON || PILOT_PEOPLE_ACCESS,
 } as const;
+
+/** Admin routes the pilot keeps; every other one lands on People. */
+export const PILOT_ADMIN_HOME = "/admin/people";
+
+/** App routes outside the pilot: a direct hit lands on home. */
+export const PILOT_HIDDEN_APP_ROUTES = [
+  "/bots",
+  "/skills",
+  "/routines",
+  "/team-bots",
+  "/group",
+] as const;
 
 /** Settings routes the pilot closes; a direct hit lands on General. */
 export const PILOT_HIDDEN_SETTINGS = [
@@ -392,4 +475,18 @@ export function isPilotHiddenSettingsPath(pathname: string): boolean {
     (pilot.hideNotificationsSettings &&
       under(pathname, PILOT_HIDDEN_NOTIFICATION_SETTINGS))
   );
+}
+
+/** Synelia fork: an admin path the pilot hides (everything but People). */
+export function isPilotHiddenAdminPath(pathname: string): boolean {
+  return (
+    pilot.hideAdminExtras &&
+    under(pathname, ["/admin"]) &&
+    !under(pathname, [PILOT_ADMIN_HOME])
+  );
+}
+
+/** Synelia fork: an app path outside the pilot (Bots, Skills, Routines, team Bots, groups). */
+export function isPilotHiddenAppPath(pathname: string): boolean {
+  return pilot.hideOutsideRoutes && under(pathname, PILOT_HIDDEN_APP_ROUTES);
 }

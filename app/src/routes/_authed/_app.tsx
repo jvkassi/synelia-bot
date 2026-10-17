@@ -1,9 +1,15 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { AppSidebar } from "@/components/app-sidebar/app-sidebar";
 import { SelfHostBanner } from "@/components/layout/self-host-banner";
 import { SidebarShell } from "@/components/layout/sidebar-shell";
+import { isPilotHiddenAppPath } from "@/lib/i18n";
 
 export const Route = createFileRoute("/_authed/_app")({
+  // Synelia fork: Bots, Skills, Routines, team Bots and groups are outside the pilot (their APIs
+  // answer 404); a direct URL lands home, like `/bot` does.
+  beforeLoad: ({ location }) => {
+    if (isPilotHiddenAppPath(location.pathname)) throw redirect({ to: "/" });
+  },
   component: RouteComponent,
 });
 
