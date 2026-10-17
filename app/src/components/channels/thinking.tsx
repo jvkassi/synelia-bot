@@ -53,7 +53,8 @@ export function Thinking({ className }: { className?: string }) {
     <p
       aria-live="polite"
       className={cn(
-        "tool-line-running synelia-thinking text-muted-foreground text-sm",
+        // Body colour and size (a reply's own `text-sm`), not muted: it has to be noticed.
+        "tool-line-running synelia-thinking text-foreground text-sm",
         className,
       )}
       // `status` rather than `alert`: this is progress, not something that interrupts.

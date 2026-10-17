@@ -33,6 +33,11 @@ test("no first token after 8 s: the same status line says it can take up to 30 s
     "Le modèle réfléchit, cela peut prendre jusqu'à 30 secondes…",
   );
   expect(status.getAttribute("aria-live")).toBe("polite");
+  // Normal text colour at the replies' size, not the muted grey.
+  expect(status.className).toContain("text-foreground");
+  expect(status.className).not.toContain("text-muted-foreground");
+  expect(status.className).toContain("text-sm");
+  expect(status.className).toContain("tool-line-running");
 });
 
 test("first token before 8 s (the line unmounts): the timer is cleared", () => {
@@ -103,6 +108,8 @@ test("the thinking dot keeps ≥ 3:1 against the page at every frame, both theme
   const dark = css.slice(css.indexOf(".dark"));
   const dot = css.slice(css.indexOf(".synelia-thinking::before"));
   expect(dot).toMatch(/background: var\(--color-foreground/);
+  // Slightly larger than the first version (0.625rem).
+  expect(dot).toMatch(/width: 0\.75rem;\s*height: 0\.75rem;/);
   const keyframes = css.slice(css.indexOf("@keyframes synelia-thinking-pulse"));
   const opacities = [
     ...keyframes
@@ -116,6 +123,8 @@ test("the thinking dot keeps ≥ 3:1 against the page at every frame, both theme
     // Alpha compositing over the page, as the browser does in sRGB.
     const drawn = faintest * fg + (1 - faintest) * bg;
     expect(contrast(drawn, bg)).toBeGreaterThanOrEqual(3);
+    // The text is now in the foreground colour: well above 4.5:1 (it was the muted grey).
+    expect(contrast(fg, bg)).toBeGreaterThanOrEqual(4.5);
   }
   const reduced = css.slice(
     css.lastIndexOf(
