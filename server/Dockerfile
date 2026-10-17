@@ -58,6 +58,9 @@ COPY server server
 COPY shared shared
 COPY toolkit toolkit
 COPY examples examples
+# Synelia fork: server/src/computer/policy-network.ts imports the egress rules from here (a
+# node-only module); without it the server does not start.
+COPY agent-computer/src/egress.ts agent-computer/src/egress.ts
 
 # The built app, served by the process below. `APP_DIST_DIR` is what turns that on, so an image
 # without this layer is still a working API.
