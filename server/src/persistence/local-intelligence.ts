@@ -103,8 +103,20 @@ export class LocalIntelligence {
   readonly #sql: SQL;
   #ready: Promise<void> | undefined;
 
-  constructor(databaseUrl: string) {
+  readonly #expireLocksAtBoot: boolean;
+
+  /**
+   * `expireLocksAtBoot` defaults to on; the test preload sets SYNELIA_BOOT_EXPIRE_LOCKS=0 so one test
+   * file's instance never expires the locks another file is holding in the shared test database.
+   */
+  constructor(
+    databaseUrl: string,
+    options: { expireLocksAtBoot?: boolean } = {},
+  ) {
     this.#sql = new SQL({ ...addressOf(databaseUrl), max: 5 });
+    this.#expireLocksAtBoot =
+      options.expireLocksAtBoot ??
+      process.env.SYNELIA_BOOT_EXPIRE_LOCKS !== "0";
   }
 
   /** Creates the tables once per process. Every public method awaits it. */
@@ -112,6 +124,7 @@ export class LocalIntelligence {
     this.#ready ??= this.#sql
       .unsafe(LOCAL_PERSISTENCE_DDL)
       .then(async () => {
+        if (!this.#expireLocksAtBoot) return;
         // Single-instance assumption: at boot no turn can be running in this process, so every
         // unexpired lock is stale: expire it (a restart mid-run would otherwise read as "in
         // progress" until expiry). The row stays, so the page can tell the turn was interrupted.

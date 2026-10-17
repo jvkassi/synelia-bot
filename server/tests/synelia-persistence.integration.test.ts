@@ -89,7 +89,10 @@ describe("threadTitle (G)", () => {
 });
 
 db("LocalIntelligence locks (gate 1)", () => {
-  const store = new LocalIntelligence(url as string);
+  // describe.skip still runs this body: no DB url, no client.
+  const store = url
+    ? new LocalIntelligence(url)
+    : (undefined as unknown as LocalIntelligence);
   const base = { userId: "u1", agentId: "a" };
 
   test("acquire with the same runId twice succeeds; another runId gets 409", async () => {
@@ -118,7 +121,9 @@ db("LocalIntelligence locks (gate 1)", () => {
 
 db("boot expires stale locks, row kept, acquire works again", () => {
   test("a lock held before boot is expired (interrupted), not deleted; a new run can lock", async () => {
-    const before = new LocalIntelligence(url as string);
+    const before = new LocalIntelligence(url as string, {
+      expireLocksAtBoot: true,
+    });
     const threadId = id();
     const runId = id();
     await before.getOrCreateThread({ threadId, userId: "u1", agentId: "a" });
@@ -131,7 +136,9 @@ db("boot expires stale locks, row kept, acquire works again", () => {
     expect(
       (await before.threadRunState({ threadId, userId: "u1" })).lockedRunId,
     ).toBe(runId);
-    const booted = new LocalIntelligence(url as string); // fresh process: ready() runs the boot step
+    const booted = new LocalIntelligence(url as string, {
+      expireLocksAtBoot: true,
+    }); // fresh process: ready() runs the boot step
     await booted.ready();
     expect(
       (await booted.threadRunState({ threadId, userId: "u1" })).lockedRunId,
@@ -150,7 +157,10 @@ db("boot expires stale locks, row kept, acquire works again", () => {
 });
 
 db("runner index follows rename / archive / delete (gate 4)", () => {
-  const store = new LocalIntelligence(url as string);
+  // describe.skip still runs this body: no DB url, no client.
+  const store = url
+    ? new LocalIntelligence(url)
+    : (undefined as unknown as LocalIntelligence);
   const runner = new PostgresAgentRunner(store);
 
   test("index updated immediately, not at the next run", async () => {
@@ -219,7 +229,10 @@ db("runner index follows rename / archive / delete (gate 4)", () => {
 });
 
 db("message_ids + per-thread badge map (I)", () => {
-  const store = new LocalIntelligence(url as string);
+  // describe.skip still runs this body: no DB url, no client.
+  const store = url
+    ? new LocalIntelligence(url)
+    : (undefined as unknown as LocalIntelligence);
   test("START and CHUNK ids stored; map has the last assistant message of each run; other user 404", async () => {
     const threadId = id();
     const save = (events: unknown[], model: string) =>
