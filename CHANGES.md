@@ -39,4 +39,9 @@ on konnect behind Traefik + basicauth, with a Mastra Bot answering through OpenR
 | `.gitignore` | `agent-mastra/.mastra/` build output. |
 | `server/Dockerfile` | Copies `agent-computer/src/egress.ts`, imported by the server (upstream image failed to start without it); `TENANT_PACKAGE_DIR` build arg so the app shows the Synelia brand. |
 
+## Front (branch `synelia/phase0-front`)
+| File | Why |
+|---|---|
+| `app/index.html` | Tab title "Synelia Bot" (no favicon/manifest in the app, nothing else to rename). |
+
 Not done in phase 0: LISTEN/NOTIFY (not used), SSE resume via Last-Event-ID, multi-user/SSO, learning.
