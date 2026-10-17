@@ -17,6 +17,7 @@ import {
 } from "@testing-library/react";
 import { Composer } from "@/components/channels/composer/composer";
 import { settleReactWork } from "./settle-react-work";
+import { ui } from "@/lib/i18n";
 
 /**
  * PASTE, THE THIRD AND LAST DOOR A FILE COMES IN THROUGH.
@@ -136,9 +137,9 @@ async function uploaded(
 ) {
   await waitFor(() => {
     expect(queryByLabelText(`Remove ${name}`)).not.toBeNull();
-    expect((getByLabelText("Send message") as HTMLButtonElement).disabled).toBe(
-      false,
-    );
+    expect(
+      (getByLabelText(ui.composer.send) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 }
 

@@ -13,6 +13,7 @@ import { cleanup, render, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type AgentProfile, agentKeys } from "@/lib/agents/queries";
 import { Route as HomeRoute } from "@/routes/_authed/_app/index";
+import { ui } from "@/lib/i18n";
 
 beforeAll(() => GlobalRegistrator.register());
 
@@ -78,8 +79,11 @@ async function submitHomeMessage(
   text: string,
 ) {
   const user = userEvent.setup({ document: view.container.ownerDocument });
-  await user.type(await view.findByRole("textbox", { name: "Message" }), text);
-  await user.click(await view.findByRole("button", { name: "Send message" }));
+  await user.type(
+    await view.findByRole("textbox", { name: ui.composer.message }),
+    text,
+  );
+  await user.click(await view.findByRole("button", { name: ui.composer.send }));
 }
 
 function installHomeRoutingFetch(options: {
@@ -195,8 +199,8 @@ for (const refusal of [
       expect(view.getByRole("alert").textContent).toContain(refusal.message),
     );
     expect(starts).toEqual([]);
-    expect(view.getByRole("textbox", { name: "Message" }).textContent).toBe(
-      "ask analyst",
-    );
+    expect(
+      view.getByRole("textbox", { name: ui.composer.message }).textContent,
+    ).toBe("ask analyst");
   });
 }

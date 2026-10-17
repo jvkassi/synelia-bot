@@ -19,6 +19,7 @@ import type { QueuedMessage } from "@/components/channels/composer";
 import { attachmentUrl } from "@/lib/channels/attachments";
 import { frameFiring } from "@openbot/shared/routine-firing";
 import { settleReactWork } from "./settle-react-work";
+import { ui } from "@/lib/i18n";
 
 /**
  * `toVisibleChatItems` (chat-messages.ts) gathers the attachment parts of a user turn into one
@@ -173,7 +174,7 @@ test("an image attachment renders as an img carrying the attachment url", () => 
     userMessage([imagePart(url, "shot.png")]),
   ]);
 
-  const img = getByRole("img", { name: /attachment/i });
+  const img = getByRole("img", { name: /pièce jointe/i });
   expect(img.getAttribute("src")).toBe(url);
 });
 
@@ -182,13 +183,13 @@ test("a broken image is replaced by a stated absence, not a broken-image glyph",
     userMessage([imagePart(attachmentUrl("att-image"), "gone.png")]),
   ]);
 
-  const img = getByRole("img", { name: /attachment/i });
+  const img = getByRole("img", { name: /pièce jointe/i });
   fireEvent.error(img);
 
   // The <img> element is gone entirely — this reader is never left staring at the browser's own
   // broken-image box, which says nothing about what actually happened.
   expect(queryByRole("img")).toBeNull();
-  expect(getByText(/unavailable/i)).toBeTruthy();
+  expect(getByText(/pas disponible/i)).toBeTruthy();
 });
 
 test("an off-site attachment url is never fetched, it is reported missing", () => {
@@ -199,7 +200,7 @@ test("an off-site attachment url is never fetched, it is reported missing", () =
   ]);
 
   expect(queryByRole("img")).toBeNull();
-  expect(getByText("shot.png is unavailable.")).toBeTruthy();
+  expect(getByText(ui.conversation.fileUnavailable("shot.png"))).toBeTruthy();
 });
 
 test("a message that is only an attachment still appears", () => {
@@ -303,11 +304,11 @@ test("a thumbnail is a crop, and what opens it is a button rather than a link", 
 
   expect(queryByRole("dialog")).toBeNull();
   // `object-cover` is what makes it a square crop, and therefore what makes the dialog necessary.
-  expect(getByRole("img", { name: /attachment/i }).className).toContain(
+  expect(getByRole("img", { name: /pièce jointe/i }).className).toContain(
     "object-cover",
   );
 
-  const trigger = getByLabelText("Open shot.png");
+  const trigger = getByLabelText(ui.conversation.open("shot.png"));
   expect(trigger.tagName).toBe("BUTTON");
   // Not an anchor: it opens something here, and a middle-click must not offer a tab of raw bytes.
   expect(trigger.getAttribute("href")).toBeNull();
@@ -340,7 +341,7 @@ test("the opened picture states its absence rather than showing a broken frame",
   // The <img> is gone entirely, exactly as it is in the tile: no browser placeholder is left for
   // the reader to interpret.
   expect(queryByRole("img")).toBeNull();
-  expect(getByText("gone.png is unavailable.")).toBeTruthy();
+  expect(getByText(ui.conversation.fileUnavailable("gone.png"))).toBeTruthy();
   // A note, never an alert — this answers something the reader just did, it does not interrupt.
   expect(getByRole("note")).toBeTruthy();
 });
@@ -353,7 +354,7 @@ test("an unnamed picture that will not open still says what happened", () => {
 
   fireEvent.error(getByRole("img"));
 
-  expect(getByText("This attachment is unavailable.")).toBeTruthy();
+  expect(getByText(ui.conversation.attachmentUnavailable)).toBeTruthy();
 });
 
 /*
@@ -384,9 +385,9 @@ test("an off-site document url is reported missing rather than drawn as a file c
     userMessage([documentPart("https://example.com/report.pdf", "report.pdf")]),
   ]);
 
-  expect(getByText("report.pdf is unavailable.")).toBeTruthy();
+  expect(getByText(ui.conversation.fileUnavailable("report.pdf"))).toBeTruthy();
   // Not the file card: no "Attachment" caption, and the name is not offered as an intact one.
-  expect(queryByText("Attachment")).toBeNull();
+  expect(queryByText(ui.conversation.attachment)).toBeNull();
 });
 
 /*
@@ -404,9 +405,11 @@ test("a document whose row is gone is reported missing rather than named", async
     userMessage([documentPart(attachmentUrl("att-document"), "report.pdf")]),
   ]);
 
-  expect(await findByText("report.pdf is unavailable.")).toBeTruthy();
+  expect(
+    await findByText(ui.conversation.fileUnavailable("report.pdf")),
+  ).toBeTruthy();
   // Not the file card: the name is no longer offered as an intact one, caption and all.
-  expect(queryByText("Attachment")).toBeNull();
+  expect(queryByText(ui.conversation.attachment)).toBeNull();
 });
 
 /*
@@ -421,8 +424,8 @@ test("a document whose row is still there keeps its card", async () => {
   await waitFor(() => expect(probes).toHaveLength(1));
 
   expect(getByText("report.pdf")).toBeTruthy();
-  expect(getByText("Attachment")).toBeTruthy();
-  expect(queryByText("report.pdf is unavailable.")).toBeNull();
+  expect(getByText(ui.conversation.attachment)).toBeTruthy();
+  expect(queryByText(ui.conversation.fileUnavailable("report.pdf"))).toBeNull();
 });
 
 /*
@@ -467,7 +470,7 @@ test("an off-site document is never probed", async () => {
     ]),
   ]);
 
-  expect(getByText("report.pdf is unavailable.")).toBeTruthy();
+  expect(getByText(ui.conversation.fileUnavailable("report.pdf"))).toBeTruthy();
 
   await waitFor(() => expect(probes).toHaveLength(1));
   // One probe, and it is the servable file's. Nothing was sent to example.com.
@@ -530,8 +533,10 @@ test("only a 404 makes a document missing, not any other failed answer", async (
 
     // The card is intact: the name, the caption, and no accusation.
     expect(getByText("report.pdf")).toBeTruthy();
-    expect(getByText("Attachment")).toBeTruthy();
-    expect(queryByText("report.pdf is unavailable.")).toBeNull();
+    expect(getByText(ui.conversation.attachment)).toBeTruthy();
+    expect(
+      queryByText(ui.conversation.fileUnavailable("report.pdf")),
+    ).toBeNull();
 
     unmount();
   }
@@ -609,7 +614,7 @@ test("a probe that never arrives leaves the card alone", async () => {
   await act(async () => {});
 
   expect(getByText("report.pdf")).toBeTruthy();
-  expect(queryByText("report.pdf is unavailable.")).toBeNull();
+  expect(queryByText(ui.conversation.fileUnavailable("report.pdf"))).toBeNull();
 });
 
 /*
@@ -643,8 +648,8 @@ test("missing attachments are stated, not announced over what is being read", ()
   // Three files, three tiles, and not one interruption between them.
   expect(role("alert")).toBe(0);
   expect(role("note")).toBe(3);
-  expect(getByText("one.png is unavailable.")).toBeTruthy();
-  expect(getByText("three.png is unavailable.")).toBeTruthy();
+  expect(getByText(ui.conversation.fileUnavailable("one.png"))).toBeTruthy();
+  expect(getByText(ui.conversation.fileUnavailable("three.png"))).toBeTruthy();
 });
 /*
  * The two wordings, both pinned, because they are the ones a reader is left with when everything
@@ -662,7 +667,7 @@ test("an unnamed missing attachment still says what it is", () => {
     ]),
   ]);
 
-  expect(getByText("This attachment is unavailable.")).toBeTruthy();
+  expect(getByText(ui.conversation.attachmentUnavailable)).toBeTruthy();
 });
 
 test("an unnamed document that is present is still drawn as a file", async () => {
@@ -677,8 +682,8 @@ test("an unnamed document that is present is still drawn as a file", async () =>
   ]);
 
   await waitFor(() => expect(probes).toHaveLength(1));
-  expect(getByText("Untitled file")).toBeTruthy();
-  expect(getByText("Attachment")).toBeTruthy();
+  expect(getByText(ui.conversation.untitledFile)).toBeTruthy();
+  expect(getByText(ui.conversation.attachment)).toBeTruthy();
 });
 
 /*
@@ -697,7 +702,7 @@ test("a file parked with a message is still on screen", () => {
   expect(image?.getAttribute("src")).toBe(attachmentUrl("att-image"));
   // Still parked, and still takeable back: the row is drawn with the message, not instead of it.
   expect(getByText("this one instead")).toBeTruthy();
-  expect(getByText("Queued")).toBeTruthy();
+  expect(getByText(ui.conversation.queued)).toBeTruthy();
 });
 
 /*
@@ -728,7 +733,7 @@ test("taking back a parked file names the file", () => {
     queued: [parked("", [staged("att-image", "shot.png")])],
   });
 
-  expect(getByLabelText("Remove queued message: shot.png")).toBeTruthy();
+  expect(getByLabelText(ui.conversation.removeQueued("shot.png"))).toBeTruthy();
 });
 
 /*
@@ -874,7 +879,7 @@ test("a parked picture the browser mislabelled is drawn as a picture", () => {
     attachmentUrl("att-shot"),
   );
   // Not the file card: that caption is the fixed word every document tile carries.
-  expect(queryByText("Attachment")).toBeNull();
+  expect(queryByText(ui.conversation.attachment)).toBeNull();
 });
 
 /*
@@ -892,7 +897,7 @@ test("a parked file the browser called a picture is drawn as a file", () => {
 
   expect(container.querySelector("img")).toBeNull();
   expect(getByText("notes.txt")).toBeTruthy();
-  expect(getByText("Attachment")).toBeTruthy();
+  expect(getByText(ui.conversation.attachment)).toBeTruthy();
 });
 
 /*

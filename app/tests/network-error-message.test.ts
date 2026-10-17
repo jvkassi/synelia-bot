@@ -16,7 +16,5 @@ test("the browser's dropped-connection wordings are recognised", () => {
 
 test("a provider or model failure is not mistaken for a dropped connection", () => {
   expect(isNetworkFailure("Erreur du fournisseur (HTTP 502)")).toBe(false);
-  expect(isNetworkFailure("The network error budget was exceeded")).toBe(
-    false,
-  );
+  expect(isNetworkFailure("The network error budget was exceeded")).toBe(false);
 });

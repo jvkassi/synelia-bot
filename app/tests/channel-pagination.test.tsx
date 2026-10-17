@@ -29,6 +29,7 @@ import { authKeys } from "@/lib/auth/queries";
 import { type ChannelSummary, channelKeys } from "@/lib/channels/queries";
 import { userPreferencesQueryOptions } from "@/lib/settings/message-list";
 import { botLifecycleKeys } from "@/lib/bot-lifecycle/queries";
+import { ui } from "@/lib/i18n";
 
 // Keep the sidebar's live-update socket offline; these tests exercise HTTP pagination.
 class OfflineWebSocket extends EventTarget implements WebSocket {
@@ -214,7 +215,7 @@ function activeObserver() {
 test("message emphasis updates mounted rows from the account preferences cache", async () => {
   const view = renderSidebar();
   const agent = await view.findByText("Recent conversation");
-  const thread = view.getByText("New conversation");
+  const thread = view.getByText(ui.sidebar.untitled);
   expect(thread.className).toContain("text-[0.9rem]");
   act(() =>
     clients[0]?.setQueryData(userPreferencesQueryOptions("user").queryKey, {
@@ -232,7 +233,7 @@ test("scrolling requests the cursor once, appends older rows, and stops at the f
   const view = renderSidebar();
   expect(await view.findByText("Recent conversation")).toBeTruthy();
   expect(
-    view.getByRole("button", { name: "Load older conversations" }),
+    view.getByRole("button", { name: ui.sidebar.loadOlderButton }),
   ).toBeTruthy();
   await waitFor(() => expect(ScrollObserver.active.size).toBe(1));
   const observer = activeObserver();
@@ -245,7 +246,7 @@ test("scrolling requests the cursor once, appends older rows, and stops at the f
     observer.intersect();
     observer.intersect();
   });
-  await view.findByRole("button", { name: "Loading older conversations…" });
+  await view.findByRole("button", { name: ui.sidebar.loadingOlder });
   expect(requests).toEqual(["/api/channels?cursor=older%2Fpage"]);
   pending.resolve(
     Response.json({
@@ -256,7 +257,7 @@ test("scrolling requests the cursor once, appends older rows, and stops at the f
   expect(await view.findByText("Older conversation")).toBeTruthy();
   expect(view.getByText("Recent conversation")).toBeTruthy();
   expect(
-    view.queryByRole("button", { name: "Load older conversations" }),
+    view.queryByRole("button", { name: ui.sidebar.loadOlderButton }),
   ).toBeNull();
   expect(ScrollObserver.active.size).toBe(0);
 });
@@ -270,7 +271,7 @@ test("a failed page preserves rows and waits for an explicit retry", async () =>
   act(() => activeObserver().intersect());
   expect(await view.findByRole("alert")).toHaveProperty(
     "textContent",
-    "Could not load older conversations.",
+    ui.sidebar.olderFailed,
   );
   expect(view.getByText("Recent conversation")).toBeTruthy();
   expect(ScrollObserver.active.size).toBe(0);
@@ -280,9 +281,7 @@ test("a failed page preserves rows and waits for an explicit retry", async () =>
       channels: [channel("Recovered conversation")],
       nextCursor: "last-page",
     });
-  fireEvent.click(
-    view.getByRole("button", { name: "Retry loading older conversations" }),
-  );
+  fireEvent.click(view.getByRole("button", { name: ui.sidebar.retryOlder }));
   expect(await view.findByText("Recovered conversation")).toBeTruthy();
   expect(requests).toEqual([
     "/api/channels?cursor=older%2Fpage",
@@ -303,11 +302,9 @@ test("search loads older history explicitly and includes new matches", async () 
   const view = renderSidebar();
   const user = userEvent.setup({ document: view.container.ownerDocument });
   await view.findByText("Recent conversation");
-  const search = view.getByRole("textbox", { name: "Search channels" });
+  const search = view.getByRole("textbox", { name: ui.sidebar.searchLabel });
   await user.type(search, "Archived");
-  expect(
-    await view.findByText("No loaded channels match your search"),
-  ).toBeTruthy();
+  expect(await view.findByText(ui.sidebar.noMatchLoaded)).toBeTruthy();
   expect(ScrollObserver.active.size).toBe(0);
   expect(requests).toEqual([]);
   respond = async () =>
@@ -316,10 +313,10 @@ test("search loads older history explicitly and includes new matches", async () 
       nextCursor: null,
     });
   fireEvent.click(
-    view.getByRole("button", { name: "Load older conversations" }),
+    view.getByRole("button", { name: ui.sidebar.loadOlderButton }),
   );
   expect(await view.findByText("Archived conversation")).toBeTruthy();
-  expect(view.queryByText("No loaded channels match your search")).toBeNull();
+  expect(view.queryByText(ui.sidebar.noMatchLoaded)).toBeNull();
   await user.click(search);
   await user.keyboard("{Control>}a{/Control}{Backspace}");
   expect(await view.findByText("Recent conversation")).toBeTruthy();

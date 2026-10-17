@@ -16,6 +16,7 @@ import {
 } from "@testing-library/react";
 import { Composer } from "@/components/channels/composer/composer";
 import { settleReactWork } from "./settle-react-work";
+import { ui } from "@/lib/i18n";
 
 /**
  * What the composer does with a file, from the outside: the button that opens the picker, the drop
@@ -115,9 +116,9 @@ async function uploaded(
 ) {
   await waitFor(() => {
     expect(queryByLabelText(`Remove ${name}`)).not.toBeNull();
-    expect((getByLabelText("Send message") as HTMLButtonElement).disabled).toBe(
-      false,
-    );
+    expect(
+      (getByLabelText(ui.composer.send) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 }
 
@@ -126,7 +127,7 @@ test("a composer with a channel offers a file picker behind the plus button", ()
     <Composer channelId="channel-1" compact onSubmit={() => {}} />,
   );
 
-  const attach = getByLabelText("Attach a file") as HTMLButtonElement;
+  const attach = getByLabelText(ui.composer.attach) as HTMLButtonElement;
   expect(attach.disabled).toBe(false);
 
   // The button is only worth anything if it has an input to open. Clicking it must reach a real
@@ -162,10 +163,10 @@ test("a composer with no channel keeps the button that says so, and takes no fil
   // The old affordance, untouched: nothing to offer and it says so, rather than a live button
   // that would open a picker with nowhere to upload to.
   const placeholder = getByLabelText(
-    "More message options unavailable",
+    ui.composer.moreOptionsUnavailable,
   ) as HTMLButtonElement;
   expect(placeholder.disabled).toBe(true);
-  expect(queryByLabelText("Attach a file")).toBeNull();
+  expect(queryByLabelText(ui.composer.attach)).toBeNull();
   expect(container.querySelector('input[type="file"]')).toBeNull();
 
   /*
@@ -279,9 +280,9 @@ test("a disabled composer takes no dropped file, and offers no way to pick one",
 
   // Visibly shut rather than merely ignored: a button that opens a picker whose file will be
   // dropped on the floor is worse than one that says it cannot.
-  expect((getByLabelText("Attach a file") as HTMLButtonElement).disabled).toBe(
-    true,
-  );
+  expect(
+    (getByLabelText(ui.composer.attach) as HTMLButtonElement).disabled,
+  ).toBe(true);
   expect(
     (container.querySelector('input[type="file"]') as HTMLInputElement)
       .disabled,

@@ -12,6 +12,7 @@ import { deploymentKeys } from "@/lib/deployment/queries";
 import * as recording from "@/lib/dictation/recording";
 import { queryClient } from "@/query-client";
 import { settleReactWork } from "./settle-react-work";
+import { ui } from "@/lib/i18n";
 
 beforeAll(() => GlobalRegistrator.register({ url: "http://localhost/" }));
 afterEach(() => {
@@ -71,7 +72,9 @@ for (const variant of ["compact", "default"] as const) {
           view.getByRole("button", { name: "Dictate a message" }),
         );
         await waitFor(() => expect(view.getByText("Listening")).toBeDefined());
-        expect(view.queryByRole("textbox", { name: "Message" })).toBeNull();
+        expect(
+          view.queryByRole("textbox", { name: ui.composer.message }),
+        ).toBeNull();
         expect(
           view.queryByRole("button", { name: "Dictate a message" }),
         ).toBeNull();
@@ -88,7 +91,8 @@ for (const variant of ["compact", "default"] as const) {
           );
           await waitFor(() =>
             expect(
-              view.getByRole("textbox", { name: "Message" }).textContent,
+              view.getByRole("textbox", { name: ui.composer.message })
+                .textContent,
             ).toBe("Existing draft"),
           );
           expect(transcribe).not.toHaveBeenCalled();
@@ -121,7 +125,8 @@ for (const variant of ["compact", "default"] as const) {
         if (action === "stop" || action === "failed-send") {
           await waitFor(() =>
             expect(
-              view.getByRole("textbox", { name: "Message" }).textContent,
+              view.getByRole("textbox", { name: ui.composer.message })
+                .textContent,
             ).toContain("Existing draft dictated words"),
           );
         }

@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import { Composer } from "@/components/channels/composer/composer";
 import { settleReactWork } from "./settle-react-work";
+import { ui } from "@/lib/i18n";
 
 /**
  * WHAT HAPPENS TO A FILE DROPPED ON A COMPOSER THAT CANNOT ACCEPT IT.
@@ -336,7 +337,7 @@ test("a disabled composer with no channel does not tell people to send first", a
   expect(alert.textContent).toContain("can no longer take messages");
   // The half that made the old sentence a lie, asserted rather than assumed: the control it sent
   // them to is shut.
-  expect((getByLabelText("Send message") as HTMLButtonElement).disabled).toBe(
+  expect((getByLabelText(ui.composer.send) as HTMLButtonElement).disabled).toBe(
     true,
   );
   expect(alert.textContent).not.toContain("Send this message first");

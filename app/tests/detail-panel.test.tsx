@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { useEffect } from "react";
 import { DetailPanel } from "@/components/layout/detail-panel";
+import { ui } from "@/lib/i18n";
 
 class Observer implements ResizeObserver {
   static targets = new Map<Element, Observer>();
@@ -105,7 +106,7 @@ test("closing narrow details invokes the owner and unmounts detail work", async 
   const view = render(<DetailPanel {...props} open />);
   await resize(view.container, 380);
   expect(await view.findByRole("dialog", { name: "Computer" })).toBeTruthy();
-  fireEvent.click(view.getByRole("button", { name: "Close" }));
+  fireEvent.click(view.getByRole("button", { name: ui.conversation.close }));
   expect(closed).toBe(1);
   view.rerender(<DetailPanel {...props} open={false} />);
   await waitFor(() => expect(view.queryByText("Browser preview")).toBeNull());
