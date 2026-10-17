@@ -39,6 +39,7 @@ import { pilotTools } from "../synelia/pilot-gate";
 import { logRunEvent, logRunTiming } from "../synelia/request-log";
 import {
   adjustPersistedRun,
+  assistantTextFromEvents,
   computeRetryable,
   EFFECTFUL_TOOLS,
   finishClass,
@@ -318,12 +319,10 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
               // countable straight from the DB too. See usage0Refusal in synelia/run-refusal.ts.
               const adjusted = adjustPersistedRun(run.events, resolved);
               if (usage0Refusal(run.events, resolved)) {
-                const assistantText = (store?.messagesSnapshot ?? [])
-                  .filter((message) => message.role === "assistant")
-                  .map((message) =>
-                    typeof message.content === "string" ? message.content : "",
-                  )
-                  .join("");
+                // Synelia fork (item 4): the text that triggered THIS run, from its OWN assistant
+                // deltas — never the whole thread's assistant text, which would fold in earlier,
+                // unrelated answers and overstate textLength for the auditor.
+                const assistantText = assistantTextFromEvents(run.events);
                 console.log(
                   JSON.stringify({
                     type: "synelia_refusal_usage0_trigger",

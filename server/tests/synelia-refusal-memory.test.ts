@@ -167,3 +167,62 @@ describe("item 1: in-memory run holds the adjusted events (refusal -> connect ->
     });
   }
 });
+
+describe("item 4: usage0 trigger log reads the refused run's OWN assistant text", () => {
+  test("textLength and text come from this run's deltas, not the (empty) thread snapshot", async () => {
+    process.env[USAGE0_ENV] = "router9:cc/claude-sonnet-5-5";
+    const threadId = "t-log";
+    const refusalText = "This request was blocked under policy.";
+    const agent = scriptedAgent([
+      [
+        ev("RUN_STARTED"),
+        ev("TEXT_MESSAGE_START", { messageId: "r1", role: "assistant" }),
+        ev("TEXT_MESSAGE_CONTENT", { messageId: "r1", delta: refusalText }),
+        ev("TEXT_MESSAGE_END", { messageId: "r1" }),
+        ev("RUN_FINISHED", { usage: [{ outputTokens: 0, inputTokens: 9 }] }),
+      ],
+    ]);
+    const runner = new PostgresAgentRunner(fakeStore(), async () => list);
+    const lines: string[] = [];
+    const original = console.log;
+    console.log = (...args: unknown[]) => {
+      lines.push(args.map(String).join(" "));
+    };
+    try {
+      await lastValueFrom(
+        runner
+          .run({
+            threadId,
+            agent,
+            input: {
+              runId: "run-1",
+              messages: [{ id: "m-log", role: "user", content: "demande" }],
+              tools: [],
+              context: [ctxEntry("router9:cc/claude-sonnet-5-5")],
+            },
+          } as never)
+          .pipe(toArray()),
+      );
+      await runner.ɵpersisted(threadId);
+    } finally {
+      console.log = original;
+    }
+    const trigger = lines
+      .map((line) => {
+        try {
+          return JSON.parse(line) as {
+            type?: string;
+            text?: string;
+            textLength?: number;
+          };
+        } catch {
+          return undefined;
+        }
+      })
+      .find((entry) => entry?.type === "synelia_refusal_usage0_trigger");
+    expect(trigger).toBeDefined();
+    expect(trigger?.text).toBe(refusalText);
+    expect(trigger?.textLength).toBe(refusalText.length);
+  });
+});
+

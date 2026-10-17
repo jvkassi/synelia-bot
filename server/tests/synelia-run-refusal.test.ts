@@ -8,6 +8,7 @@ import type { BaseEvent } from "@ag-ui/client";
 import { resolveModel } from "../src/synelia/models";
 import {
   adjustPersistedRun,
+  assistantTextFromEvents,
   classifyErrorCode,
   computeRetryable,
   EFFECTFUL_TOOLS,
@@ -455,3 +456,43 @@ describe("allowlist key = resolveModel(SYNELIA_DEFAULT_MODEL) (konnect config 20
     ).toBe(false);
   });
 });
+
+describe("assistantTextFromEvents (item 4: a run's OWN assistant text)", () => {
+  const ev = (type: string, extra: Record<string, unknown> = {}) =>
+    ({ type, ...extra }) as unknown as BaseEvent;
+
+  test("concatenates this run's CONTENT and CHUNK deltas in order", () => {
+    const events = [
+      ev("RUN_STARTED"),
+      ev("TEXT_MESSAGE_START", { messageId: "m1" }),
+      ev("TEXT_MESSAGE_CONTENT", { messageId: "m1", delta: "This request " }),
+      ev("TEXT_MESSAGE_CHUNK", { messageId: "m1", delta: "was blocked." }),
+      ev("TEXT_MESSAGE_END", { messageId: "m1" }),
+      ev("RUN_FINISHED"),
+    ];
+    expect(assistantTextFromEvents(events)).toBe("This request was blocked.");
+  });
+
+  test("ignores non-text events and missing deltas; empty for an empty finish", () => {
+    expect(
+      assistantTextFromEvents([
+        ev("RUN_STARTED"),
+        ev("TOOL_CALL_START", { toolCallName: "x" }),
+        ev("TEXT_MESSAGE_CONTENT", { messageId: "m1" }),
+        ev("RUN_FINISHED"),
+      ]),
+    ).toBe("");
+  });
+
+  test("reads only the given run, so an earlier answer is never folded in", () => {
+    // What the item fixes: the trigger log used the whole-thread snapshot. Given only THIS run's
+    // events, an earlier run's assistant text cannot leak into textLength.
+    const refusedRun = [
+      ev("TEXT_MESSAGE_CONTENT", { delta: "blocked" }),
+      ev("RUN_FINISHED", { usage: [{ outputTokens: 0 }] }),
+    ];
+    expect(assistantTextFromEvents(refusedRun)).toBe("blocked");
+    expect(assistantTextFromEvents(refusedRun).length).toBe(7);
+  });
+});
+

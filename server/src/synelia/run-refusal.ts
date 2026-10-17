@@ -271,6 +271,25 @@ export function usage0Refusal(
   return finishedOutputTokens(events) === 0;
 }
 
+/**
+ * Synelia fork (item 4): the assistant text a SINGLE run streamed, concatenated from its OWN
+ * TEXT_MESSAGE_CONTENT / TEXT_MESSAGE_CHUNK deltas. Used only to LOG a usage0 trigger so a false
+ * positive can be audited against that run's output alone — never the whole thread's assistant text
+ * (which would mix in earlier, unrelated answers and inflate textLength). Pure and total.
+ */
+export function assistantTextFromEvents(events: readonly BaseEvent[]): string {
+  let text = "";
+  for (const event of events as readonly { type?: string; delta?: unknown }[]) {
+    if (
+      (event.type === "TEXT_MESSAGE_CONTENT" ||
+        event.type === "TEXT_MESSAGE_CHUNK") &&
+      typeof event.delta === "string"
+    )
+      text += event.delta;
+  }
+  return text;
+}
+
 /** Assistant OUTPUT events (streamed text, tool calls). Dropped on replay for a suppressed run so a
  * reload shows no English refusal text; the user's message (carried by the messages snapshot/route)
  * and the terminal RUN_ERROR stay. */
