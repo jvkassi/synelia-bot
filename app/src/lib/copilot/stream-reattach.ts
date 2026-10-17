@@ -58,3 +58,13 @@ export function dedupeById<T extends { id: string }>(messages: T[]): T[] {
   }
   return out;
 }
+
+/**
+ * Synelia fork: a run that finished without adding anything leaves the person's message last
+ * (idempotent resend of an already answered message). The answer is on the server: replay it.
+ */
+export function endedWithoutAnswer(
+  messages: readonly { role: string }[],
+): boolean {
+  return messages.at(-1)?.role === "user";
+}

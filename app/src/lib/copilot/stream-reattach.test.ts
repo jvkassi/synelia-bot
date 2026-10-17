@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { dedupeById, isStreamCut } from "./stream-reattach";
+import { dedupeById, endedWithoutAnswer, isStreamCut } from "./stream-reattach";
 
 describe("stream reattach (gate 12)", () => {
   test("network cuts are recognised, provider errors and user aborts are not", () => {
@@ -16,5 +16,14 @@ describe("stream reattach (gate 12)", () => {
     expect(dedupeById([user, partial, user, full])).toEqual([user, full]);
     const clean = [user, full];
     expect(dedupeById(clean)).toBe(clean);
+  });
+  test("an empty run (idempotent resend) leaves the person last and asks for a replay", () => {
+    const user = { id: "u1", role: "user" };
+    const answer = { id: "a1", role: "assistant" };
+    const tool = { id: "t1", role: "tool" };
+    expect(endedWithoutAnswer([answer, user])).toBe(true);
+    expect(endedWithoutAnswer([user, answer])).toBe(false);
+    expect(endedWithoutAnswer([user, tool])).toBe(false);
+    expect(endedWithoutAnswer([])).toBe(false);
   });
 });
