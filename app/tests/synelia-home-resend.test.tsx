@@ -220,9 +220,10 @@ for (const mode of ["expired-401", "expired-code"] as const) {
     const view = renderHome(makeQueryClient());
     await send(view, "prompt c");
     const alert = await view.findByRole("alert");
-    expect(alert.textContent).toContain(
+    expect(alert.textContent).toBe(
       "Votre session a expiré. Reconnectez-vous pour continuer.",
     );
+    expect(alert.textContent).not.toContain("erreur");
     const link = view.getByRole("link", { name: "Se reconnecter" });
     expect(link.getAttribute("href")).toBe("/sign");
     expect(view.queryByRole("button", { name: ui.home.retry })).toBeNull();
@@ -251,11 +252,11 @@ test("describeStartError words each failure from its status and code", () => {
     ui.auth.changePasswordRequired,
   );
   expect(describeStartError(http(401))).toBe(
-    `${ui.home.sessionExpired} (erreur 401)`,
+    ui.home.sessionExpired,
   );
   // The server's stable code wins over the (masked) status.
   expect(describeStartError(http(403, "session_expired"))).toBe(
-    `${ui.home.sessionExpired} (erreur 403 · session_expired)`,
+    ui.home.sessionExpired,
   );
   expect(describeStartError(new TypeError("Failed to fetch"))).toBe(
     ui.home.networkError,

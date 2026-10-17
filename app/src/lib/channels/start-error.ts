@@ -47,7 +47,8 @@ export function describeStartError(error: unknown): string {
   const { status, code } = failure;
   if (status === undefined) return ui.home.startFailed;
   const detail = ui.home.errorDetail(status, code);
-  if (isSessionExpired(error)) return `${ui.home.sessionExpired} ${detail}`;
+  // The sentence and « Se reconnecter » say it all: no technical suffix for a lost session.
+  if (isSessionExpired(error)) return ui.home.sessionExpired;
   if (status === 403)
     return code === "password_change_required"
       ? ui.auth.changePasswordRequired
