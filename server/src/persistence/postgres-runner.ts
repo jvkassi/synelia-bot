@@ -21,7 +21,7 @@ import {
   InMemoryAgentRunner,
   ɵGLOBAL_STORE,
 } from "@copilotkit/runtime/v2";
-import { defer, from, type Observable, of, switchMap } from "rxjs";
+import { defer, from, map, type Observable, of, switchMap } from "rxjs";
 import {
   isHiddenModel,
   resolveModel,
@@ -29,7 +29,14 @@ import {
 } from "../synelia/models";
 import { pilotTools } from "../synelia/pilot-gate";
 import { logRunTiming } from "../synelia/request-log";
-import { adjustPersistedRun, finishClass } from "../synelia/run-refusal";
+import {
+  adjustPersistedRun,
+  computeRetryable,
+  EFFECTFUL_TOOLS,
+  finishClass,
+  replayEvents,
+  usage0RefusalCandidate,
+} from "../synelia/run-refusal";
 import type {
   LocalIntelligence,
   LocalThreadSummary,
@@ -255,8 +262,33 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
           const adjusted = adjustPersistedRun(run.events);
           void this.#models()
             .catch(() => undefined)
-            .then((list) =>
-              this.#store.saveRun({
+            .then((list) => {
+              const resolved = resolveModel(pickedModel(request), list);
+              // Synelia fork: a DORMANT refusal signal (disabled unless SYNELIA_REFUSAL_USAGE0_MODELS
+              // names the pair). When on for an allowlisted provider+model, a finished run with 0
+              // output tokens and readable text is logged as a candidate silent refusal — with the
+              // text itself — so false positives can be counted before the text is ever hidden. The
+              // text is NOT dropped here; see usage0RefusalCandidate in synelia/run-refusal.ts.
+              const assistantText = (store?.messagesSnapshot ?? [])
+                .filter((message) => message.role === "assistant")
+                .map((message) =>
+                  typeof message.content === "string" ? message.content : "",
+                )
+                .join("");
+              if (usage0RefusalCandidate(run.events, resolved, assistantText))
+                console.log(
+                  JSON.stringify({
+                    type: "synelia_refusal_usage0_candidate",
+                    threadId: request.threadId,
+                    runId,
+                    provider: resolved.provider,
+                    model: resolved.model,
+                    outputTokens: 0,
+                    textLength: assistantText.length,
+                    text: assistantText.slice(0, 2000),
+                  }),
+                );
+              return this.#store.saveRun({
                 runId,
                 threadId: request.threadId,
                 agentId,
@@ -266,14 +298,13 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
                 createdAt: run.createdAt ?? Date.now(),
                 // A provider failure (or a silent refusal, adjusted above) stores as error; a stream
                 // that threw does too even when its events do not say so.
-                status:
-                  status === "error" ? "error" : adjusted.status,
+                status: status === "error" ? "error" : adjusted.status,
                 // The model that really answered: allowlist + availability + default fallback,
                 // the rule Mastra applies, never the browser's header as sent.
-                ...resolveModel(pickedModel(request), list),
+                ...resolved,
                 ...(user ? { userId: user.id } : {}),
-              }),
-            )
+              });
+            })
             .catch((error) =>
               console.error(
                 JSON.stringify({
@@ -359,7 +390,37 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
           this.hydrate(request.threadId),
         ),
       ),
-    ).pipe(switchMap(() => super.connect(request)));
+    ).pipe(
+      switchMap(() => {
+        // Synelia fork: a RELOAD (no live run on this thread) replays stored history. Apply THE
+        // SINGLE REPLAY RULE (replayEvents): drop the assistant output of superseded error runs and
+        // provider_refusal runs, and stamp metadata.retryable on every RUN_ERROR. A LIVE reconnect
+        // keeps the upstream stream (historic + the in-flight subject); its RUN_ERROR is stamped the
+        // same way so the two paths agree.
+        if (liveRunId(request.threadId))
+          return super
+            .connect(request)
+            .pipe(map((event) => this.#stampRetryable(request.threadId, event)));
+        const runs = this.#global.peek(request.threadId)?.historicRuns ?? [];
+        return from(replayEvents(runs, EFFECTFUL_TOOLS));
+      }),
+    );
+  }
+
+  /** Set `metadata.retryable` on a live RUN_ERROR from its run's tool-call events (reload goes
+   * through replayEvents, which stamps the same way). */
+  #stampRetryable(threadId: string, event: BaseEvent): BaseEvent {
+    if ((event as { type?: string }).type !== "RUN_ERROR") return event;
+    const runId = (event as { runId?: string }).runId;
+    const run = this.#global
+      .peek(threadId)
+      ?.historicRuns.find((candidate) => candidate.runId === runId);
+    const retryable = computeRetryable(run?.events ?? [event], EFFECTFUL_TOOLS);
+    const previous = (event as { metadata?: Record<string, unknown> }).metadata;
+    return {
+      ...event,
+      metadata: { ...(previous ?? {}), retryable },
+    } as BaseEvent;
   }
 
   /** Called by the request middleware before the runtime's synchronous thread endpoints. */

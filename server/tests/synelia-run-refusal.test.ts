@@ -8,8 +8,14 @@ import type { BaseEvent } from "@ag-ui/client";
 import {
   adjustPersistedRun,
   classifyErrorCode,
+  computeRetryable,
+  EFFECTFUL_TOOLS,
   finishClass,
+  finishedOutputTokens,
+  replayEvents,
   SYNELIA_ERROR_CODES,
+  usage0Allowlist,
+  usage0RefusalCandidate,
 } from "../src/synelia/run-refusal";
 
 const ev = (type: string, extra: Record<string, unknown> = {}) =>
@@ -145,5 +151,131 @@ describe("finishClass", () => {
     expect(
       finishClass([started, ev("RUN_ERROR", { code: "thread_busy" })]),
     ).toBe("thread_busy");
+  });
+});
+
+describe("computeRetryable", () => {
+  const error = ev("RUN_ERROR", { code: "provider_refusal" });
+
+  test("a run with no tool call is retryable", () => {
+    expect(computeRetryable([started, error])).toBe(true);
+  });
+
+  test("a run that called an effectful tool (report_refusal) is not retryable", () => {
+    expect(computeRetryable([started, toolStart, error])).toBe(false);
+  });
+
+  test("a non-effectful display tool stays retryable", () => {
+    const show = ev("TOOL_CALL_START", { toolCallName: "showTable" });
+    expect(computeRetryable([started, show, error])).toBe(true);
+  });
+
+  test("a LEGACY run (stored event without metadata) with report_refusal is not retryable", () => {
+    // No metadata.retryable anywhere: the value is derived purely from the tool-call event.
+    const legacy = [
+      { type: "RUN_STARTED", threadId: "t", runId: "r" },
+      { type: "TOOL_CALL_START", toolCallId: "c1", toolCallName: "report_refusal" },
+      { type: "RUN_ERROR", threadId: "t", runId: "r", message: "content_filter" },
+    ] as unknown as BaseEvent[];
+    expect(computeRetryable(legacy)).toBe(false);
+  });
+
+  test("the effectful set is closed: an unknown tool is retry-safe", () => {
+    const other = ev("TOOL_CALL_START", { toolCallName: "somethingNew" });
+    expect(computeRetryable([started, other, error], EFFECTFUL_TOOLS)).toBe(true);
+  });
+});
+
+describe("usage0 refusal candidate (dormant signal)", () => {
+  const finishedUsage = (out: number | null) =>
+    ev("RUN_FINISHED", {
+      usage: out === null ? undefined : [{ outputTokens: out, inputTokens: 5 }],
+    });
+  const on = usage0Allowlist("router9:cc/claude-sonnet-5-5");
+  const ctx = { provider: "router9", model: "cc/claude-sonnet-5-5" };
+
+  test("outputTokens reads from a usage array", () => {
+    expect(finishedOutputTokens([started, finishedUsage(0)])).toBe(0);
+    expect(finishedOutputTokens([started, finishedUsage(12)])).toBe(12);
+    expect(finishedOutputTokens([started, finishedUsage(null)])).toBeUndefined();
+  });
+
+  test("disabled by default: empty allowlist never flags, even on the proven pair", () => {
+    expect(
+      usage0RefusalCandidate([started, finishedUsage(0)], ctx, "refus", usage0Allowlist("")),
+    ).toBe(false);
+  });
+
+  test("allowlisted pair with 0 tokens and text is a candidate", () => {
+    expect(usage0RefusalCandidate([started, finishedUsage(0)], ctx, "refus", on)).toBe(true);
+  });
+
+  test("negative: a genuine short reply with usage > 0 is never flagged", () => {
+    expect(usage0RefusalCandidate([started, finishedUsage(3)], ctx, "oui", on)).toBe(false);
+  });
+
+  test("negative: usage 0 on a non-allowlisted model never triggers", () => {
+    const other = { provider: "router9", model: "gemini/gemini-3.8-flash" };
+    expect(usage0RefusalCandidate([started, finishedUsage(0)], other, "x", on)).toBe(false);
+  });
+
+  test("empty text is not a candidate (that is the empty-finish path, not this one)", () => {
+    expect(usage0RefusalCandidate([started, finishedUsage(0)], ctx, "   ", on)).toBe(false);
+  });
+});
+
+describe("replayEvents (the single replay rule)", () => {
+  const textStart = ev("TEXT_MESSAGE_START", { messageId: "m", role: "assistant" });
+  const textContent = ev("TEXT_MESSAGE_CONTENT", { messageId: "m", delta: "english refusal" });
+  const textEnd = ev("TEXT_MESSAGE_END", { messageId: "m" });
+  const refusalError = ev("RUN_ERROR", { message: "content_filter", code: "provider_refusal" });
+  const unavailError = ev("RUN_ERROR", { message: "boom", code: "provider_unavailable" });
+  const types = (events: BaseEvent[]) => events.map((e) => (e as { type?: string }).type);
+  const runError = (events: BaseEvent[]) =>
+    events.find((e) => (e as { type?: string }).type === "RUN_ERROR") as
+      | { metadata?: { retryable?: boolean } }
+      | undefined;
+
+  test("a provider_refusal run (last) drops its assistant text and stamps retryable", () => {
+    const out = replayEvents([
+      { events: [started, textStart, textContent, textEnd, refusalError] },
+    ]);
+    expect(types(out).some((t) => t?.startsWith("TEXT_MESSAGE"))).toBe(false);
+    expect(types(out)).toContain("RUN_ERROR");
+    expect(runError(out)?.metadata?.retryable).toBe(true);
+  });
+
+  test("a provider_refusal run that called report_refusal is retryable:false", () => {
+    const out = replayEvents([
+      { events: [started, toolStart, textContent, refusalError] },
+    ]);
+    expect(runError(out)?.metadata?.retryable).toBe(false);
+  });
+
+  test("a SUPERSEDED error run drops its text; a later answered run keeps its own", () => {
+    const out = replayEvents([
+      { events: [started, textStart, textContent, unavailError] },
+      {
+        events: [
+          ev("RUN_STARTED"),
+          ev("TEXT_MESSAGE_START", { messageId: "a", role: "assistant" }),
+          ev("TEXT_MESSAGE_CONTENT", { messageId: "a", delta: "la vraie réponse" }),
+          ev("TEXT_MESSAGE_END", { messageId: "a" }),
+          finished,
+        ],
+      },
+    ]);
+    const deltas = out
+      .filter((e) => (e as { type?: string }).type === "TEXT_MESSAGE_CONTENT")
+      .map((e) => (e as { delta?: string }).delta ?? "")
+      .join(" ");
+    expect(deltas).toContain("la vraie réponse");
+    expect(deltas).not.toContain("english refusal");
+  });
+
+  test("a normal answered run is replayed untouched (no suppression)", () => {
+    const out = replayEvents([{ events: [started, textStart, textContent, textEnd, finished] }]);
+    expect(types(out).some((t) => t === "TEXT_MESSAGE_CONTENT")).toBe(true);
+    expect(types(out)).toContain("RUN_FINISHED");
   });
 });

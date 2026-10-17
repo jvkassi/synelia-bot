@@ -21,7 +21,7 @@
  * reliable, provider-agnostic signal is exactly "finished, no text, no tool call". The raw
  * finish_reason is logged separately at the provider boundary (agent-mastra timedFetch).
  */
-import type { BaseEvent } from "@ag-ui/client";
+import { type BaseEvent, compactEvents } from "@ag-ui/client";
 
 /** Stable error codes the front maps to French, preferred over any regex on the message. */
 export const SYNELIA_ERROR_CODES = {
@@ -143,4 +143,140 @@ export function adjustPersistedRun(events: readonly BaseEvent[]): {
     next = next.filter((event) => (event as Eventish).type !== "RUN_FINISHED");
 
   return { events: next, status: nowHasError ? "error" : "done" };
+}
+
+/**
+ * EFFECTFUL TOOLS — a CLOSED list of tools whose side effect a retry would duplicate. Today only
+ * `report_refusal`, which writes one `bot.declined` audit row (agents/routes.ts `/:agentId/declined`).
+ * The in-chat ask/show components (askApproval, showTable, …) are display only and are deliberately
+ * NOT listed. A tool absent from this set is treated as retry-safe.
+ */
+export const EFFECTFUL_TOOLS: ReadonlySet<string> = new Set(["report_refusal"]);
+
+/**
+ * Whether a failed / refused run may be retried by resending the same message. DERIVED AT READ TIME
+ * from the run's own TOOL_CALL_START events against the closed list above, and NEVER trusted from
+ * any stored `metadata.retryable` (a run persisted before this hash carries none). A run that
+ * performed an effectful tool call is not retryable: resending it would run the side effect again.
+ * Both `lastRunError` and `connect` replay call this one function, so a reload and a live reconnect
+ * agree, and a legacy run with an effectful tool call comes out `false`.
+ */
+export function computeRetryable(
+  events: readonly BaseEvent[],
+  effectful: ReadonlySet<string> = EFFECTFUL_TOOLS,
+): boolean {
+  const list = events as readonly { type?: string; toolCallName?: unknown }[];
+  for (const event of list) {
+    if (event.type !== "TOOL_CALL_START") continue;
+    const name =
+      typeof event.toolCallName === "string" ? event.toolCallName : "";
+    if (effectful.has(name)) return false;
+  }
+  return true;
+}
+
+/** The RUN_FINISHED usage's outputTokens, whether usage is stored as an array or a lone object. */
+export function finishedOutputTokens(
+  events: readonly BaseEvent[],
+): number | undefined {
+  const finished = (events as readonly { type?: string; usage?: unknown }[]).find(
+    (event) => event.type === "RUN_FINISHED",
+  );
+  const usage = finished?.usage;
+  const entry = Array.isArray(usage) ? usage[0] : usage;
+  const out = (entry as { outputTokens?: unknown } | undefined)?.outputTokens;
+  return typeof out === "number" ? out : undefined;
+}
+
+/**
+ * Provider+model pairs (`provider:model`) where a finished run with `outputTokens === 0` AND readable
+ * text is a proven silent refusal. DISABLED by default (empty set): konnect 2026-10-17 showed
+ * router9 `cc/claude-sonnet-5-5` gives 0 output tokens on 3/3 content-policy refusals and >0 on 46/46
+ * normal answers, but one of those refusals landed at 17:30 — beyond the 17:21 phishing pair the
+ * review named — so the signal is not yet enabled for text-bearing runs. Set
+ * SYNELIA_REFUSAL_USAGE0_MODELS (comma-separated) to turn it on once a replay-time text filter ships.
+ */
+export function usage0Allowlist(
+  raw: string | undefined = process.env.SYNELIA_REFUSAL_USAGE0_MODELS,
+): ReadonlySet<string> {
+  return new Set(
+    (raw ?? "")
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  );
+}
+
+/**
+ * Whether a finished run on an ALLOWLISTED provider+model, with 0 output tokens and non-empty text,
+ * is a candidate silent refusal. Used only to LOG the trigger (provider, model, usage, text) so
+ * false positives can be counted; it never drops the text here. Returns false for an empty allowlist
+ * (the default), a non-allowlisted pair, absent usage, usage > 0, or empty text — so a genuine short
+ * answer with normal usage is never flagged and usage 0 on a non-allowlisted model never triggers.
+ */
+export function usage0RefusalCandidate(
+  events: readonly BaseEvent[],
+  context: { provider?: string; model?: string },
+  text: string,
+  allowlist: ReadonlySet<string> = usage0Allowlist(),
+): boolean {
+  if (allowlist.size === 0) return false;
+  if (!context.provider || !context.model) return false;
+  if (!allowlist.has(`${context.provider}:${context.model}`)) return false;
+  if (text.trim().length === 0) return false;
+  return finishedOutputTokens(events) === 0;
+}
+
+/** Assistant OUTPUT events (streamed text, tool calls). Dropped on replay for a suppressed run so a
+ * reload shows no English refusal text; the user's message (carried by the messages snapshot/route)
+ * and the terminal RUN_ERROR stay. */
+const ASSISTANT_OUTPUT_TYPES = new Set([
+  "TEXT_MESSAGE_START",
+  "TEXT_MESSAGE_CONTENT",
+  "TEXT_MESSAGE_CHUNK",
+  "TEXT_MESSAGE_END",
+  "TOOL_CALL_START",
+  "TOOL_CALL_ARGS",
+  "TOOL_CALL_CHUNK",
+  "TOOL_CALL_END",
+  "TOOL_CALL_RESULT",
+]);
+
+/**
+ * THE SINGLE REPLAY RULE (connect / reload). Given a thread's historic runs oldest-first, produce the
+ * event stream a reconnecting browser replays. One run's assistant output is DROPPED when the run is
+ * either a SUPERSEDED error run (it ended in error and a later run exists) OR a provider_refusal run
+ * (even as the last run): the front renders the French notice from the RUN_ERROR `code` instead of the
+ * provider's English text. Every replayed RUN_ERROR is stamped with `metadata.retryable`, recomputed
+ * from that run's own tool calls (computeRetryable), overwriting any stored value — so a reload and a
+ * live reconnect agree and a legacy run with an effectful tool comes out not retryable. Pure and
+ * total: one function, covered by one shared test, used by connect() in postgres-runner.ts.
+ */
+export function replayEvents(
+  runs: readonly { events: readonly BaseEvent[] }[],
+  effectful: ReadonlySet<string> = EFFECTFUL_TOOLS,
+): BaseEvent[] {
+  const out: BaseEvent[] = [];
+  runs.forEach((run, index) => {
+    const events = run.events as readonly Eventish[];
+    const errorEvent = events.find((event) => event.type === "RUN_ERROR");
+    const isLast = index === runs.length - 1;
+    const suppressed =
+      !!errorEvent &&
+      (!isLast || errorEvent.code === SYNELIA_ERROR_CODES.providerRefusal);
+    const retryable = computeRetryable(run.events, effectful);
+    for (const event of run.events) {
+      const type = (event as Eventish).type ?? "";
+      if (suppressed && ASSISTANT_OUTPUT_TYPES.has(type)) continue;
+      if (type === "RUN_ERROR") {
+        const previous = (event as { metadata?: Record<string, unknown> })
+          .metadata;
+        out.push({
+          ...event,
+          metadata: { ...(previous ?? {}), retryable },
+        } as BaseEvent);
+      } else out.push(event);
+    }
+  });
+  return compactEvents(out);
 }

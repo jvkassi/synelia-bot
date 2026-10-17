@@ -4,6 +4,7 @@
  * Skipped without the variable (CI without a database).
  */
 import { afterAll, describe, expect, test } from "bun:test";
+import { lastValueFrom, timeout, toArray } from "rxjs";
 import { isLockConflict } from "@openbot/toolkit/lease";
 import {
   LocalIntelligence,
@@ -456,5 +457,171 @@ db("lastRunError carries the stable code (reload after a refusal)", () => {
       latest.messages.filter((m) => (m as { role?: string }).role === "user")
         .length,
     ).toBe(1);
+  });
+});
+
+db("connect replay: single rule (retryable + suppression), full chain through persistence", () => {
+  // describe.skip still runs this body: no DB url, no client.
+  const store = url ? open() : (undefined as unknown as LocalIntelligence);
+  // A FRESH runner = the reload case: nothing is in memory, so connect() must hydrate from Postgres
+  // and apply the single replay rule (replayEvents) from the stored events.
+  const runner = url
+    ? new PostgresAgentRunner(store)
+    : (undefined as unknown as PostgresAgentRunner);
+
+  const replay = async (threadId: string) =>
+    (await lastValueFrom(
+      runner.connect({ threadId }).pipe(timeout(5000), toArray()),
+    )) as { type: string; metadata?: { retryable?: boolean } }[];
+  const runError = (events: { type: string; metadata?: { retryable?: boolean } }[]) =>
+    events.find((event) => event.type === "RUN_ERROR");
+
+  test("full chain: RUN_ERROR with report_refusal -> persisted -> fresh connect replay is retryable:false", async () => {
+    const threadId = id();
+    const runId = id();
+    await store.saveRun({
+      runId,
+      threadId,
+      agentId: "a",
+      parentRunId: null,
+      events: [
+        { type: "RUN_STARTED", threadId, runId },
+        { type: "TOOL_CALL_START", toolCallId: "c1", toolCallName: "report_refusal" },
+        { type: "TOOL_CALL_END", toolCallId: "c1" },
+        { type: "RUN_ERROR", threadId, runId, message: "content_filter", code: "provider_refusal" },
+      ],
+      createdAt: Date.now(),
+      messages: [{ id: id(), role: "user", content: "demande" }],
+      status: "error",
+      userId: "u1",
+    } as never);
+
+    const error = runError(await replay(threadId));
+    expect(error?.metadata?.retryable).toBe(false);
+  });
+
+  test("legacy run: stored RUN_ERROR WITHOUT metadata, containing report_refusal, replays retryable:false", async () => {
+    const threadId = id();
+    const runId = id();
+    await store.saveRun({
+      runId,
+      threadId,
+      agentId: "a",
+      parentRunId: null,
+      // No metadata anywhere (persisted before this hash); the value is derived from the tool call.
+      events: [
+        { type: "RUN_STARTED", threadId, runId },
+        { type: "TOOL_CALL_START", toolCallId: "c1", toolCallName: "report_refusal" },
+        { type: "RUN_ERROR", threadId, runId, message: "stopped" },
+      ],
+      createdAt: Date.now(),
+      messages: [{ id: id(), role: "user", content: "demande" }],
+      status: "error",
+      userId: "u1",
+    } as never);
+
+    const error = runError(await replay(threadId));
+    expect(error?.metadata?.retryable).toBe(false);
+  });
+
+  test("a refusal with no effectful tool call replays as retryable:true", async () => {
+    const threadId = id();
+    const runId = id();
+    await store.saveRun({
+      runId,
+      threadId,
+      agentId: "a",
+      parentRunId: null,
+      events: [
+        { type: "RUN_STARTED", threadId, runId },
+        { type: "RUN_ERROR", threadId, runId, message: "content_filter", code: "provider_refusal" },
+      ],
+      createdAt: Date.now(),
+      messages: [{ id: id(), role: "user", content: "demande" }],
+      status: "error",
+      userId: "u1",
+    } as never);
+
+    const error = runError(await replay(threadId));
+    expect(error?.metadata?.retryable).toBe(true);
+  });
+
+  test("a provider_refusal run's English text is dropped on replay (notice comes from the code)", async () => {
+    const threadId = id();
+    const runId = id();
+    await store.saveRun({
+      runId,
+      threadId,
+      agentId: "a",
+      parentRunId: null,
+      events: [
+        { type: "RUN_STARTED", threadId, runId },
+        { type: "TEXT_MESSAGE_START", messageId: "m1", role: "assistant" },
+        { type: "TEXT_MESSAGE_CONTENT", messageId: "m1", delta: "This request was blocked under policy." },
+        { type: "TEXT_MESSAGE_END", messageId: "m1" },
+        { type: "RUN_ERROR", threadId, runId, message: "content_filter", code: "provider_refusal" },
+      ],
+      createdAt: Date.now(),
+      messages: [{ id: id(), role: "user", content: "demande" }],
+      status: "error",
+      userId: "u1",
+    } as never);
+
+    const events = await replay(threadId);
+    expect(events.some((event) => event.type.startsWith("TEXT_MESSAGE"))).toBe(false);
+    expect(runError(events)?.metadata?.retryable).toBe(true);
+  });
+
+  test("a SUPERSEDED error run (retried and answered) drops its text; the answer's text survives", async () => {
+    const threadId = id();
+    const userMessageId = id();
+    const run1 = id();
+    const run2 = id();
+    // Run 1: a plain failure (not a refusal) with streamed partial text, later superseded.
+    await store.saveRun({
+      runId: run1,
+      threadId,
+      agentId: "a",
+      parentRunId: null,
+      events: [
+        { type: "RUN_STARTED", threadId, runId: run1 },
+        { type: "TEXT_MESSAGE_START", messageId: "p1", role: "assistant" },
+        { type: "TEXT_MESSAGE_CONTENT", messageId: "p1", delta: "partial that broke" },
+        { type: "RUN_ERROR", threadId, runId: run1, message: "boom", code: "provider_unavailable" },
+      ],
+      createdAt: Date.now(),
+      messages: [{ id: userMessageId, role: "user", content: "demande" }],
+      status: "error",
+      userId: "u1",
+    } as never);
+    // Run 2: the retry answered cleanly.
+    await store.saveRun({
+      runId: run2,
+      threadId,
+      agentId: "a",
+      parentRunId: null,
+      events: [
+        { type: "RUN_STARTED", threadId, runId: run2 },
+        { type: "TEXT_MESSAGE_START", messageId: "a1", role: "assistant" },
+        { type: "TEXT_MESSAGE_CONTENT", messageId: "a1", delta: "voici la vraie réponse" },
+        { type: "TEXT_MESSAGE_END", messageId: "a1" },
+        { type: "RUN_FINISHED", threadId, runId: run2 },
+      ],
+      createdAt: Date.now() + 1,
+      messages: [
+        { id: userMessageId, role: "user", content: "demande" },
+        { id: id(), role: "assistant", content: "voici la vraie réponse" },
+      ],
+      status: "done",
+      userId: "u1",
+    } as never);
+
+    const events = await replay(threadId);
+    const text = events
+      .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
+      .map((event) => (event as { delta?: string }).delta ?? "")
+      .join(" ");
+    expect(text).toContain("vraie réponse");
+    expect(text).not.toContain("partial that broke");
   });
 });
