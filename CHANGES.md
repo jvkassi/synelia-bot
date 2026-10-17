@@ -43,5 +43,7 @@ on konnect behind Traefik + basicauth, with a Mastra Bot answering through OpenR
 | File | Why |
 |---|---|
 | `app/index.html` | Tab title "Synelia Bot" (no favicon/manifest in the app, nothing else to rename). |
+| `app/src/routes/_authed/admin/index.tsx`, `app/src/components/admin/admin-sidebar.tsx` | "Automatic Learning" links removed (learning needs CopilotKit Intelligence). |
+| `app/src/routes/_authed/admin/learning.tsx` | Kept for upstream merges; `beforeLoad` redirects to `/admin`. Route path unchanged, so `routeTree.gen.ts` is untouched. |
 
 Not done in phase 0: LISTEN/NOTIFY (not used), SSE resume via Last-Event-ID, multi-user/SSO, learning.
