@@ -176,3 +176,17 @@ Not done in phase 0: LISTEN/NOTIFY (not used), SSE resume via Last-Event-ID, mul
 | 404 (suite) | `GET /api/plugins/for/*` : 200 `{tools:[],skills:[]}` en pilote, requête front désactivée (vue par le test navigateur : 10 × 404) |
 | bannière hors ligne | la bannière de reconnexion suit aussi `online`/`offline` (hors ligne, React Query se met en pause sans erreur) |
 | test navigateur | `ui/browser-e2e.mjs` (compte dédié `jv.e2e@synelia.tech`, identifiants uniquement dans `e2e-browser.env` en chmod 600) |
+
+### Fichier d'identifiants e2e
+
+`e2e.sh`, `ui/browser-e2e.mjs` et le garde de `deploy.sh` lisent **uniquement** `/workspace/synelia-grokbot/e2e.env` (chmod 600 exigé, aucun repli sur un autre fichier). Modèle sans valeurs : `e2e.env.example`. Variables :
+- `E2E_URL`
+- `E2E_BASIC_USER`, `E2E_BASIC_PASSWORD` : basic auth Traefik.
+- `E2E_A_EMAIL`, `E2E_A_PASSWORD` : compte A, admin.
+- `E2E_B_EMAIL`, `E2E_B_PASSWORD` : compte B, non admin.
+- `E2E_BROWSER_EMAIL`, `E2E_BROWSER_PASSWORD` : compte du test navigateur.
+- `E2E_BROWSER_BASIC_USER`, `E2E_BROWSER_BASIC_PASSWORD` : optionnels ; à défaut, ceux de `E2E_BASIC_*`.
+
+En cas d'absence ou d'invalidité, les outils sortent en code 3 avec « e2e.env missing/invalid ». `deploy.sh` refuse alors de déployer (`e2e.sh check-env`) avant de toucher konnect, et ne fait pas de rollback silencieux si l'erreur survient pendant le garde.
+
+Coupure réseau pendant un run : après 2 reconnexions sans fin de run, la page relit l'état du fil et rejoue le fil une fois. « Connexion perdue… » ne s'affiche que si ce rejeu échoue (test navigateur (c) : le message s'affichait alors que la réponse était complète).

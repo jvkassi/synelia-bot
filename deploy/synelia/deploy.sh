@@ -15,6 +15,12 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 COMMIT=$(git rev-parse HEAD)
 E2E=${E2E:-$(cd .. && pwd)/e2e.sh}
+# Gate 13 needs the e2e accounts: refuse BEFORE touching konnect if they are not usable, so a
+# missing file never turns into a silent rollback.
+if [ -z "${SKIP_GUARD:-}" ] && ! "$E2E" check-env; then
+  echo "refus : e2e.env missing/invalid (voir e2e.env.example). Rien n'a été déployé." >&2
+  exit 1
+fi
 PREVIOUS=$(ssh "$HOST" "cat $DIR/src/DEPLOYED_COMMIT 2>/dev/null || true")
 ssh "$HOST" "free -m | sed -n 2p; uptime"
 
@@ -45,7 +51,12 @@ ship "$COMMIT"
 
 if [ -z "${SKIP_GUARD:-}" ]; then
   sleep 10
-  if ! { "$E2E" ownership && "$E2E" gate; }; then
+  set +e; "$E2E" ownership && "$E2E" gate; rc=$?; set -e
+  if [ $rc = 3 ]; then
+    echo "ÉCHEC : e2e.env missing/invalid pendant le garde ; pas de rollback automatique, vérifiez à la main." >&2
+    exit 1
+  fi
+  if [ $rc != 0 ]; then
     echo "ÉCHEC du garde post-déploiement (e2e ownership gate)." >&2
     if [ -n "$PREVIOUS" ] && [ "$PREVIOUS" != "$COMMIT" ]; then
       echo "rollback vers $PREVIOUS" >&2

@@ -846,10 +846,21 @@ export function ChannelChat({
           const deduped = dedupeById(target.messages);
           if (deduped !== target.messages) target.setMessages(deduped);
           if (awaitingReply.current) {
-            // Reattached twice and the run never reported RUN_FINISHED / RUN_ERROR: say so and
-            // point at the reload, which recovers whatever the server stored.
+            // Reattached twice and the run never reported RUN_FINISHED / RUN_ERROR (typically the
+            // run ended while the browser was offline). Hand over to the thread status: a run still
+            // going draws the indicator and replays at its end; a finished one is replayed now.
+            // Only if that replay fails is the person told to reload.
             awaitingReply.current = false;
-            setRunError(ui.conversation.connectionLost);
+            void queryClient.invalidateQueries({
+              queryKey: ["synelia", "thread-error"],
+            });
+            await copilotkit
+              .connectAgent({ agent: target })
+              .then(() => {
+                const again = dedupeById(target.messages);
+                if (again !== target.messages) target.setMessages(again);
+              })
+              .catch(() => setRunError(ui.conversation.connectionLost));
           }
         } catch {
           awaitingReply.current = false;
