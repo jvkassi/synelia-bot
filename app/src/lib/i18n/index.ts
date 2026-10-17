@@ -307,6 +307,11 @@ export const pilot = {
   hideVoice: PILOT_ON,
   /** Settings tabs outside the pilot (approvals, connected accounts, passwords, gallery). */
   hideSettingsExtras: PILOT_ON,
+  /**
+   * Settings > Notifications (update routing, devices, recent deliveries) is outside the pilot:
+   * `/api/delivery` and `/api/bots/routing` answer 404 there.
+   */
+  hideNotificationsSettings: PILOT_ON,
 } as const;
 
 /** Settings routes the pilot closes; a direct hit lands on General. */
@@ -317,11 +322,20 @@ export const PILOT_HIDDEN_SETTINGS = [
   "/settings/components-gallery",
 ] as const;
 
+/** Notifications and the devices it lists (devices have no route of their own). */
+export const PILOT_HIDDEN_NOTIFICATION_SETTINGS = [
+  "/settings/notifications",
+] as const;
+
+const under = (pathname: string, prefixes: readonly string[]) =>
+  prefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+
 export function isPilotHiddenSettingsPath(pathname: string): boolean {
   return (
-    pilot.hideSettingsExtras &&
-    PILOT_HIDDEN_SETTINGS.some(
-      (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-    )
+    (pilot.hideSettingsExtras && under(pathname, PILOT_HIDDEN_SETTINGS)) ||
+    (pilot.hideNotificationsSettings &&
+      under(pathname, PILOT_HIDDEN_NOTIFICATION_SETTINGS))
   );
 }

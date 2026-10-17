@@ -18,10 +18,20 @@ test("pilot: settings tabs outside phase 0 are closed by URL too, General stays"
   ];
   for (const path of hidden)
     expect(isPilotHiddenSettingsPath(path)).toBe(pilot.hideSettingsExtras);
-  for (const path of [
-    "/settings",
-    "/settings/memory",
-    "/settings/notifications",
-  ])
+  for (const path of ["/settings", "/settings/memory"])
     expect(isPilotHiddenSettingsPath(path)).toBe(false);
+});
+
+test("pilot: Notifications (and the devices it lists) is closed by URL too", () => {
+  for (const path of [
+    "/settings/notifications",
+    "/settings/notifications/devices",
+  ])
+    expect(isPilotHiddenSettingsPath(path)).toBe(
+      pilot.hideNotificationsSettings,
+    );
+  // Not a prefix match on the bare word: a sibling route stays reachable.
+  expect(isPilotHiddenSettingsPath("/settings/notifications-other")).toBe(
+    false,
+  );
 });
