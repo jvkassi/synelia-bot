@@ -234,6 +234,12 @@ body {
     animation: none;
     background-image: none;
     color: inherit;
+    /*
+     * Synelia fork: the glyph fill has to come back too. Restoring `color` alone left
+     * `-webkit-text-fill-color: transparent` in force with no gradient behind it, so under reduced
+     * motion the running line (and « Le modèle réfléchit… ») was in the DOM but drew nothing.
+     */
+    -webkit-text-fill-color: currentColor;
   }
 }
 
@@ -294,6 +300,11 @@ body {
  * Synelia fork: the "Le modèle réfléchit…" line, made easier to notice than the shimmer alone. A
  * pulsing dot is drawn before the text (as a real colour, unaffected by the transparent glyph fill)
  * and the shimmer band is darker. Reduced motion keeps a static dot and plain text.
+ *
+ * The dot is a non-text indicator, so it needs 3:1 against the page at EVERY frame (WCAG 1.4.11),
+ * not just at the top of the pulse: it is drawn in the foreground colour and never fades below
+ * 0.7, which stays above 6:1 in both themes (tests/synelia-thinking.test.tsx computes it). The
+ * pulse is carried by its size instead.
  */
 .synelia-thinking {
   display: inline-flex;
@@ -308,17 +319,18 @@ body {
 }
 .synelia-thinking::before {
   content: "";
-  width: 0.5rem;
-  height: 0.5rem;
+  flex-shrink: 0;
+  width: 0.625rem;
+  height: 0.625rem;
   border-radius: 9999px;
-  background: var(--color-primary, currentColor);
+  background: var(--color-foreground, currentColor);
   -webkit-text-fill-color: initial;
   animation: synelia-thinking-pulse 1s ease-in-out infinite;
 }
 @keyframes synelia-thinking-pulse {
   0%,
   100% {
-    opacity: 0.25;
+    opacity: 0.7;
     transform: scale(0.8);
   }
   50% {

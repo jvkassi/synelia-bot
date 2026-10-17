@@ -197,6 +197,8 @@ const fr = {
     queued: "En attente",
     /** The indicator between sending and the first token (1:1 and group transcripts). */
     thinking: "Le modèle réfléchit…",
+    /** Shown in the same status line when no first token came after 8 s. */
+    thinkingSlow: "Le modèle réfléchit, cela peut prendre jusqu'à 30 secondes…",
     remove: "Retirer",
     /** A responsibility's turn, drawn as one compact line (chat-transcript.tsx). */
     responsibilityRan: "Responsabilité exécutée.",

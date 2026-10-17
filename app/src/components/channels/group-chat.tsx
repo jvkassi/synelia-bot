@@ -14,12 +14,12 @@ import {
   groupQueryOptions,
   sendGroupMessageMutationOptions,
 } from "@/lib/groups";
-import { ui } from "@/lib/i18n";
 import { markdownComponents } from "@/lib/markdown";
 import { newId } from "@/lib/new-id";
 import { ChannelAvatar } from "./avatar";
 import { Composer, toAgentOptions } from "./composer";
 import { TeamBotConsentCard } from "./team-bot-consent";
+import { Thinking } from "@/components/channels/thinking";
 
 /**
  * One conversation with several Bots, read from the server's shared transcript.
@@ -160,13 +160,7 @@ function GroupLine({
         </MessageHeader>
         {(message.status === "running" || message.status === "queued") &&
         !message.text ? (
-          <p
-            className="tool-line-running text-sm text-muted-foreground"
-            role="status"
-            aria-live="polite"
-          >
-            {ui.conversation.thinking}
-          </p>
+          <Thinking />
         ) : message.status === "waiting" ? (
           <p className="text-sm text-muted-foreground">
             {message.reason ?? "Waiting for your response."}{" "}
