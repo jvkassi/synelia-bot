@@ -93,7 +93,7 @@ const fr = {
       "Ce modèle est indisponible pour le moment, choisissez-en un autre.",
     stoppedWithoutReason: "L'assistant s'est arrêté sans donner de raison.",
     networkError:
-      "Connexion au serveur interrompue. La réponse continue peut-être : rechargez la page.",
+      "Connexion interrompue, la réponse continue d’être générée. Rechargez la page pour l’afficher.",
     loading: "Chargement de la conversation",
     queued: "En attente",
     removeQueued: (description: string) =>
