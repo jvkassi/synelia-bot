@@ -35,7 +35,21 @@ export const PILOT_ALLOWED_PREFIXES = [
  */
 export const PILOT_ADMIN_ALLOWED: readonly (readonly [string, string])[] = [
   ["GET", "/api/admin/people"], // search/cursor ride in the query string (lib/people/queries.ts)
+  // The caller's OWN capability flags (admin/routes.ts `/me`, any signed-in user, actor id only);
+  // the chat reads it (lib/copilot/computer-available.ts). Pilot-capped below.
+  ["GET", "/api/admin/enterprise/me"],
 ];
+
+/** Capabilities the pilot never offers, forced false in `/api/admin/enterprise/me`. */
+const PILOT_CAPPED_CAPABILITIES = [
+  "cloudBrowser",
+  "cloudNetwork",
+  "cloudComputer",
+  "localComputer",
+  "passwordManager",
+  "slackTeams",
+  "teamBots",
+] as const;
 /*
  * Deliberately NOT allowed (settings screens outside phase 0, gate item 6): approval settings
  * (rules, preferences, team: closed above), connected
@@ -135,6 +149,24 @@ export function createPilotGate(enabled = pilotEnabled()): MiddlewareHandler {
       }
     }
     await next();
+    if (
+      enabled &&
+      context.req.method === "GET" &&
+      context.req.path === "/api/admin/enterprise/me" &&
+      context.res.status === 200
+    ) {
+      const body = (await context.res
+        .clone()
+        .json()
+        .catch(() => null)) as {
+        capabilities?: Record<string, boolean>;
+      } | null;
+      if (!body?.capabilities) return;
+      for (const key of PILOT_CAPPED_CAPABILITIES)
+        body.capabilities[key] = false;
+      context.res = undefined;
+      context.res = context.json(body, 200);
+    }
   };
 }
 

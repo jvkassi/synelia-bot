@@ -93,7 +93,6 @@ test("pilot: /api/admin is exact METHOD + path (GET people only); everything els
     ["PUT", "/api/admin/identity-providers/google"],
     ["DELETE", "/api/admin/identity-providers/google"],
     ["GET", "/api/admin/enterprise"],
-    ["GET", "/api/admin/enterprise/me"],
     ["POST", "/api/admin/enterprise/network"],
     ["GET", "/api/admin/package"],
     ["GET", "/api/admin/audit-events"],
@@ -122,4 +121,37 @@ test("pilot: /api/admin is exact METHOD + path (GET people only); everything els
     string,
   ][])
     expect([403, 404]).toContain((await user.request(path, { method })).status);
+});
+
+test("pilot: GET /api/admin/enterprise/me passes for any signed-in user, computers capped off", async () => {
+  const app = new Hono();
+  app.use("/api/*", createPilotGate(true));
+  app.get("/api/admin/enterprise/me", (c) =>
+    c.json({
+      capabilities: {
+        useBots: true,
+        cloudComputer: true,
+        localComputer: true,
+        cloudBrowser: true,
+      },
+      enforced: false,
+    }),
+  );
+  app.all("/api/admin/enterprise/*", (c) => c.text("ok"));
+  const response = await app.request("/api/admin/enterprise/me");
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as {
+    capabilities: Record<string, boolean>;
+  };
+  expect(body.capabilities).toMatchObject({
+    useBots: true,
+    cloudComputer: false,
+    localComputer: false,
+    cloudBrowser: false,
+  });
+  expect(
+    (await app.request("/api/admin/enterprise/me", { method: "POST" })).status,
+  ).toBe(404);
+  expect((await app.request("/api/admin/enterprise/members")).status).toBe(404);
+  expect((await app.request("/api/admin/enterprise")).status).toBe(404);
 });
