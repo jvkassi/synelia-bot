@@ -402,16 +402,13 @@ export function createAuth(
     },
     // Synelia fork: a successful POST /api/auth/change-password lifts the forced change.
     hooks: {
-      after: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== "/change-password") return;
-        const userId = ctx.context.session?.user.id;
-        const returned = ctx.context.returned as unknown;
-        if (!userId || returned instanceof Error) return;
-        await database
+      after: clearMustChangePasswordAfter((userId) =>
+        database
           .update(users)
           .set({ mustChangePassword: false })
-          .where(eq(users.id, userId));
-      }),
+          .where(eq(users.id, userId))
+          .then(() => undefined),
+      ),
     },
     databaseHooks: {
       user: {
@@ -584,5 +581,26 @@ export function createAuth(
         },
       },
     },
+  });
+}
+
+/**
+ * Synelia fork: after a successful /change-password, clear `must_change_password`. The user id is
+ * read from the rotated session first (`newSession`, set when revokeOtherSessions issues a new
+ * one), then from the request's session, so it always clears. Exported for the full-cycle test.
+ */
+export function clearMustChangePasswordAfter(
+  clear: (userId: string) => Promise<void>,
+) {
+  return createAuthMiddleware(async (ctx) => {
+    if (ctx.path !== "/change-password") return;
+    const returned = ctx.context.returned as unknown;
+    if (returned instanceof Error) return;
+    const context = ctx.context as {
+      newSession?: { user?: { id?: string } } | null;
+      session?: { user?: { id?: string } } | null;
+    };
+    const userId = context.newSession?.user?.id ?? context.session?.user?.id;
+    if (userId) await clear(userId);
   });
 }

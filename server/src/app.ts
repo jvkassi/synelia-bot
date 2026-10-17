@@ -640,7 +640,13 @@ export function createApp(
     createPasswordChangeGate(
       auth
         ? async (headers) =>
-            (await auth.api.getSession({ headers }))?.user as
+            // Never the cookie cache: it would keep a cleared flag alive after the change.
+            (
+              await auth.api.getSession({
+                headers,
+                query: { disableCookieCache: true },
+              })
+            )?.user as
               | { id: string; mustChangePassword?: boolean | null }
               | undefined
         : undefined,
