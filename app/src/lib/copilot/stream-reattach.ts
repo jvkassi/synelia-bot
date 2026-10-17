@@ -21,6 +21,25 @@ export function isStreamCut(error: unknown): boolean {
   return CUT.test(message);
 }
 
+/**
+ * Synelia fork: the run was refused because this thread already has one going (lock 409, or the
+ * runner's "already running"), e.g. a second click or a resend during a reconnect. Not a failure:
+ * the page shows the running turn instead.
+ */
+export function isAlreadyRunning(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  const status = (error as { status?: number } | null)?.status;
+  return (
+    status === 409 ||
+    /\b409\b|already running|thread is locked|lock conflict/i.test(message)
+  );
+}
+
 /** Keep one message per id (the last version wins, in first-seen position). */
 export function dedupeById<T extends { id: string }>(messages: T[]): T[] {
   const last = new Map<string, T>();

@@ -2010,14 +2010,13 @@ export function createApp(
       const lastError = await store.lastRunError(params);
       const { lockedRunId, lostRunId } = await store.threadRunState(params);
       // A live run (this process's runner) or an unexpired lock means a turn is still being
-      // written; no live run and not a single stored run means the only turn was lost (restart).
+      // written; `lostRunId` names a run whose lock expired without the run ever being stored.
       const activeRunId = liveRunId(params.threadId) ?? lockedRunId;
       return context.json({
         known: true,
         lastError,
         activeRunId,
         lostRunId: activeRunId ? null : lostRunId,
-        interrupted: !activeRunId, // front only uses it when the last message is the person's
       });
     } catch (error) {
       if ((error as { status?: number }).status === 404)

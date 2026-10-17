@@ -5,7 +5,7 @@ import { AbstractAvatar } from "@/components/agents/abstract-avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { agentQueryOptions } from "@/lib/agents/queries";
-import { ui } from "@/lib/i18n";
+import { pilot, ui } from "@/lib/i18n";
 
 function Tag({ children }: { children: ReactNode }) {
   return (
@@ -110,15 +110,18 @@ export function AgentProfile({ agentId }: { agentId: string }) {
         >
           {ui.conversation.newChat}
         </Button>
-        <Button
-          className="w-full text-sm!"
-          render={(props) => (
-            <Link {...props} params={{ agentId }} to="/bots/$agentId" />
-          )}
-          variant="outline"
-        >
-          {ui.conversation.open(profile.name)}
-        </Button>
+        {/* Synelia fork: the Bot page is not in the pilot (its route redirects). */}
+        {pilot.hideBotPage ? null : (
+          <Button
+            className="w-full text-sm!"
+            render={(props) => (
+              <Link {...props} params={{ agentId }} to="/bots/$agentId" />
+            )}
+            variant="outline"
+          >
+            {ui.conversation.open(profile.name)}
+          </Button>
+        )}
       </div>
     </div>
   );

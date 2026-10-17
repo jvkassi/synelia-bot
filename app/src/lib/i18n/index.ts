@@ -87,6 +87,8 @@ const fr = {
   conversation: {
     reconnecting:
       "Connexion interrompue… nouvelle tentative. Si rien ne revient, rechargez la page.",
+    connectionLost:
+      "Connexion perdue. Rechargez la page pour retrouver la réponse.",
     runInProgress: "Réponse en cours…",
     runInterrupted: "Réponse interrompue. Renvoyez votre message.",
     fallbackTitle: "Conversation",
@@ -182,13 +184,21 @@ export const ui: UiStrings = fr satisfies UiStrings;
  * onboarding steps about computers and rosters). Flags rather than deletions, so upstream merges
  * stay easy and phase 1 can turn them back on.
  */
+/**
+ * Pilot switches are ON in every build. Under `bun test` (NODE_ENV=test) they are OFF so the
+ * upstream suites test upstream behaviour; `SYNELIA_PILOT=1 bun test` turns them back on. Vite
+ * exposes neither variable to the bundle, so a build can never switch them off.
+ */
+const env = (import.meta as { env?: Record<string, string | undefined> }).env;
+const PILOT_ON = env?.NODE_ENV !== "test" || env?.SYNELIA_PILOT === "1";
+
 export const pilot = {
-  hideExploreAgents: true,
-  hideBotsAndSkillsNav: true,
-  shortOnboarding: true,
+  hideExploreAgents: PILOT_ON,
+  hideBotsAndSkillsNav: PILOT_ON,
+  shortOnboarding: PILOT_ON,
   /** No computer supervisor in this deployment: the "watch the computer" control is hidden. */
-  hideComputerControls: true,
-  hideBotPage: true,
+  hideComputerControls: PILOT_ON,
+  hideBotPage: PILOT_ON,
   /** Voice calls are outside the pilot (their API answers 404). */
-  hideVoice: true,
-} as const;
+  hideVoice: PILOT_ON,
+};

@@ -35,9 +35,14 @@ import { ConversationProvider } from "@/lib/copilot/conversation";
 import { afterMs, joinWithin } from "@/lib/copilot/join-thread";
 import { repairUnansweredToolCalls } from "@/lib/copilot/repair-history";
 import { stoppedReason } from "@/lib/copilot/stopped-turn";
-import { dedupeById, isStreamCut } from "@/lib/copilot/stream-reattach";
+import {
+  dedupeById,
+  isAlreadyRunning,
+  isStreamCut,
+} from "@/lib/copilot/stream-reattach";
 import {
   SyneliaThreadModels,
+  serverRunStep,
   useStoredRunError,
 } from "@/lib/copilot/synelia-model";
 import { readThreadMessages } from "@/lib/copilot/thread-messages";
@@ -542,13 +547,14 @@ export function ChannelChat({
    * and once the run is over replay the thread once so the stored answer appears without F5.
    * A thread whose only turn was lost (restart, expired lock, no stored run) says it was interrupted.
    */
+  /** A turn was sent from this page: an older lost run is history, never drawn over it. */
+  const sentHere = useRef(false);
+  if (agent.isRunning) sentHere.current = true;
   const storedRunError =
     threadStatus.error ??
-    (threadStatus.activeRunId
-      ? null
-      : threadStatus.interrupted
-        ? ui.conversation.runInterrupted
-        : null);
+    (threadStatus.interrupted && !agent.isRunning && !sentHere.current
+      ? ui.conversation.runInterrupted
+      : null);
   // Drawn as the neutral Thinking indicator (shimmer, role=status), not the alert of `stopped`.
   // Only for a run this page is NOT streaming itself (reload mid-run, other tab).
   const serverRunning =
@@ -557,14 +563,15 @@ export function ChannelChat({
     !agent.isRunning;
   const sawActiveRun = useRef(false);
   useEffect(() => {
-    if (threadStatus.activeRunId) {
-      sawActiveRun.current = true;
-      return;
-    }
-    if (!sawActiveRun.current || agent.isRunning) return;
+    const step = serverRunStep(
+      sawActiveRun.current,
+      threadStatus.activeRunId,
+      agent.isRunning,
+    );
+    sawActiveRun.current = step.sawActive;
+    if (!step.replay) return;
     // The server run ended (status poll): replay the thread once so the full answer replaces the
     // partial one restored at load. Dedupe keeps the last version of each message id.
-    sawActiveRun.current = false;
     void copilotkit
       .connectAgent({ agent })
       .then(() => {
@@ -842,7 +849,7 @@ export function ChannelChat({
             // Reattached twice and the run never reported RUN_FINISHED / RUN_ERROR: say so and
             // point at the reload, which recovers whatever the server stored.
             awaitingReply.current = false;
-            setRunError(ui.conversation.reconnecting);
+            setRunError(ui.conversation.connectionLost);
           }
         } catch {
           awaitingReply.current = false;
@@ -942,16 +949,29 @@ export function ChannelChat({
       turnFailure.current = message;
       setRunError(message);
     };
+    /** Synelia fork: refused because a run is already going: show that run, not an error. */
+    const alreadyRunning = (error: unknown) => {
+      if (!awaitingReply.current || !isAlreadyRunning(error)) return false;
+      awaitingReply.current = false;
+      void queryClient.invalidateQueries({
+        queryKey: ["synelia", "thread-error"],
+      });
+      return true;
+    };
     const subscription = agent.subscribe?.({
       // Both surfaces fall back to the same sentence, from the same place, so a person who uses
       // both is not told two different things about the same silence.
-      onRunErrorEvent: ({ event }) => fail(stoppedReason(event?.message)),
+      onRunErrorEvent: ({ event }) => {
+        if (alreadyRunning(event?.message)) return;
+        fail(stoppedReason(event?.message));
+      },
       onRunFailed: ({ error }) => {
         // Synelia fork: a transport cut is not the run failing; `deliver` reattaches instead.
         if (awaitingReply.current && isStreamCut(error)) {
           streamCut.current = stoppedReason(error);
           return;
         }
+        if (alreadyRunning(error)) return;
         fail(stoppedReason(error));
       },
       onRunFinishedEvent: () => {

@@ -1,6 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { pilot, ui } from "@/lib/i18n";
-import { SyneliaModelPicker } from "@/lib/copilot/synelia-model";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { AgentCard } from "@/components/agents/agent-card";
@@ -22,7 +20,9 @@ import {
   routeMessage,
 } from "@/lib/channels/route";
 import { useStartChannel } from "@/lib/channels/start";
+import { SyneliaModelPicker } from "@/lib/copilot/synelia-model";
 import { appConfig } from "@/lib/generated/application-config";
+import { pilot, ui } from "@/lib/i18n";
 
 export const Route = createFileRoute("/_authed/_app/")({
   component: RouteComponent,
@@ -81,14 +81,16 @@ function RouteComponent() {
                 // Synelia fork: with a single Bot to choose from there is nothing to route, and
                 // asking the router cost ~3.5 s of blank screen before the conversation opened.
                 const candidates = agents?.length ?? 0;
-                if (candidates <= 1 && fallback) agentId = fallback.id;
-                else try {
-                  agentId = (await routeMessage(draft.text)).agentId;
-                } catch (caught) {
-                  if (caught instanceof CoworkerRoutingRefusedError)
-                    throw caught;
-                  agentId = fallback?.id;
-                }
+                if (pilot.hideBotsAndSkillsNav && candidates <= 1 && fallback)
+                  agentId = fallback.id;
+                else
+                  try {
+                    agentId = (await routeMessage(draft.text)).agentId;
+                  } catch (caught) {
+                    if (caught instanceof CoworkerRoutingRefusedError)
+                      throw caught;
+                    agentId = fallback?.id;
+                  }
                 if (!agentId) return;
                 await start(agentId, draft.text);
               } catch (caught) {

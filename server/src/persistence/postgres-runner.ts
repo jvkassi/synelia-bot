@@ -190,7 +190,8 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
         // Synelia fork (idempotent send): the person's newest message was already answered by a
         // finished run of this thread (double click, resend after a reconnect). Answer with an
         // empty, finished run instead of running the model a second time.
-        const historic = this.#global.peek(request.threadId)?.historicRuns ?? [];
+        const historic =
+          this.#global.peek(request.threadId)?.historicRuns ?? [];
         if (isAlreadyAnswered(request.input.messages, historic)) {
           return of(
             {
@@ -345,12 +346,14 @@ export function isAlreadyAnswered(
   const last = messages?.at(-1);
   if (!last || last.role !== "user") return false;
   return historicRuns.some((run) => {
-    if (!run.events.some((event) => event.type === "RUN_FINISHED")) return false;
+    if (!run.events.some((event) => event.type === "RUN_FINISHED"))
+      return false;
     return run.events.some(
       (event) =>
         event.type === "RUN_STARTED" &&
         (
-          (event as { input?: { messages?: { id: string }[] } }).input?.messages ?? []
+          (event as { input?: { messages?: { id: string }[] } }).input
+            ?.messages ?? []
         ).some((message) => message.id === last.id),
     );
   });

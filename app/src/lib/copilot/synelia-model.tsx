@@ -321,9 +321,25 @@ export function threadStatusView(
   return {
     error: endsOnUserMessage ? (data?.lastError?.message ?? null) : null,
     activeRunId,
-    interrupted:
-      !activeRunId &&
-      (Boolean(data?.lostRunId) ||
-        (endsOnUserMessage && Boolean(data?.interrupted) && !data?.lastError)),
+    // Only a run the server KNOWS was lost (lock expired, run never stored). An idle thread, or
+    // one whose last message is the person's for any other reason, is never "interrupted".
+    interrupted: !activeRunId && Boolean(data?.lostRunId),
   };
+}
+
+/**
+ * Synelia fork (2a): one step of "a run is going on the server that this page is not streaming".
+ * `indicator`: draw Thinking + Stop. `replay`: the run just ended, replay the thread once so the
+ * full answer replaces the partial one restored at load.
+ */
+export function serverRunStep(
+  sawActive: boolean,
+  activeRunId: string | null,
+  localRunning: boolean,
+): { sawActive: boolean; indicator: boolean; replay: boolean } {
+  if (activeRunId)
+    return { sawActive: true, indicator: !localRunning, replay: false };
+  if (sawActive && !localRunning)
+    return { sawActive: false, indicator: false, replay: true };
+  return { sawActive, indicator: false, replay: false };
 }
