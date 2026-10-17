@@ -1,4 +1,6 @@
 import type { ActivityMessage, Message } from "@ag-ui/core";
+import { ui } from "@/lib/i18n";
+import { useModelList, useSyneliaModel } from "@/lib/copilot/synelia-model";
 import type { Attachment } from "@copilotkit/react-core/v2";
 import {
   useRenderActivityMessage,
@@ -203,6 +205,24 @@ function Thinking() {
  * own obituary as something it had written.
  */
 function Stopped({ reason }: { reason: string }) {
+  // Synelia fork: a provider failure (the patched Mastra bridge ends it with "(HTTP nnn)") gets a
+  // plain sentence first and the technical text, prefixed with the provider, smaller underneath.
+  // The run row keeps the technical text only.
+  const { data } = useModelList();
+  const selected = useSyneliaModel();
+  const providerError = /\(HTTP \d{3}\)\s*$/.test(reason);
+  if (providerError) {
+    const model = data?.models.find((entry) => entry.id === selected);
+    const detail = model ? `${model.providerLabel} : ${reason}` : reason;
+    return (
+      <div data-testid="transcript-stopped" role="alert">
+        <p className="text-destructive text-sm">{ui.conversation.modelUnavailable}</p>
+        <p className="text-muted-foreground text-xs" data-testid="transcript-stopped-detail">
+          {detail}
+        </p>
+      </div>
+    );
+  }
   return (
     <p
       className="text-destructive text-sm"

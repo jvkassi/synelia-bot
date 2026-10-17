@@ -11,14 +11,29 @@ import type { createAuth } from "./index";
 
 type BetterAuthInstance = ReturnType<typeof createAuth>;
 
+/**
+ * The first account reads OPENBOT_BOOTSTRAP_USER_*, the next ones OPENBOT_BOOTSTRAP_USER_2_* ..
+ * OPENBOT_BOOTSTRAP_USER_9_* (pilot: a handful of operator-named accounts, no public sign-up).
+ */
 export async function bootstrapPasswordUser(
   auth: BetterAuthInstance,
   environment: Record<string, string | undefined> = process.env,
 ): Promise<void> {
-  const email = environment.OPENBOT_BOOTSTRAP_USER_EMAIL?.trim().toLowerCase();
-  const password = environment.OPENBOT_BOOTSTRAP_USER_PASSWORD;
-  if (!email || !password) return;
-  const name = environment.OPENBOT_BOOTSTRAP_USER_NAME?.trim() || email;
+  for (const suffix of ["", "_2", "_3", "_4", "_5", "_6", "_7", "_8", "_9"]) {
+    const email = environment[`OPENBOT_BOOTSTRAP_USER${suffix}_EMAIL`]?.trim().toLowerCase();
+    const password = environment[`OPENBOT_BOOTSTRAP_USER${suffix}_PASSWORD`];
+    if (!email || !password) continue;
+    const name = environment[`OPENBOT_BOOTSTRAP_USER${suffix}_NAME`]?.trim() || email;
+    await bootstrapOne(auth, email, password, name);
+  }
+}
+
+async function bootstrapOne(
+  auth: BetterAuthInstance,
+  email: string,
+  password: string,
+  name: string,
+): Promise<void> {
   const context = await auth.$context;
   const found = await context.internalAdapter.findUserByEmail(email, {
     includeAccounts: true,

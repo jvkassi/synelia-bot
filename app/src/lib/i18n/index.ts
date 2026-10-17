@@ -57,6 +57,7 @@ const fr = {
     noBots: "Aucun assistant trouvé.",
     startFailed: "Impossible de démarrer la conversation.",
     newChat: "Nouvelle conversation",
+    modelUnavailable: "Ce modèle est indisponible pour le moment, choisissez-en un autre.",
     stoppedWithoutReason: "L'assistant s'est arrêté sans donner de raison.",
   },
   model: {

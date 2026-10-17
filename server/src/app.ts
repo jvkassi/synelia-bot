@@ -1,4 +1,5 @@
 import type { Hono as HonoApp, MiddlewareHandler } from "hono";
+import { createPilotGate } from "./synelia/pilot-gate";
 import { localIntelligence } from "./persistence/local-intelligence";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
@@ -621,6 +622,8 @@ export function createApp(
       : authenticationUnavailable;
   // Enterprise controls: capability switches and the model allowlist in front of the routes they
   // govern, the admin screen's API, and the SCIM verbs the GET/POST auth handler above does not take.
+  // Synelia fork: pilot surfaces off server-side too (404), before any route can answer.
+  app.use("/api/*", createPilotGate());
   app.use("/api/*", createEnterpriseGate(requireUser));
   app.route("/api/admin/enterprise", createEnterpriseAdminRoutes(requireUser));
   app.on(["PUT", "PATCH", "DELETE"], "/api/auth/scim/*", (context) =>
