@@ -274,6 +274,33 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
             } as BaseEvent,
           );
         }
+        // Synelia fork (item 2): the person resent a message whose prior run is NOT retryable (it ran
+        // an effectful tool; a rerun would repeat the side effect). Refuse with a stable code instead
+        // of running the model again — the front maps retry_not_allowed to the retryable:false notice
+        // (no « Réessayer »). Checked AFTER isAlreadyAnswered: a clean finish answers idempotently.
+        if (isRetryBlocked(request.input.messages, historic)) {
+          logRunEvent("synelia_run_skip", {
+            reason: "retry_not_allowed",
+            threadId: request.threadId,
+            runId: request.input.runId,
+            userId: user?.id,
+          });
+          return of(
+            {
+              type: "RUN_STARTED",
+              threadId: request.threadId,
+              runId: request.input.runId,
+            } as BaseEvent,
+            {
+              type: "RUN_ERROR",
+              threadId: request.threadId,
+              runId: request.input.runId,
+              message: "retry_not_allowed",
+              code: SYNELIA_ERROR_CODES.retryNotAllowed,
+              metadata: { retryable: false },
+            } as BaseEvent,
+          );
+        }
         let stream: Observable<BaseEvent>;
         try {
           stream = super.run(request);
@@ -620,6 +647,35 @@ export function liveRunId(threadId: string): string | undefined {
  * FINISHED cleanly (a RUN_FINISHED and no RUN_ERROR) already received it as input. A failed, stopped
  * or refused run does not count, so "send again" after an error still runs.
  */
+/**
+ * Synelia fork (item 2): true when the last message is the person's own AND a historic run that
+ * received it ended in error and is NOT retryable (computeRetryable false — it ran an effectful tool,
+ * e.g. report_refusal, whose side effect a rerun would repeat). The runner then refuses the rerun with
+ * a stable `retry_not_allowed` RUN_ERROR instead of running the model again. A retryable error does
+ * NOT block: "send again" after an ordinary failure still runs. Pure, so it is unit-testable.
+ */
+export function isRetryBlocked(
+  messages: readonly { id: string; role: string }[] | undefined,
+  historicRuns: readonly { events: readonly BaseEvent[] }[],
+  effectful: ReadonlySet<string> = EFFECTFUL_TOOLS,
+): boolean {
+  const last = messages?.at(-1);
+  if (last?.role !== "user") return false;
+  return historicRuns.some((run) => {
+    if (!run.events.some((event) => event.type === "RUN_ERROR")) return false;
+    const gotThisMessage = run.events.some(
+      (event) =>
+        event.type === "RUN_STARTED" &&
+        (
+          (event as { input?: { messages?: { id: string }[] } }).input
+            ?.messages ?? []
+        ).some((message) => message.id === last.id),
+    );
+    if (!gotThisMessage) return false;
+    return !computeRetryable(run.events, effectful);
+  });
+}
+
 export function isAlreadyAnswered(
   messages: readonly { id: string; role: string }[] | undefined,
   historicRuns: readonly { events: readonly BaseEvent[] }[],

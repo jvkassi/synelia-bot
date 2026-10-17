@@ -205,7 +205,7 @@ export function logRunEvent(
     threadId: string;
     runId: string;
     userId?: string;
-    reason?: "already_answered" | "thread_busy";
+    reason?: "already_answered" | "thread_busy" | "retry_not_allowed";
   },
   dir: string | undefined = process.env.SYNELIA_REQUEST_LOG_DIR,
 ): string {

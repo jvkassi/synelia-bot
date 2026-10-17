@@ -507,3 +507,18 @@ test('sessionExpiredReason reads payload.code === "session_expired" first, whate
     ),
   ).toBe(null);
 });
+
+test("item 2: retry_not_allowed maps to the retryable:false notice, no « Réessayer »", () => {
+  // The server refused the rerun with code retry_not_allowed + metadata.retryable:false.
+  const reason = withRetryable(codedReason("retry_not_allowed", null), false);
+  const notice = stopNotice(reason ?? "", null);
+  expect(notice.text).toBe(ui.conversation.runFailedNoRetry);
+  expect(notice.retry).toBe(false);
+  expect(notice.role).toBe("alert");
+});
+
+test("item 2: retry_not_allowed without an explicit retryable flag still never offers « Réessayer »", () => {
+  const notice = stopNotice(codedReason("retry_not_allowed", null) ?? "", null);
+  expect(notice.text).toBe(ui.conversation.runFailedNoRetry);
+  expect(notice.retry).toBe(false);
+});

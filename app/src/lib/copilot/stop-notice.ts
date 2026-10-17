@@ -48,12 +48,15 @@ const KNOWN_CODES: Record<
   | "run_stalled"
   | "provider_unavailable"
   | "session_expired"
+  | "retry_not_allowed"
 > = {
   provider_refusal: "provider_refusal",
   run_stalled: "run_stalled",
   AGENT_STREAM_STALLED: "run_stalled",
   provider_unavailable: "provider_unavailable",
   session_expired: "session_expired",
+  // Synelia fork (item 2): the server refused a rerun of a non-retryable run.
+  retry_not_allowed: "retry_not_allowed",
 };
 
 /**
@@ -260,6 +263,16 @@ export function stopNotice(
         technical: false,
         retry: false,
         signIn: true,
+      };
+    // Synelia fork (item 2): the server refused the rerun (the prior run ran an effectful tool, so a
+    // retry would repeat the side effect). Same wording as any other retryable:false failure, and no
+    // « Réessayer » — the button would only be refused again.
+    if (code === "retry_not_allowed")
+      return {
+        text: ui.conversation.runFailedNoRetry,
+        role: "alert",
+        technical: false,
+        retry: false,
       };
     return failed(false);
   }

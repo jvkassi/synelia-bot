@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import type { BaseEvent } from "@ag-ui/client";
-import { isAlreadyAnswered } from "../src/persistence/postgres-runner";
+import {
+  isAlreadyAnswered,
+  isRetryBlocked,
+} from "../src/persistence/postgres-runner";
 
 const started = (ids: string[]) =>
   ({
@@ -57,3 +60,44 @@ test("a run with BOTH RUN_FINISHED and RUN_ERROR for the message does not count 
     false,
   );
 });
+
+const startedInput = (ids: string[]) =>
+  ({
+    type: "RUN_STARTED",
+    input: { messages: ids.map((id) => ({ id, role: "user" })) },
+  }) as unknown as BaseEvent;
+const errored2 = { type: "RUN_ERROR" } as BaseEvent;
+const toolStart = (name: string) =>
+  ({ type: "TOOL_CALL_START", toolCallName: name }) as unknown as BaseEvent;
+
+
+  test("a non-retryable error run (report_refusal) blocks the resend", () => {
+    const history = [
+      {
+        events: [
+          startedInput(["m1"]),
+          toolStart("report_refusal"),
+          errored2,
+        ],
+      },
+    ];
+    expect(isRetryBlocked([{ id: "m1", role: "user" }], history)).toBe(true);
+  });
+
+  test("a retryable error run (no effectful tool) does NOT block", () => {
+    const history = [{ events: [startedInput(["m1"]), errored2] }];
+    expect(isRetryBlocked([{ id: "m1", role: "user" }], history)).toBe(false);
+  });
+
+  test("a clean finish does not block (idempotent-send handles that)", () => {
+    const history = [{ events: [startedInput(["m1"]), finished] }];
+    expect(isRetryBlocked([{ id: "m1", role: "user" }], history)).toBe(false);
+  });
+
+  test("blocks only the message that effectful run received, not a different one", () => {
+    const history = [
+      { events: [startedInput(["m1"]), toolStart("report_refusal"), errored2] },
+    ];
+    expect(isRetryBlocked([{ id: "m2", role: "user" }], history)).toBe(false);
+  });
+

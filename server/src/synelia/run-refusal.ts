@@ -31,6 +31,12 @@ export const SYNELIA_ERROR_CODES = {
   providerUnavailable: "provider_unavailable",
   /** The stall watchdog ended the turn (alias of stall-guard's AGENT_STREAM_STALLED). */
   runStalled: "run_stalled",
+  /**
+   * Synelia fork (item 2): a resend was refused because the prior run for this message is NOT
+   * retryable (it ran an effectful tool whose side effect a rerun would repeat). The front maps it to
+   * the retryable:false notice, no « Réessayer ».
+   */
+  retryNotAllowed: "retry_not_allowed",
 } as const;
 
 type Eventish = {

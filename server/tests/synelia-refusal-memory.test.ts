@@ -226,3 +226,57 @@ describe("item 4: usage0 trigger log reads the refused run's OWN assistant text"
   });
 });
 
+describe("item 2: a resend of a non-retryable run is refused with retry_not_allowed", () => {
+  test("prior run ran report_refusal -> resend gets RUN_ERROR retry_not_allowed, model not called", async () => {
+    const threadId = "t-retry";
+    const userMessageId = "m-retry";
+    // Run 1: an effectful tool call then an error (not retryable).
+    const refusal: BaseEvent[] = [
+      ev("RUN_STARTED"),
+      ev("TOOL_CALL_START", { toolCallId: "c1", toolCallName: "report_refusal" }),
+      ev("TOOL_CALL_END", { toolCallId: "c1" }),
+      ev("RUN_ERROR", { message: "content_filter", code: "provider_refusal" }),
+    ];
+    const agent = scriptedAgent([refusal, [ev("RUN_STARTED"), ev("RUN_FINISHED")]]);
+    const runner = new PostgresAgentRunner(fakeStore(), async () => list);
+
+    await lastValueFrom(
+      runner
+        .run({
+          threadId,
+          agent,
+          input: {
+            runId: "run-1",
+            messages: [{ id: userMessageId, role: "user", content: "demande" }],
+            tools: [],
+          },
+        } as never)
+        .pipe(toArray()),
+    );
+    await runner.ɵpersisted(threadId);
+    expect(agent.calls).toBe(1);
+
+    // Resend the SAME message: refused with retry_not_allowed, the model is NOT called again.
+    const out = (await lastValueFrom(
+      runner
+        .run({
+          threadId,
+          agent,
+          input: {
+            runId: "run-2",
+            messages: [{ id: userMessageId, role: "user", content: "demande" }],
+            tools: [],
+          },
+        } as never)
+        .pipe(toArray()),
+    )) as Any[];
+    const error = out.find((e) => e.type === "RUN_ERROR");
+    expect(error?.code).toBe("retry_not_allowed");
+    expect(
+      (error as { metadata?: { retryable?: boolean } })?.metadata?.retryable,
+    ).toBe(false);
+    expect(out.some((e) => e.type === "RUN_FINISHED")).toBe(false);
+    expect(agent.calls).toBe(1);
+  });
+});
+
