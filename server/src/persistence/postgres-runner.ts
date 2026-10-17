@@ -36,7 +36,7 @@ import {
   type SyneliaModelList,
 } from "../synelia/models";
 import { pilotTools } from "../synelia/pilot-gate";
-import { logRunTiming } from "../synelia/request-log";
+import { logRunEvent, logRunTiming } from "../synelia/request-log";
 import {
   adjustPersistedRun,
   computeRetryable,
@@ -238,6 +238,13 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
         const historic =
           this.#global.peek(request.threadId)?.historicRuns ?? [];
         if (isAlreadyAnswered(request.input.messages, historic)) {
+          // Synelia fork: answered without a run (no run_timing will follow); see logRunEvent.
+          logRunEvent("synelia_run_skip", {
+            reason: "already_answered",
+            threadId: request.threadId,
+            runId: request.input.runId,
+            userId: user?.id,
+          });
           return of(
             {
               type: "RUN_STARTED",
@@ -257,11 +264,24 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
         } catch (error) {
           // Synelia fork: the in-memory runner's concurrent-run refusal, otherwise a bare stream
           // error the browser never sees. Sent as a RUN_ERROR carrying `code: "thread_busy"`.
-          if (isThreadAlreadyRunning(error))
+          if (isThreadAlreadyRunning(error)) {
+            logRunEvent("synelia_run_skip", {
+              reason: "thread_busy",
+              threadId: request.threadId,
+              runId: request.input.runId,
+              userId: user?.id,
+            });
             return of(...threadBusyEvents(request));
+          }
           throw error;
         }
         const runId = request.input.runId;
+        // Synelia fork: accepted; a run_timing line with this runId follows when the stream ends.
+        logRunEvent("synelia_run_start", {
+          threadId: request.threadId,
+          runId,
+          userId: user?.id,
+        });
         const persist = (status: string) => {
           const store = this.#global.peek(request.threadId);
           const run = store?.historicRuns.find(

@@ -1,18 +1,24 @@
 #!/usr/bin/env bash
 # Synelia fork: chat runs in flight on konnect, read-only (request log + container start time).
 #
-# 264ca566 stores a run only when it ends, and chat runs take no synelia_thread_lock, so the only
-# trace of a run in progress is the request log: a `POST /api/copilotkit/agent/<id>/run` line (200,
-# written when the SSE response starts) with no later `run_timing` line of the same user (written
-# when the stream completes or errors). A POST older than the current server's start died with the
-# previous process and is reported apart ("perdu au redémarrage"). The run id only exists in the
-# run_timing line, so a run in flight is named by its start time, its user handle and (best effort)
-# the thread the same user opened just before it.
-#
-# Known limits (fail-safe direction, they only make the check wait): the idempotent resend and the
-# thread_busy refusal answer without a run_timing line, so they read as in flight until
-# INFLIGHT_MAX_AGE (default 900 s). Headless runs (routines, handoffs) have no POST /run here; the
-# deploy keeps its synelia_thread_lock wait for those.
+# Two sources, the precise one preferred:
+#  - pass10 server and later: `synelia_run_start` (runner accepted a chat run: threadId, runId,
+#    userId) closed by the `run_timing` of the same runId; `synelia_run_skip` (already_answered,
+#    thread_busy) is a POST answered without a run. In flight = a start with no run_timing, exactly.
+#  - fallback, 264ca566 (served today): only `POST /api/copilotkit/agent/<id>/run` (200, written when
+#    the SSE response starts; NO thread id, NO run id; thread_busy and the idempotent resend also
+#    answer 200, never 409) and `run_timing` (written when the stream ends). A POST is matched to a
+#    timing by (user, thread), the thread being the last one that user read before the POST, or a
+#    thread that did not exist yet when the POST was sent (the POST created it). A POST
+#    followed by a completed run on its thread is excluded (thread_busy). Residual fallback risks:
+#    an idempotent resend is not observable (it reads as in flight until INFLIGHT_MAX_AGE unless a
+#    later run completes on its thread); a run sent with no thread read before it (API client, e2e)
+#    has thread "?" and only takes a timing no known-thread POST of that user claims; two NEW threads
+#    started by one person at the same time are told apart only by order; two tabs of the same person
+#    on two existing threads can mis-attribute the thread.
+# A run older than the current server's start died with the previous process ("perdu au
+# redémarrage"). Headless runs (routines, handoffs) have no POST /run here; deploy.sh keeps its
+# synelia_thread_lock wait for those.
 #
 # Standalone:
 #   inflight-check.sh                 one check: exit 0 idle, 3 in flight, 2 cannot tell
@@ -37,14 +43,13 @@ inflight_fetch() {
 inflight_server_started() { { inflight_fetch || true; } | sed -n 2p; }
 
 INFLIGHT_PY='
-import json, sys
+import json, re, sys
 from datetime import datetime, timedelta
 def ts(s):
     s = (s or "").strip().rstrip("Z")
     if "." in s:
         head, frac = s.split(".", 1)
-        s = head + "." + (frac + "000000")[:6]
-        return datetime.strptime(s, "%Y-%m-%dT%H:%M:%S.%f")
+        return datetime.strptime(head + "." + (frac + "000000")[:6], "%Y-%m-%dT%H:%M:%S.%f")
     return datetime.strptime(s, "%Y-%m-%dT%H:%M:%S")
 mode, max_age, at, started_override = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
 since = sys.argv[5] if len(sys.argv) > 5 else ""
@@ -63,45 +68,82 @@ for raw in lines[2:]:
     except Exception: continue
     if d["_t"] <= now: rows.append(d)
 rows.sort(key=lambda d: d["_t"])
-def is_run(d):
+kind = lambda d: d.get("kind") or d.get("type") or ""
+THREAD = re.compile(r"/threads/([^/?]+)")
+def is_post_run(d):
     p = d.get("path", "")
     return d.get("method") == "POST" and p.startswith("/api/copilotkit/agent/") and p.endswith("/run") and d.get("status") == 200
-def thread_of(run):
-    best = "?"
-    for d in rows:
-        if d["_t"] > run["_t"]: break
-        if d.get("userId") == run.get("userId") and d.get("threadId") and (run["_t"] - d["_t"]) <= timedelta(seconds=60):
-            best = d["threadId"]
-    return best
-pending = {}  # user -> [run rows]
-done = []
+# 1) Precise lines (pass10 server and later): synelia_run_start / synelia_run_skip / run_timing, by runId.
+timed = set(d.get("runId") for d in rows if kind(d) == "run_timing" and d.get("runId"))
+starts = [d for d in rows if kind(d) == "synelia_run_start" and d.get("runId")]
+precise = [d for d in rows if kind(d) in ("synelia_run_start", "synelia_run_skip")]
+open_runs = [dict(d, _thread=d.get("threadId", "?"), _how="précis") for d in starts if d["runId"] not in timed]
+# 2) Fallback (264ca566: no such lines). A POST /run is covered when a precise line of the same user
+# was written just before it (the runner logs before the response starts); covered POSTs are done.
+used = set()
+fallback = []
 for d in rows:
-    if is_run(d):
-        d["_thread"] = thread_of(d)
-        pending.setdefault(d.get("userId", "?"), []).append(d)
-    elif d.get("kind") == "run_timing" and d.get("userId"):
-        # The run this timing closes: same user, same thread when it can be told, else the most
-        # recent open one (an older open run of that user most likely died with a restart).
-        q = pending.get(d["userId"], [])
-        if q:
-            same = [i for i, r in enumerate(q) if r.get("_thread") == d.get("threadId")]
-            done.append((q.pop(same[-1] if same else len(q) - 1), d))
-def fmt(run):
-    return "start=%s user=@%s thread=%s" % (run["ts"], run.get("userId", "?"), run.get("_thread", "?"))
-open_runs = [r for q in pending.values() for r in q if now - r["_t"] <= timedelta(seconds=max_age)]
+    if not is_post_run(d): continue
+    cover = None
+    for i, q in enumerate(precise):
+        if i in used or q.get("userId") != d.get("userId"): continue
+        if timedelta(0) <= d["_t"] - q["_t"] <= timedelta(seconds=10): cover = i; break
+    if cover is not None: used.add(cover); continue
+    fallback.append(d)
+# The POST line carries no thread id in 264ca566: the thread is the last one this user read before
+# it (GET /api/threads/<id>, …/threads/<id>/messages, /api/synelia/threads/<id>/models), else "?".
+last_seen = {}
+fb = set(id(d) for d in fallback)
+for d in rows:
+    m = THREAD.search(d.get("path", "")) if d.get("method") == "GET" else None
+    if m and d.get("userId"): last_seen[d["userId"]] = d.get("threadId") or m.group(1)
+    if id(d) in fb: d["_thread"] = last_seen.get(d.get("userId"), "?")
+# Match each run_timing not explained by a precise start to a fallback POST of the SAME user, by
+# thread, in this order: POST whose inferred thread is the timing thread (latest first); POST of
+# unknown thread; POST sent before the timing thread ever appeared in the log (the POST created that
+# thread, so the inferred thread was only the page read before). Never a POST inferred on another
+# thread that already existed: two runs of one person on two known threads do not cancel each other.
+first_seen = {}
+for d in rows:
+    m = THREAD.search(d.get("path", ""))
+    for t in (d.get("threadId"), m.group(1) if m else None):
+        if t: first_seen.setdefault(t, d["_t"])
+pending = list(fallback)
+start_ids = set(d["runId"] for d in starts)
+last_done = {}
+for t in rows:
+    if kind(t) != "run_timing": continue
+    last_done.setdefault(t.get("threadId"), []).append(t["_t"])
+    if t.get("runId") in start_ids or not t.get("userId"): continue
+    cands = [r for r in pending if r.get("userId") == t["userId"] and r["_t"] <= t["_t"]]
+    born = first_seen.get(t.get("threadId"), t["_t"])
+    for tier in (lambda r: r["_thread"] == t.get("threadId"), lambda r: r["_thread"] == "?", lambda r: r["_t"] <= born):
+        same = [r for r in cands if tier(r)]
+        if same: pending.remove(same[-1]); break
+# thread_busy without the precise line: two runs never overlap on one thread, so an open POST on
+# thread T followed by a completed run on T is not running (it was refused, or its timing was taken
+# by the other POST of that thread).
+for r in pending:
+    later = [x for x in last_done.get(r["_thread"], []) if x > r["_t"]] if r["_thread"] != "?" else []
+    if not later: open_runs.append(dict(r, _how="repli"))
+open_runs = [r for r in open_runs if now - r["_t"] <= timedelta(seconds=max_age)]
 open_runs.sort(key=lambda r: r["_t"])
+def fmt(r):
+    if r["_how"] == "précis":
+        return "start=%s user=@%s thread=%s run=%s" % (r["ts"], r.get("userId", "?"), r.get("_thread", "?"), r.get("runId"))
+    return "start=%s user=@%s thread=%s run=inconnu [repli 264ca566 : thread déduit]" % (r["ts"], r.get("userId", "?"), r.get("_thread", "?"))
 if mode == "check":
     live = [r for r in open_runs if r["_t"] >= started]
     for r in open_runs:
         if r["_t"] < started: print("perdu au redémarrage (déjà coupé, info) " + fmt(r))
-    for r in live: print("EN COURS " + fmt(r) + " (run id inconnu avant la fin)")
+    for r in live: print("EN COURS " + fmt(r))
     print("inflight: %d run(s) en cours au %sZ (server démarré %sZ)" % (len(live), now.isoformat(timespec="seconds"), started.isoformat(timespec="seconds")))
     sys.exit(3 if live else 0)
 if mode == "cut":
     t0 = ts(since)
     cut = [r for r in open_runs if t0 <= r["_t"] < started]
-    for r in cut: print("RUN COUPÉ " + fmt(r) + " (jamais terminé ; run id inconnu)")
-    print("runs coupés par la recréation (POST /run entre %sZ et le démarrage %sZ) : %d" % (t0.isoformat(timespec="seconds"), started.isoformat(timespec="seconds"), len(cut)))
+    for r in cut: print("RUN COUPÉ " + fmt(r) + " (jamais terminé)")
+    print("runs coupés par la recréation (runs démarrés entre %sZ et le démarrage %sZ) : %d" % (t0.isoformat(timespec="seconds"), started.isoformat(timespec="seconds"), len(cut)))
     sys.exit(0)
 sys.exit(2)
 '

@@ -187,3 +187,43 @@ export function logRunTiming(
       .catch(() => {});
   return line;
 }
+
+/**
+ * Synelia fork: run lifecycle lines for the deploy drain (deploy/synelia/inflight-check.sh), in the
+ * same daily file as `run_timing`, ids only:
+ *  - `{ kind: "synelia_run_start", threadId, runId, userId }` when the runner accepts a chat run
+ *    (it will end with a `run_timing` line carrying the same runId);
+ *  - `{ kind: "synelia_run_skip", reason, threadId, runId, userId }` when POST /run is answered
+ *    without running anything: `already_answered` (idempotent resend) or `thread_busy` (a run is
+ *    already going on the thread). Both answer 200 with a short SSE stream and write no run_timing,
+ *    so without this line the drain cannot tell them from a run in flight.
+ * Mirrored to stdout as `synelia_run {...}`.
+ */
+export function logRunEvent(
+  kind: "synelia_run_start" | "synelia_run_skip",
+  fields: {
+    threadId: string;
+    runId: string;
+    userId?: string;
+    reason?: "already_answered" | "thread_busy";
+  },
+  dir: string | undefined = process.env.SYNELIA_REQUEST_LOG_DIR,
+): string {
+  const at = new Date();
+  const line = JSON.stringify({
+    ts: at.toISOString(),
+    kind,
+    ...(fields.reason ? { reason: fields.reason } : {}),
+    threadId: fields.threadId,
+    runId: fields.runId,
+    ...(fields.userId ? { userId: fields.userId } : {}),
+  });
+  console.log(`synelia_run ${line}`);
+  if (dir)
+    void mkdir(dir, { recursive: true })
+      .then(() =>
+        appendFile(join(dir, `requests-${day(at)}.jsonl`), `${line}\n`),
+      )
+      .catch(() => {});
+  return line;
+}

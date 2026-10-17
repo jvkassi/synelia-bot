@@ -147,3 +147,104 @@ test("every server recreate goes through the gate, and deploy.sh recreates right
     expect(script.indexOf("inflight_cut_report")).toBeGreaterThan(script.indexOf("REMOTE\n)"));
   }
 });
+// v2 (Backend Expert review): exclusions and (user, thread) matching.
+const startLine = (ts: string, user: string, threadId: string, runId: string) =>
+  JSON.stringify({ ts, kind: "synelia_run_start", threadId, runId, userId: user });
+const skipLine = (ts: string, user: string, threadId: string, runId: string, reason: string) =>
+  JSON.stringify({ ts, kind: "synelia_run_skip", reason, threadId, runId, userId: user });
+const CHECK = `if inflight_check; then echo IDLE; else echo "BUSY rc=$?"; fi`;
+const A = "aliceUserId0001";
+
+test("fallback: same user, two threads, the first ends -> the second is still in flight", async () => {
+  const log = [
+    threadLine("2026-10-17T18:05:00.000Z", A, "thread-A"), runLine("2026-10-17T18:05:00.100Z", A),
+    threadLine("2026-10-17T18:05:10.000Z", A, "thread-B"), runLine("2026-10-17T18:05:10.100Z", A),
+    timingLine("2026-10-17T18:05:20.000Z", A, "thread-A", "run-A"),
+  ].join("\n");
+  const r = await run(CHECK, { now: "2026-10-17T18:05:30Z", started: S1, "log.1": log, handles: `${A} alice` });
+  expect(r.out).toContain("BUSY rc=3");
+  expect(r.out).toContain("EN COURS start=2026-10-17T18:05:10.100Z user=alice thread=thread-B");
+  expect(r.out).not.toContain("thread=thread-A");
+  expect(r.out).toContain("inflight: 1 run(s) en cours");
+});
+
+test("fallback: a timing on another existing thread never closes a run of that user", async () => {
+  // Alice reads thread-A and sends; a run of hers on thread-C (started before, e.g. other tab) ends.
+  const log = [
+    threadLine("2026-10-17T18:04:00.000Z", A, "thread-C"),
+    threadLine("2026-10-17T18:05:00.000Z", A, "thread-A"), runLine("2026-10-17T18:05:00.100Z", A),
+    timingLine("2026-10-17T18:05:20.000Z", A, "thread-C", "run-C"),
+  ].join("\n");
+  const r = await run(CHECK, { now: "2026-10-17T18:05:30Z", started: S1, "log.1": log, handles: `${A} alice` });
+  expect(r.out).toContain("EN COURS start=2026-10-17T18:05:00.100Z user=alice thread=thread-A");
+});
+
+test("fallback: a POST that created its thread is closed by that thread's timing", async () => {
+  // API client: reads some page, then POSTs a brand-new thread (the first line naming it is the timing).
+  const log = [threadLine("2026-10-17T18:05:00.000Z", A, "e2e:none"), runLine("2026-10-17T18:05:00.100Z", A), timingLine("2026-10-17T18:05:02.000Z", A, "new-thread", "run-N")].join("\n");
+  const r = await run(CHECK, { now: "2026-10-17T18:05:30Z", started: S1, "log.1": log, handles: `${A} alice` });
+  expect(r.out).toContain("IDLE");
+});
+
+test("fallback thread_busy: a refused POST on a thread whose run then completes is not in flight", async () => {
+  // 264ca566 answers thread_busy with 200 (never 409): two POSTs on thread-A, one run_timing on thread-A.
+  const log = [
+    threadLine("2026-10-17T18:05:00.000Z", A, "thread-A"), runLine("2026-10-17T18:05:00.100Z", A),
+    runLine("2026-10-17T18:05:05.000Z", A), timingLine("2026-10-17T18:05:20.000Z", A, "thread-A", "run-A"),
+  ].join("\n");
+  const r = await run(CHECK, { now: "2026-10-17T18:05:30Z", started: S1, "log.1": log, handles: `${A} alice` });
+  expect(r.out).toContain("IDLE");
+});
+
+test("precise lines: same user, two threads, the first ends -> the second is in flight with its run id", async () => {
+  const log = [
+    startLine("2026-10-17T18:05:00.090Z", A, "thread-A", "run-A"), runLine("2026-10-17T18:05:00.100Z", A),
+    startLine("2026-10-17T18:05:10.090Z", A, "thread-B", "run-B"), runLine("2026-10-17T18:05:10.100Z", A),
+    timingLine("2026-10-17T18:05:20.000Z", A, "thread-A", "run-A"),
+  ].join("\n");
+  const r = await run(CHECK, { now: "2026-10-17T18:05:30Z", started: S1, "log.1": log, handles: `${A} alice` });
+  expect(r.out).toContain("EN COURS start=2026-10-17T18:05:10.090Z user=alice thread=thread-B run=run-B");
+  expect(r.out).toContain("inflight: 1 run(s) en cours");
+  expect(r.out).not.toContain("repli");
+});
+
+test("precise lines: an already_answered resend is not in flight", async () => {
+  const log = [
+    startLine("2026-10-17T18:05:00.090Z", A, "thread-A", "run-A"), runLine("2026-10-17T18:05:00.100Z", A),
+    timingLine("2026-10-17T18:05:05.000Z", A, "thread-A", "run-A"),
+    skipLine("2026-10-17T18:05:08.000Z", A, "thread-A", "run-A", "already_answered"), runLine("2026-10-17T18:05:08.010Z", A),
+  ].join("\n");
+  const r = await run(CHECK, { now: "2026-10-17T18:05:30Z", started: S1, "log.1": log, handles: `${A} alice` });
+  expect(r.out).toContain("IDLE");
+});
+
+test("precise lines: a thread_busy refusal is not in flight, the running run still is", async () => {
+  const log = [
+    startLine("2026-10-17T18:05:00.090Z", A, "thread-A", "run-A"), runLine("2026-10-17T18:05:00.100Z", A),
+    skipLine("2026-10-17T18:05:05.000Z", A, "thread-A", "run-A2", "thread_busy"), runLine("2026-10-17T18:05:05.010Z", A),
+  ].join("\n");
+  const busy = await run(CHECK, { now: "2026-10-17T18:05:30Z", started: S1, "log.1": log, handles: `${A} alice` });
+  expect(busy.out).toContain("inflight: 1 run(s) en cours");
+  expect(busy.out).toContain("run=run-A");
+  expect(busy.out).not.toContain("run-A2");
+  const done = await run(CHECK, { now: "2026-10-17T18:05:40Z", started: S1, "log.1": `${log}\n${timingLine("2026-10-17T18:05:35.000Z", A, "thread-A", "run-A")}`, handles: `${A} alice` });
+  expect(done.out).toContain("IDLE");
+});
+
+test("mixed log (fallback lines before the pass10 server, precise after): no double count", async () => {
+  const log = [
+    threadLine("2026-10-17T18:01:00.000Z", A, "thread-A"), runLine("2026-10-17T18:01:00.100Z", A),
+    timingLine("2026-10-17T18:01:05.000Z", A, "thread-A", "run-old"),
+    startLine("2026-10-17T18:05:00.090Z", A, "thread-B", "run-B"), runLine("2026-10-17T18:05:00.100Z", A),
+  ].join("\n");
+  const r = await run(CHECK, { now: "2026-10-17T18:05:30Z", started: S1, "log.1": log, handles: `${A} alice` });
+  expect(r.out).toContain("inflight: 1 run(s) en cours");
+  expect(r.out).toContain("thread=thread-B run=run-B");
+  expect(r.out).not.toContain("repli");
+});
+
+test("post-hoc cut report uses the precise run id when present", async () => {
+  const race = `${startLine("2026-10-17T18:09:59.800Z", "bobUserId000002", "thread-B", "run-B")}\n${runLine("2026-10-17T18:09:59.900Z", "bobUserId000002")}`;
+  const r = await run(RECREATE, { now: "2026-10-17T18:10:30Z", started: S1, "log.1": FINISHED, race: `${FINISHED}\n${race}`, handles: "bobUserId000002 bob" });
+  expect(r.out).toContain("RUN COUPÉ start=2026-10-17T18:09:59.800Z user=bob thread=thread-B run=run-B");
+});
