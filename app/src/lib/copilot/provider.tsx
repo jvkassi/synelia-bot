@@ -31,6 +31,9 @@ import { SkillTools } from "./skill-tools";
  * the server; a browser never sees them (see server/src/app.ts, where /api/capabilities projects the
  * runtime rather than returning it).
  */
+/** Module-level: CopilotKit warns when `renderCustomMessages` is a new array on each render. */
+const RENDER_CUSTOM_MESSAGES = [syneliaRunModelRenderer as never];
+
 export function CopilotProvider({ children }: { children: ReactNode }) {
   const { data: capabilities } = useQuery(deploymentCapabilitiesQueryOptions());
 
@@ -39,7 +42,7 @@ export function CopilotProvider({ children }: { children: ReactNode }) {
       runtimeUrl={apiUrl("/api/copilotkit")}
       credentials="include"
       // Synelia fork: "provider · model" under each answer.
-      renderCustomMessages={[syneliaRunModelRenderer as never]}
+      renderCustomMessages={RENDER_CUSTOM_MESSAGES}
       {...a2uiProviderOptions(capabilities?.generativeUi)}
       /*
        * Passed only when this deployment actually has the capability, and this is the load-bearing
