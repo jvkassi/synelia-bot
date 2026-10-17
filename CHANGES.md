@@ -198,3 +198,15 @@ Not done in phase 0: LISTEN/NOTIFY (not used), SSE resume via Last-Event-ID, mul
 En cas d'absence ou d'invalidité, les outils sortent en code 3 avec « e2e.env missing/invalid ». `deploy.sh` refuse alors de déployer (`e2e.sh check-env`) avant de toucher konnect, et ne fait pas de rollback silencieux si l'erreur survient pendant le garde.
 
 Coupure réseau pendant un run : après 2 reconnexions sans fin de run, la page relit l'état du fil et rejoue le fil une fois. « Connexion perdue… » ne s'affiche que si ce rejeu échoue (test navigateur (c) : le message s'affichait alors que la réponse était complète).
+
+## Logs persistants et comptes de test
+
+- **Docker** : pilote `local` (7 × 20 Mo par conteneur, compressés) pour postgres, migrate, agent-mastra et server. Les logs survivent aux redémarrages et `docker compose logs` fonctionne toujours.
+- **Journal des requêtes** : `server/src/synelia/request-log.ts`, activé par `SYNELIA_REQUEST_LOG_DIR=/app/logs`, monté sur `/srv/synelia-bot/logs` (chmod 750, propriétaire `openbot`).
+  - Un fichier par jour, `requests-YYYY-MM-DD.jsonl` ; 7 jours conservés.
+  - Champs : `ts`, `method`, `path` (sans query string), `status`, `durationMs`, `userId`, `threadId` (si le chemin en porte un), `test`.
+  - Jamais de corps, d'en-têtes, de cookies ni de jetons.
+- **Comptes de test** : `SYNELIA_TEST_ACCOUNTS` (emails séparés par des virgules, dans `.env.server`).
+  - Leurs lignes de journal portent `"test": true` ; les métriques du pilote filtrent ces lignes (`select(.test != true)`).
+  - Un compte de test présent aussi dans `INITIAL_ADMIN_EMAILS` n'est jamais créé par le bootstrap. Les rôles admin ne viennent que de cette liste.
+  - Valeur recommandée : `SYNELIA_TEST_ACCOUNTS=jv.e2e@synelia.tech,jv.test@synelia.tech,jv.testb@synelia.tech` (à ajuster aux comptes de test réels).

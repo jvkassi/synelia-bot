@@ -7,6 +7,7 @@
  * the `databaseHooks.user.create` hooks run as for any sign-in (domain check, role seeding from
  * INITIAL_ADMIN_EMAILS). An existing credential is left alone: a restart never rotates a password.
  */
+import { isTestAccount, testAccounts } from "../synelia/test-accounts";
 import type { createAuth } from "./index";
 
 type BetterAuthInstance = ReturnType<typeof createAuth>;
@@ -25,6 +26,17 @@ export async function bootstrapPasswordUser(
       .toLowerCase();
     const password = environment[`OPENBOT_BOOTSTRAP_USER${suffix}_PASSWORD`];
     if (!email || !password) continue;
+    // Synelia fork: a test account (SYNELIA_TEST_ACCOUNTS) is never created as an administrator.
+    // Roles only come from INITIAL_ADMIN_EMAILS, so naming it there is refused outright.
+    if (testAccountIsAdmin(email, environment)) {
+      console.error(
+        JSON.stringify({
+          type: "synelia-bootstrap-test-account-admin-refused",
+          email,
+        }),
+      );
+      continue;
+    }
     const name =
       environment[`OPENBOT_BOOTSTRAP_USER${suffix}_NAME`]?.trim() || email;
     await bootstrapOne(auth, email, password, name);
@@ -85,4 +97,16 @@ async function bootstrapOne(
   console.log(
     JSON.stringify({ type: "synelia-bootstrap-user-created", email }),
   );
+}
+
+/** Synelia fork: true when `email` is a test account AND is named in INITIAL_ADMIN_EMAILS. */
+export function testAccountIsAdmin(
+  email: string,
+  environment: Record<string, string | undefined>,
+): boolean {
+  if (!isTestAccount(email, testAccounts(environment.SYNELIA_TEST_ACCOUNTS)))
+    return false;
+  return (environment.INITIAL_ADMIN_EMAILS ?? "")
+    .split(",")
+    .some((entry) => entry.trim().toLowerCase() === email.toLowerCase());
 }

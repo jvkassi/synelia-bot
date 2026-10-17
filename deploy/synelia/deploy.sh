@@ -44,6 +44,8 @@ ship() { # $1 = commit, run from a clean tree of that commit
     n=$(active_locks)
     [ "$n" = "0" ] || echo "AVERTISSEMENT : verrous actifs = $n après ~120 s, redémarrage quand même." >&2
   fi
+  # Request-log bind mount: owned by the image's unprivileged user, not world-readable.
+  ssh "$HOST" "cd $DIR && mkdir -p logs && chmod 750 logs && docker compose run --rm --no-deps --user root --entrypoint chown server openbot:openbot /app/logs >> tmp/build-$1.log 2>&1"
   ssh "$HOST" "cd $DIR && docker compose up -d >> tmp/build-$1.log 2>&1 && echo $1 > src/DEPLOYED_COMMIT && echo deployed $1"
 }
 

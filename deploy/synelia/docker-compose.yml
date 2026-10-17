@@ -8,11 +8,14 @@
 #   and .env (compose interpolation: BASICAUTH_USERS hash only).
 name: synelia-bot
 
+# Docker `local` driver, rotated: 7 files x 20 MB per container (about a week at pilot volume).
+# Survives container restarts; `docker compose logs` still reads it.
 x-logging: &logging
-  driver: json-file
+  driver: local
   options:
-    max-size: "10m"
-    max-file: "3"
+    max-size: "20m"
+    max-file: "7"
+    compress: "true"
 
 services:
   postgres:
@@ -92,6 +95,11 @@ services:
     mem_limit: 1536m
     cpus: 2.0
     logging: *logging
+    # Structured per-request JSON (server/src/synelia/request-log.ts), daily files, 7 kept.
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      SYNELIA_REQUEST_LOG_DIR: /app/logs
     labels:
       - traefik.enable=true
       - traefik.docker.network=proxy

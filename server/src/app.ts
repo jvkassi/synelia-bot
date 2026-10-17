@@ -131,6 +131,7 @@ import { createCoworkerRoutingService } from "./routing/service";
 import type { SelfHostBanner } from "./self-host-banner";
 import { type SyneliaModelList, visibleModels } from "./synelia/models";
 import { createPilotGate, pilotEnabled } from "./synelia/pilot-gate";
+import { createRequestLog } from "./synelia/request-log";
 import { createTeamBotRoutes } from "./team-bots/routes";
 import type { TeamBots } from "./team-bots/team-bots";
 import type { PackageStatusReader } from "./tenant-package";
@@ -625,6 +626,7 @@ export function createApp(
   // Enterprise controls: capability switches and the model allowlist in front of the routes they
   // govern, the admin screen's API, and the SCIM verbs the GET/POST auth handler above does not take.
   // Synelia fork: pilot surfaces off server-side too (404), before any route can answer.
+  app.use("/api/*", createRequestLog());
   app.use("/api/*", createPilotGate());
   // The /bot page is outside the pilot too: the server sends the browser home before any HTML.
   if (pilotEnabled()) app.get("/bot", (context) => context.redirect("/", 302));
