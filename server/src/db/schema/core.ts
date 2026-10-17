@@ -1,3 +1,4 @@
+import type { UserPreferences } from "@openbot/shared/user-preferences";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -12,7 +13,6 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { UserPreferences } from "@openbot/shared/user-preferences";
 // NOT drizzle's `jsonb`: that one serialises, and so does the driver, so every object landed as a
 // JSON string and nothing in this database could be queried by a JSON field. See ./json.ts.
 import { jsonb } from "./json";
@@ -67,6 +67,11 @@ export const users = pgTable("users", {
   name: text("name"),
   image: text("image"),
   emailVerified: boolean("email_verified").notNull().default(false),
+  /**
+   * Synelia fork: the account must choose its own password before using the app (set for accounts
+   * an operator creates: bootstrap, add-tester.sh). Cleared when the person changes it.
+   */
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
   preferences: jsonb("preferences")
     .$type<Partial<UserPreferences>>()
     .notNull()

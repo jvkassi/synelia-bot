@@ -206,10 +206,10 @@ Coupure réseau pendant un run : après 2 reconnexions sans fin de run, la page 
   - Un fichier par jour, `requests-YYYY-MM-DD.jsonl` ; 7 jours conservés.
   - Champs : `ts`, `method`, `path` (sans query string), `status`, `durationMs`, `userId`, `threadId` (si le chemin en porte un), `test`.
   - Jamais de corps, d'en-têtes, de cookies ni de jetons.
-- **Comptes de test** : `SYNELIA_TEST_ACCOUNTS` (emails séparés par des virgules, dans `.env.server`).
+- **Comptes de test** : `SYNELIA_TEST_ACCOUNTS` (**userId** séparés par des virgules, dans `.env.server` ; plus les emails depuis la passe 6).
   - Leurs lignes de journal portent `"test": true` ; les métriques du pilote filtrent ces lignes (`select(.test != true)`).
-  - Un compte de test présent aussi dans `INITIAL_ADMIN_EMAILS` n'est jamais créé par le bootstrap. Les rôles admin ne viennent que de cette liste.
-  - Valeur recommandée : `SYNELIA_TEST_ACCOUNTS=jv.e2e@synelia.tech,jv.test@synelia.tech,jv.testb@synelia.tech` (à ajuster aux comptes de test réels).
+  - Les rôles admin ne viennent que de `INITIAL_ADMIN_EMAILS` (jv.e2e est `user`, vérifié).
+  - Valeur sur konnect : les ids de jv.e2e, jv.test et jv.test2.
 
 ## Access log Traefik : proposition NON appliquée
 
@@ -228,16 +228,52 @@ Coupure réseau pendant un run : après 2 reconnexions sans fin de run, la page 
    --accesslog.format=json
    --accesslog.filepath=/data/access.log
    --accesslog.fields.defaultmode=keep
-   --accesslog.fields.names.RequestPath=drop
    --accesslog.fields.names.RequestAddr=drop
    --accesslog.fields.headers.defaultmode=drop
    --entrypoints.https.observability.accessLogs=false
    --entrypoints.http.observability.accessLogs=false
    ```
-   - `RequestPath` est supprimé parce que Traefik n'a pas de champ « chemin sans query string ». Les chemins sont dans le journal applicatif (`requests-*.jsonl`).
+   - **Gardés** : `ClientHost` (IP du client, utile pour les 401 basicauth) et `RequestPath`. **Supprimés** : `RequestAddr` et tous les en-têtes.
+   - `RequestPath` peut contenir la query string. Acceptable : l'app ne met aucun secret en query string. Vérifié par grep des URL `client(`/`fetch(`/`WebSocket` de `app/src` (passe 6) : seules des valeurs non secrètes (`agentId`, `days`, `limit`, `hidden`, `q`, `kind`/`ref`, `returnTo`, `botId`, `channelId`, `format=csv`) ; aucun `token`, `key`, `password`, `secret` ni `code` ; les WebSocket n'ont pas de query.
+   - **Traefik 3.4.4 confirmé** (≥ 3.1) : les options `observability.accessLogs` par routeur et par point d'entrée sont valides.
    - Tous les en-têtes sont supprimés, donc jamais d'`Authorization`.
    - Les points d'entrée sont désactivés par défaut : les autres stacks ne journalisent rien de plus.
 2. Label à ajouter sur `server` dans `deploy/synelia/docker-compose.yml` :
    `traefik.http.routers.synelia-bot.observability.accesslogs=true`
 3. Rotation : `/var/lib/dokku/data/traefik/access.log` via logrotate (`daily`, `rotate 7`, `copytruncate`).
 4. Vérification avant et après : statut HTTP de Jitsi (meet.synelia.tech), n8n-webhook, WAHA et synelia-bot identique ; `access.log` ne contient que `RouterName=synelia-bot@docker`.
+
+## Passe 6 : changement de mot de passe forcé, testeurs, thread_busy, libellés, latence
+
+**Changement de mot de passe forcé à la première connexion**
+- Colonne `users.must_change_password` (migration Drizzle `0057`, défaut `false`). Mise à `true` pour les comptes créés par le bootstrap (`OPENBOT_BOOTSTRAP_USER*` et `SYNELIA_TESTER_*`) ; il n'existe pas d'autre création de compte par mot de passe (inscription désactivée).
+- **Un seul middleware global** : `server/src/synelia/password-change-gate.ts`, monté sur `/api/*` après le handler Better Auth et le pilot gate, avant toutes les routes (y compris `/api/copilotkit` runtime et SSE). Tant que le drapeau est vrai : 403 `{ "error": "Vous devez changer votre mot de passe.", "code": "password_change_required" }`.
+  - Liste blanche : `/api/auth/get-session`, `/api/auth/change-password`, `/api/auth/sign-out`.
+  - **Les endpoints Better Auth (`GET`/`POST /api/auth/*`, y compris `update-user`) répondent avant ce middleware et le contournent.** `update-user` ne peut pas toucher au drapeau (`input: false`).
+  - Les comptes de `SYNELIA_TEST_ACCOUNTS` sont exemptés.
+- **Contrat pour le formulaire (Frontend Expert)** :
+  - `authClient.changePassword({ currentPassword, newPassword, revokeOtherSessions: true })` ;
+  - en cas de succès, le serveur remet `must_change_password` à `false` (hook `after` sur `/change-password`) ;
+  - `GET /api/auth/get-session` renvoie `user.mustChangePassword`.
+- Front (stub seulement) : un 403 `password_change_required` (garde `_authed` sur `/api/me`, et `onError` global des caches React Query) mène à `/change-password` (`app/src/routes/change-password.tsx`, page minimale). Nouvelles clés : `ui.auth.changePasswordTitle`, `ui.auth.changePasswordRequired`.
+- Tests : `server/tests/synelia-must-change-password.test.ts`, `app/src/lib/auth/password-change.test.ts`. Gate e2e : `e2e.sh pwchange <email>` → `deploy/synelia/check-password-gate.sh`.
+
+**Testeurs** : `deploy/synelia/add-tester.sh <email>` / `remove-tester.sh <email>` (depuis le poste opérateur, `HOST=konnect`).
+- `add-tester` : compte app (rôle `user`, `must_change_password=true`) via `SYNELIA_TESTER_<SLUG>_EMAIL/_PASSWORD` dans `.env.server`, créé par le bootstrap au redémarrage ; entrée basicauth **bcrypt** séparée, nommée d'après le testeur, ajoutée à `BASICAUTH_USERS` dans `.env`. Sauvegarde de `.env`/`.env.server` dans `backup/` avant, chmod 600 après. Ne recrée que le conteneur `server` et vérifie que les autres conteneurs n'ont pas bougé. Les deux secrets vont uniquement dans `secrets/testers/<email>.txt` (chmod 600, jamais écrasé, jamais affiché).
+- `remove-tester` : retire les entrées (après sauvegarde), supprime le compte (`DELETE FROM users`, cascade), supprime le fichier de secrets, recrée seulement `server`.
+
+**Risque résiduel accepté (Architecture Reviewer)**
+- Le journal applicatif couvre les requêtes authentifiées avec `userId` ; depuis la passe 6 il est monté en tête de `createApp`, donc `/api/auth/*` (connexions, 401 applicatifs) y figure aussi, sans corps.
+- Les 401 basicauth et les refus au niveau Traefik restent invisibles jusqu'à la fenêtre Traefik de JV (proposition d'access log ci-dessus).
+- Option : déplacer le basicauth dans le serveur (middleware Hono), ce qui rendrait ces refus visibles dans le journal applicatif sans toucher Traefik.
+
+**thread_busy de bout en bout (serveur)**
+- Chemin verrou : le runtime répond son propre 409 `{ "error": "Thread lock denied" }` ; `threadBusyBody` (`copilot.ts`) réécrit tout 409 de `/api/copilotkit/*` en `{ "error": "Thread is busy.", "code": "thread_busy" }`.
+- Chemin en mémoire : le « Thread already running » de l'`InMemoryAgentRunner` était une erreur de flux que le navigateur ne voyait jamais ; `PostgresAgentRunner` renvoie maintenant un `RUN_ERROR` avec `code: "thread_busy"`.
+- `toolkit/src/copilotkit/thread-lock.ts` (409 → `null`) est le chemin des hand-offs en arrière-plan (réessai), pas une réponse HTTP au navigateur : laissé tel quel. Test front : Frontend Expert.
+
+**Libellés de modèles** : `label` dans `agent-mastra/src/mastra/synelia-models.ts` (`Rapide` pour Gemini Flash, `Approfondi` pour Claude Sonnet, sinon l'usage configuré ; jamais le fournisseur) ; transmis par `/api/synelia/models`, ajouté à `/api/synelia/runs/:id` et `/api/synelia/threads/:id/models`. Le sélecteur et le pied de réponse l'affichent quand il est présent (style : Frontend Expert).
+
+**Pilot gate** : `/api/approvals`, `/api/identity`, `/api/passwords`, `/api/sign-in-requests` retirés de `PILOT_ALLOWED_PREFIXES` (écrans de réglages hors phase 0 : approbations, comptes connectés, mots de passe, galerie de composants déjà fermée). Ajoutés au cas `e2e.sh gate` (404 attendu).
+
+**Mesures de latence** : `run_timing` dans `requests-*.jsonl` (et `synelia_timing` sur stdout) par run, nombres et ids seulement : `routeMs`, `prepMs`, `firstEventMs`, `firstTextMs`, `sinceArrivalFirstTextMs`, `totalMs`, `tools`, `messages`, `contextBytes`, `inputBytes`. Côté Mastra, `synelia_timing {kind:"provider_call"}` : `sinceAgentRequestMs`, `headersMs`, `firstChunkMs`, `requestBytes`.

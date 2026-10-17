@@ -25,6 +25,8 @@ export type SyneliaModel = {
   providerLabel: string;
   model: string;
   usage: string;
+  /** Display label from the server ('Rapide', 'Approfondi'); shown instead of raw ids. */
+  label?: string;
   /** False when the provider's key cannot run models yet; such models are not offered. */
   available?: boolean;
 };
@@ -104,10 +106,9 @@ export function SyneliaModelPicker({
   if (models.length === 0) return null;
   const groups = new Map<string, SyneliaModel[]>();
   for (const model of models) {
-    groups.set(model.providerLabel, [
-      ...(groups.get(model.providerLabel) ?? []),
-      model,
-    ]);
+    // With server labels there is no provider grouping (no provider name on screen).
+    const group = model.label ? "" : model.providerLabel;
+    groups.set(group, [...(groups.get(group) ?? []), model]);
   }
   return (
     <select
@@ -118,15 +119,20 @@ export function SyneliaModelPicker({
       title={ui.model.title}
       value={selected ?? ""}
     >
-      {[...groups.entries()].map(([label, entries]) => (
-        <optgroup key={label} label={label}>
-          {entries.map((model) => (
-            <option key={model.id} value={model.id}>
-              {`${model.model} · ${model.usage}${model.id === data?.defaultModel ? ` (${ui.model.default})` : ""}`}
-            </option>
-          ))}
-        </optgroup>
-      ))}
+      {[...groups.entries()].map(([label, entries]) => {
+        const options = entries.map((model) => (
+          <option key={model.id} value={model.id}>
+            {`${model.label ?? `${model.model} · ${model.usage}`}${model.id === data?.defaultModel ? ` (${ui.model.default})` : ""}`}
+          </option>
+        ));
+        return label ? (
+          <optgroup key={label} label={label}>
+            {options}
+          </optgroup>
+        ) : (
+          options
+        );
+      })}
     </select>
   );
 }
@@ -141,11 +147,13 @@ const providerName = (provider: string | null) =>
 function Badge({
   provider,
   model,
+  label,
 }: {
   provider: string | null;
   model: string;
+  label?: string;
 }) {
-  const text = `${providerName(provider)} · ${model}`;
+  const text = label ?? `${providerName(provider)} · ${model}`;
   return (
     <div
       className="mt-1 text-xs text-muted-foreground"
@@ -208,7 +216,7 @@ function useThreadModels() {
       if (!response.ok) return {};
       return (await response.json()) as Record<
         string,
-        { provider: string | null; model: string }
+        { provider: string | null; model: string; label?: string }
       >;
     },
     staleTime: Number.POSITIVE_INFINITY,
@@ -219,7 +227,9 @@ function useThreadModels() {
 export function MessageModelLabel({ messageId }: { messageId: string }) {
   const { data } = useThreadModels();
   const entry = data?.[messageId];
-  return entry ? <Badge model={entry.model} provider={entry.provider} /> : null;
+  return entry ? (
+    <Badge label={entry.label} model={entry.model} provider={entry.provider} />
+  ) : null;
 }
 
 /** Packaged CopilotChat (bot page): one read per finished run, no retry loop. */
@@ -237,12 +247,13 @@ function RunModelLabel({ runId }: { runId: string }) {
       return (await response.json()) as {
         provider: string | null;
         model: string | null;
+        label?: string;
       };
     },
     staleTime: Number.POSITIVE_INFINITY,
   });
   return data?.model ? (
-    <Badge model={data.model} provider={data.provider} />
+    <Badge label={data.label} model={data.model} provider={data.provider} />
   ) : null;
 }
 

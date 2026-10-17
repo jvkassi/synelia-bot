@@ -7,7 +7,6 @@
  * the `databaseHooks.user.create` hooks run as for any sign-in (domain check, role seeding from
  * INITIAL_ADMIN_EMAILS). An existing credential is left alone: a restart never rotates a password.
  */
-import { isTestAccount, testAccounts } from "../synelia/test-accounts";
 import type { createAuth } from "./index";
 
 type BetterAuthInstance = ReturnType<typeof createAuth>;
@@ -26,21 +25,29 @@ export async function bootstrapPasswordUser(
       .toLowerCase();
     const password = environment[`OPENBOT_BOOTSTRAP_USER${suffix}_PASSWORD`];
     if (!email || !password) continue;
-    // Synelia fork: a test account (SYNELIA_TEST_ACCOUNTS) is never created as an administrator.
-    // Roles only come from INITIAL_ADMIN_EMAILS, so naming it there is refused outright.
-    if (testAccountIsAdmin(email, environment)) {
-      console.error(
-        JSON.stringify({
-          type: "synelia-bootstrap-test-account-admin-refused",
-          email,
-        }),
-      );
-      continue;
-    }
     const name =
       environment[`OPENBOT_BOOTSTRAP_USER${suffix}_NAME`]?.trim() || email;
     await bootstrapOne(auth, email, password, name);
   }
+  // Synelia fork: testers added by deploy/synelia/add-tester.sh (SYNELIA_TESTER_<SLUG>_EMAIL /
+  // _PASSWORD in .env.server). Same rule: created once, flagged must_change_password, role user.
+  for (const [email, password] of testerEntries(environment)) {
+    await bootstrapOne(auth, email, password, email);
+  }
+}
+
+/** `SYNELIA_TESTER_<SLUG>_EMAIL` + `_PASSWORD` pairs, lower-cased emails. */
+export function testerEntries(
+  environment: Record<string, string | undefined>,
+): [string, string][] {
+  return Object.keys(environment).flatMap((key) => {
+    const slug = /^SYNELIA_TESTER_([A-Z0-9_]+)_EMAIL$/.exec(key)?.[1];
+    const email = environment[key]?.trim().toLowerCase();
+    const password = slug
+      ? environment[`SYNELIA_TESTER_${slug}_PASSWORD`]
+      : undefined;
+    return email && password ? [[email, password] as [string, string]] : [];
+  });
 }
 
 async function bootstrapOne(
@@ -83,7 +90,8 @@ async function bootstrapOne(
     found?.user ??
     (await runWithEndpointContext({ context }, () =>
       context.internalAdapter.createUser(
-        { email, name, emailVerified: true },
+        // Synelia fork: an operator-issued password is changed at first sign-in.
+        { email, name, emailVerified: true, mustChangePassword: true },
         { method: "admin" },
       ),
     ));
@@ -97,16 +105,4 @@ async function bootstrapOne(
   console.log(
     JSON.stringify({ type: "synelia-bootstrap-user-created", email }),
   );
-}
-
-/** Synelia fork: true when `email` is a test account AND is named in INITIAL_ADMIN_EMAILS. */
-export function testAccountIsAdmin(
-  email: string,
-  environment: Record<string, string | undefined>,
-): boolean {
-  if (!isTestAccount(email, testAccounts(environment.SYNELIA_TEST_ACCOUNTS)))
-    return false;
-  return (environment.INITIAL_ADMIN_EMAILS ?? "")
-    .split(",")
-    .some((entry) => entry.trim().toLowerCase() === email.toLowerCase());
 }

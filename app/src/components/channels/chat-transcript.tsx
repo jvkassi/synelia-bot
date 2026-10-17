@@ -244,7 +244,9 @@ function Stopped({ reason }: { reason: string }) {
   }
   if (providerError) {
     const model = data?.models.find((entry) => entry.id === selected);
-    const detail = model ? `${model.providerLabel} : ${reason}` : reason;
+    const detail = model
+      ? `${model.label ?? model.providerLabel} : ${reason}`
+      : reason;
     return (
       <div data-testid="transcript-stopped" role="alert">
         <p className="text-destructive text-sm">

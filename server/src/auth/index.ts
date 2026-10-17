@@ -4,7 +4,7 @@ import { expo } from "@better-auth/expo";
 import { scim } from "@better-auth/scim";
 import { sso } from "@better-auth/sso";
 import { betterAuth } from "better-auth";
-import { APIError } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { genericOAuth, okta } from "better-auth/plugins";
 import { eq, sql } from "drizzle-orm";
 import { createEnterpriseStore } from "../admin/settings-store";
@@ -277,6 +277,16 @@ export function createAuth(
           required: false,
           input: false,
         },
+        /*
+         * Synelia fork: returned by GET /api/auth/get-session as `user.mustChangePassword`; never
+         * accepted from a request. Cleared by the `hooks.after` below on a successful change.
+         */
+        mustChangePassword: {
+          type: "boolean",
+          required: false,
+          defaultValue: false,
+          input: false,
+        },
       },
       validateUserInfo: async ({ user, source }) => {
         const verdict = await decideSignInMethod({
@@ -389,6 +399,19 @@ export function createAuth(
             },
           }
         : {}),
+    },
+    // Synelia fork: a successful POST /api/auth/change-password lifts the forced change.
+    hooks: {
+      after: createAuthMiddleware(async (ctx) => {
+        if (ctx.path !== "/change-password") return;
+        const userId = ctx.context.session?.user.id;
+        const returned = ctx.context.returned as unknown;
+        if (!userId || returned instanceof Error) return;
+        await database
+          .update(users)
+          .set({ mustChangePassword: false })
+          .where(eq(users.id, userId));
+      }),
     },
     databaseHooks: {
       user: {

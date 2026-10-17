@@ -33,7 +33,6 @@ export function requestLogLine(entry: {
   status: number;
   durationMs: number;
   userId?: string;
-  userEmail?: string;
 }): string {
   const path = entry.path.split("?")[0] ?? entry.path;
   const threadId = threadIdFromPath(path);
@@ -45,7 +44,7 @@ export function requestLogLine(entry: {
     durationMs: Math.round(entry.durationMs),
     ...(entry.userId ? { userId: entry.userId } : {}),
     ...(threadId ? { threadId } : {}),
-    ...(isTestAccount(entry.userEmail) ? { test: true } : {}),
+    ...(isTestAccount(entry.userId) ? { test: true } : {}),
   })}\n`;
 }
 
@@ -81,7 +80,6 @@ export function createRequestLog(
         status: context.res.status,
         durationMs: performance.now() - started,
         userId: actor?.id,
-        userEmail: actor?.email,
       });
       ready ??= mkdir(dir, { recursive: true });
       const today = day(at);
@@ -96,4 +94,36 @@ export function createRequestLog(
         .catch(() => {});
     }
   };
+}
+
+/**
+ * Per-run timing (numbers and ids only, never content), appended to the same daily file as
+ * `{ kind: "run_timing", ... }`, and mirrored to stdout as `synelia_timing {...}`. The request
+ * line's durationMs is useless for SSE (next() returns when the Response is created).
+ */
+export function logRunTiming(
+  timing: Record<string, string | number | boolean | undefined>,
+  dir: string | undefined = process.env.SYNELIA_REQUEST_LOG_DIR,
+): string {
+  const at = new Date();
+  const line = JSON.stringify({
+    ts: at.toISOString(),
+    kind: "run_timing",
+    ...Object.fromEntries(
+      Object.entries(timing)
+        .filter(([, value]) => value !== undefined)
+        .map(([key, value]) => [
+          key,
+          typeof value === "number" ? Math.round(value) : value,
+        ]),
+    ),
+  });
+  console.log(`synelia_timing ${line}`);
+  if (dir)
+    void mkdir(dir, { recursive: true })
+      .then(() =>
+        appendFile(join(dir, `requests-${day(at)}.jsonl`), `${line}\n`),
+      )
+      .catch(() => {});
+  return line;
 }

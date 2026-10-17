@@ -28,6 +28,7 @@ import {
   type SyneliaModelList,
 } from "../synelia/models";
 import { pilotTools } from "../synelia/pilot-gate";
+import { logRunTiming } from "../synelia/request-log";
 import type {
   LocalIntelligence,
   LocalThreadSummary,
@@ -50,6 +51,22 @@ type GlobalStore = {
 
 const notFound = () =>
   Object.assign(new Error("Thread not found."), { status: 404 });
+
+export const isThreadAlreadyRunning = (error: unknown) =>
+  error instanceof Error && error.message === "Thread already running";
+
+/** What a refused concurrent run streams: the same reason/code as the 409 lock path. */
+export function threadBusyEvents(request: AgentRunnerRunRequest): BaseEvent[] {
+  return [
+    {
+      type: "RUN_ERROR",
+      threadId: request.threadId,
+      runId: request.input.runId,
+      message: "Thread is busy.",
+      code: "thread_busy",
+    } as BaseEvent,
+  ];
+}
 
 export class PostgresAgentRunner extends InMemoryAgentRunner {
   readonly #store: LocalIntelligence;
@@ -140,6 +157,9 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
 
   override run(request: AgentRunnerRunRequest): Observable<BaseEvent> {
     const user = requestUser.getStore();
+    // Synelia fork: run timing (numbers only), see logRunTiming.
+    const runCalledAt = performance.now();
+    const arrivedAt = user?.arrivedAt ?? runCalledAt;
     const agentId = request.agent.agentId ?? "default";
     return defer(() =>
       from(
@@ -181,6 +201,7 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
       switchMap(() => {
         // Synelia fork: the Bot never sees tools outside the pilot (agent computer, sandboxed UI),
         // whatever the browser registered.
+        const preparedAt = performance.now();
         const tools = pilotTools(request.input.tools);
         if (tools !== request.input.tools)
           request = {
@@ -206,7 +227,16 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
             } as BaseEvent,
           );
         }
-        const stream = super.run(request);
+        let stream: Observable<BaseEvent>;
+        try {
+          stream = super.run(request);
+        } catch (error) {
+          // Synelia fork: the in-memory runner's concurrent-run refusal, otherwise a bare stream
+          // error the browser never sees. Sent as a RUN_ERROR carrying `code: "thread_busy"`.
+          if (isThreadAlreadyRunning(error))
+            return of(...threadBusyEvents(request));
+          throw error;
+        }
         const runId = request.input.runId;
         const persist = (status: string) => {
           const store = this.#global.peek(request.threadId);
@@ -252,6 +282,47 @@ export class PostgresAgentRunner extends InMemoryAgentRunner {
         stream.subscribe({
           complete: () => persist("done"),
           error: () => persist("error"),
+        });
+        let firstEventAt: number | undefined;
+        let firstTextAt: number | undefined;
+        const timing = (outcome: string) =>
+          logRunTiming({
+            threadId: request.threadId,
+            runId,
+            userId: user?.id,
+            outcome,
+            model: pickedModel(request),
+            // arrival -> runner.run(): auth, role, CopilotKit runtime request handling
+            routeMs: runCalledAt - arrivedAt,
+            // runner.run() -> agent call: ownership, hydrate, QA-model check
+            prepMs: preparedAt - runCalledAt,
+            // agent call -> first AG-UI event from Mastra (RUN_STARTED)
+            firstEventMs:
+              firstEventAt === undefined
+                ? undefined
+                : firstEventAt - preparedAt,
+            // agent call -> first TEXT_MESSAGE_CONTENT (Mastra build + model first token)
+            firstTextMs:
+              firstTextAt === undefined ? undefined : firstTextAt - preparedAt,
+            sinceArrivalFirstTextMs:
+              firstTextAt === undefined ? undefined : firstTextAt - arrivedAt,
+            totalMs: performance.now() - arrivedAt,
+            tools: request.input.tools?.length ?? 0,
+            messages: request.input.messages?.length ?? 0,
+            contextBytes: JSON.stringify(request.input.context ?? []).length,
+            inputBytes: JSON.stringify(request.input).length,
+          });
+        stream.subscribe({
+          next: (event) => {
+            firstEventAt ??= performance.now();
+            if (
+              event.type === "TEXT_MESSAGE_CONTENT" ||
+              event.type === "TEXT_MESSAGE_CHUNK"
+            )
+              firstTextAt ??= performance.now();
+          },
+          complete: () => timing("done"),
+          error: () => timing("error"),
         });
         return stream;
       }),

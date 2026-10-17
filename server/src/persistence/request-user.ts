@@ -12,4 +12,6 @@ export const requestUser = new AsyncLocalStorage<{
   name: string;
   /** Synelia fork: for admin-only QA options (the hidden test model). */
   role?: "admin" | "user";
+  /** Synelia fork: performance.now() when the request reached the CopilotKit wrapper (timing). */
+  arrivedAt?: number;
 }>();

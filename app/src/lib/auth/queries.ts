@@ -98,7 +98,15 @@ async function currentUser(): Promise<AuthenticatedUser | null> {
     return null;
   }
   if (!response.ok) {
-    throw new Error(`Could not load the current user (${response.status})`);
+    const code = await response
+      .clone()
+      .json()
+      .then((body: { code?: unknown }) => body.code)
+      .catch(() => undefined);
+    throw Object.assign(
+      new Error(`Could not load the current user (${response.status})`),
+      { status: response.status, ...(code ? { code } : {}) },
+    );
   }
 
   const body = (await response.json()) as { user: AuthenticatedUser };

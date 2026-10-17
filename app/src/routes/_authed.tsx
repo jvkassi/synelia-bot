@@ -1,13 +1,22 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
+import {
+  CHANGE_PASSWORD_PATH,
+  isPasswordChangeRequired,
+} from "../lib/auth/password-change";
 import { currentUserQueryOptions, needsOnboarding } from "../lib/auth/queries";
 import { CopilotProvider } from "../lib/copilot/provider";
 import { AppHotkeys } from "../lib/hotkeys/app-hotkeys";
 
 export const Route = createFileRoute("/_authed")({
   beforeLoad: async ({ context, location }) => {
-    const user = await context.queryClient.ensureQueryData(
-      currentUserQueryOptions(),
-    );
+    const user = await context.queryClient
+      .ensureQueryData(currentUserQueryOptions())
+      .catch((error: unknown) => {
+        // Synelia fork: forced password change at first login.
+        if (isPasswordChangeRequired(error))
+          throw redirect({ to: CHANGE_PASSWORD_PATH });
+        throw error;
+      });
     if (!user) {
       throw redirect({ to: "/sign" });
     }

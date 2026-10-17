@@ -12,7 +12,67 @@
  * The browser sends its choice as the AG-UI context entry "Synelia model" (`provider:model`); only
  * an allowlisted id is honoured, anything else answers with the default. Keys never leave here.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createOpenAI } from "@ai-sdk/openai";
+
+/** Synelia fork (timing): performance.now() when the agent request reached this server. */
+export const agentRequestArrival = new AsyncLocalStorage<number>();
+
+/**
+ * Synelia fork: logs `synelia_timing {kind:"provider_call",...}` per outbound model call, numbers
+ * only (never the body): since the agent request arrived (agent build, memory, tool schemas),
+ * response headers (TTFB) and first body chunk.
+ */
+export function timedFetch(
+  providerId: string,
+  inner: typeof fetch,
+): typeof fetch {
+  const wrapped = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const arrived = agentRequestArrival.getStore();
+    const start = performance.now();
+    const requestBytes =
+      typeof init?.body === "string" ? init.body.length : undefined;
+    const log = (extra: Record<string, number | string | undefined>) =>
+      console.log(
+        `synelia_timing ${JSON.stringify({
+          kind: "provider_call",
+          provider: providerId,
+          requestBytes,
+          sinceAgentRequestMs:
+            arrived === undefined ? undefined : Math.round(start - arrived),
+          ...extra,
+        })}`,
+      );
+    const response = await inner(input, init);
+    const headersMs = Math.round(performance.now() - start);
+    if (!response.body) {
+      log({ status: response.status, headersMs });
+      return response;
+    }
+    let first = true;
+    const body = response.body.pipeThrough(
+      new TransformStream({
+        transform(chunk, controller) {
+          if (first) {
+            first = false;
+            log({
+              status: response.status,
+              headersMs,
+              firstChunkMs: Math.round(performance.now() - start),
+            });
+          }
+          controller.enqueue(chunk);
+        },
+      }),
+    );
+    return new Response(body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  };
+  return wrapped as typeof fetch;
+}
 
 type Provider = {
   id: string;
@@ -28,6 +88,8 @@ export type ModelOption = {
   providerLabel: string;
   model: string;
   usage: string;
+  /** Display label for the picker and the reply footer: no provider name, no raw id. */
+  label: string;
   /** False when the provider's key cannot run models (e.g. an OpenRouter management key). */
   available: boolean;
   /** QA-only entry: the server shows it to administrators only and refuses it for anybody else. */
@@ -107,6 +169,13 @@ export function syneliaProviders(): Map<string, Provider> {
   return providers;
 }
 
+/** 'Rapide' for Gemini Flash, 'Approfondi' for Claude Sonnet, else the configured usage. */
+export function modelLabel(model: string, usage: string): string {
+  if (/flash/i.test(model)) return "Rapide";
+  if (/claude|sonnet/i.test(model)) return "Approfondi";
+  return usage.charAt(0).toUpperCase() + usage.slice(1);
+}
+
 export function modelOptions(): ModelOption[] {
   const providers = syneliaProviders();
   const test: ModelOption[] =
@@ -118,6 +187,7 @@ export function modelOptions(): ModelOption[] {
             providerLabel: "Test QA",
             model: "always-fails",
             usage: "échec forcé (admin)",
+            label: "Test (échec forcé)",
             available: true,
             hidden: true,
           },
@@ -144,6 +214,7 @@ function listed(providers: Map<string, Provider>): ModelOption[] {
           providerLabel: provider.label,
           model: id.slice(colon + 1),
           usage,
+          label: modelLabel(id.slice(colon + 1), usage),
           available: availability.get(provider.id) !== false,
         },
       ];
@@ -228,7 +299,7 @@ export function resolveSyneliaModel(picked: string | undefined) {
     baseURL: provider.baseURL,
     apiKey: provider.apiKey,
     name: provider.id,
-    ...(provider.fetch ? { fetch: provider.fetch } : {}),
+    fetch: timedFetch(provider.id, provider.fetch ?? fetch),
   }).chat(option.model);
   cache.set(option.id, model);
   return model;

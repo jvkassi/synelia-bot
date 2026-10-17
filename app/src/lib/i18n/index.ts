@@ -172,6 +172,12 @@ const fr = {
     default: "défaut",
     loadFailed: "Impossible de charger les modèles",
   },
+  /** Synelia fork: forced password change at first login (form owned by the Frontend Expert). */
+  auth: {
+    changePasswordTitle: "Changez votre mot de passe",
+    changePasswordRequired:
+      "Pour continuer, choisissez un nouveau mot de passe.",
+  },
 } as const;
 
 export type UiStrings = Widen<typeof fr>;

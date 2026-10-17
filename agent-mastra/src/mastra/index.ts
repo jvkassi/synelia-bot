@@ -22,10 +22,11 @@ import {
   providerSpec,
 } from "../../../shared/model-providers";
 import {
+  agentRequestArrival,
   defaultModelId,
   modelOptions,
-  probeProviders,
   pickedModel,
+  probeProviders,
   resolveSyneliaModel,
 } from "./synelia-models";
 
@@ -180,7 +181,8 @@ export const mastra = new Mastra({
         if (!carriesTheServerToken(context.req.raw)) {
           return context.json({ error: "unauthorised" }, 401);
         }
-        return next();
+        // Synelia fork: timing anchor for the provider call log (numbers only).
+        return agentRequestArrival.run(performance.now(), () => next());
       },
     ],
     apiRoutes: [

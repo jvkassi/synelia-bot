@@ -1,5 +1,4 @@
 import type { Message, RunAgentInput } from "@ag-ui/client";
-import { createModelListSource } from "./synelia/models";
 import { type AbstractAgent, HttpAgent } from "@ag-ui/client";
 import type { BuiltInAgentConfiguration } from "@copilotkit/runtime/v2";
 import {
@@ -7,7 +6,6 @@ import {
   CopilotRuntime,
 } from "@copilotkit/runtime/v2";
 import { createCopilotHonoHandler } from "@copilotkit/runtime/v2/hono";
-import { Hono } from "hono";
 import { PROVENANCE_GUIDANCE } from "@openbot/shared/bot-prompt";
 import { defaultModelFor } from "@openbot/shared/model-providers";
 import {
@@ -24,6 +22,8 @@ import { HeadlessToolsMiddleware } from "@openbot/toolkit/headless-tools";
 import { sanitizeSeededHistory } from "@openbot/toolkit/history-sanitize";
 import { executeNativeApprovalTool } from "@openbot/toolkit/native-approval";
 import { historyOrEmpty } from "@openbot/toolkit/thread-history";
+import type { MiddlewareHandler } from "hono";
+import { Hono } from "hono";
 import { defer, from, switchMap } from "rxjs";
 import { z } from "zod";
 import {
@@ -48,12 +48,6 @@ import type { DeploymentConfig } from "./config";
 import { observeModelConnection } from "./desktop-connection-failure";
 import { desktopTelemetryProperties } from "./desktop-telemetry";
 import { observeIntelligenceAuthentication } from "./intelligence-client";
-import {
-  type LocalIntelligence,
-  localIntelligence,
-} from "./persistence/local-intelligence";
-import { PostgresAgentRunner } from "./persistence/postgres-runner";
-import { requestUser } from "./persistence/request-user";
 import { RemoteLearnedSkillsMiddleware } from "./learning/remote";
 import {
   type AcquireLearnedSkills,
@@ -67,6 +61,12 @@ import {
   type LoadPersonalMemory,
   PersonalMemoryMiddleware,
 } from "./memory/tools";
+import {
+  type LocalIntelligence,
+  localIntelligence,
+} from "./persistence/local-intelligence";
+import { PostgresAgentRunner } from "./persistence/postgres-runner";
+import { requestUser } from "./persistence/request-user";
 import type { SelectableSkill, Selection } from "./plugins/selection";
 import {
   latestUserText,
@@ -74,6 +74,7 @@ import {
   selectTools,
 } from "./plugins/selection";
 import { grantedToolGuidance } from "./plugins/tools";
+import { createModelListSource } from "./synelia/models";
 import { UNTRUSTED_GUIDANCE } from "./untrusted-content";
 
 /**
@@ -1933,7 +1934,9 @@ function withRequestUser(
     `^${prefix}/threads/([^/]+)/(messages|events|state)$`,
   );
   const threadMutation = new RegExp(`^${prefix}/threads/([^/]+)(/archive)?$`);
+  wrapper.use(`${basePath}/*`, threadBusyBody);
   wrapper.use(`${basePath}/*`, async (context, next) => {
+    const arrivedAt = performance.now();
     let user: { id: string; name: string } | undefined;
     try {
       user = await identifyUser(context.req.raw);
@@ -1950,57 +1953,75 @@ function withRequestUser(
           .then((actor) => actor.role)
           .catch(() => undefined)
       : undefined;
-    return requestUser.run({ ...user, ...(role ? { role } : {}) }, async () => {
-      // Synelia fork: rename / archive / delete. The SSE runtime refuses them (422, they need
-      // Intelligence), so they are answered here: owner-only (404 otherwise), and the runner's
-      // thread index is updated by the store's change event.
-      const mutation = threadMutation.exec(context.req.path);
-      const method = context.req.method;
-      if (
-        mutation?.[1] &&
-        (method === "PATCH" ||
-          method === "DELETE" ||
-          (mutation[2] && method !== "GET"))
-      ) {
-        const threadId = decodeURIComponent(mutation[1]);
-        const params = { threadId, userId: user.id, agentId: "" };
-        try {
-          if (method === "DELETE" && !mutation[2]) {
-            await store.deleteThread(params);
-            return context.body(null, 204);
+    return requestUser.run(
+      { ...user, ...(role ? { role } : {}), arrivedAt },
+      async () => {
+        // Synelia fork: rename / archive / delete. The SSE runtime refuses them (422, they need
+        // Intelligence), so they are answered here: owner-only (404 otherwise), and the runner's
+        // thread index is updated by the store's change event.
+        const mutation = threadMutation.exec(context.req.path);
+        const method = context.req.method;
+        if (
+          mutation?.[1] &&
+          (method === "PATCH" ||
+            method === "DELETE" ||
+            (mutation[2] && method !== "GET"))
+        ) {
+          const threadId = decodeURIComponent(mutation[1]);
+          const params = { threadId, userId: user.id, agentId: "" };
+          try {
+            if (method === "DELETE" && !mutation[2]) {
+              await store.deleteThread(params);
+              return context.body(null, 204);
+            }
+            if (mutation[2]) {
+              await store.archiveThread(params);
+              return context.body(null, 204);
+            }
+            const body = (await context.req.json().catch(() => ({}))) as {
+              name?: unknown;
+              archived?: unknown;
+            };
+            const updates: { name?: string; archived?: boolean } = {};
+            if (typeof body.name === "string" && body.name.trim())
+              updates.name = body.name.trim().slice(0, 200);
+            if (typeof body.archived === "boolean")
+              updates.archived = body.archived;
+            return context.json({
+              thread: await store.updateThread({ ...params, updates }),
+            });
+          } catch (error) {
+            if ((error as { status?: number }).status === 404)
+              return context.json({ error: "Thread not found." }, 404);
+            throw error;
           }
-          if (mutation[2]) {
-            await store.archiveThread(params);
-            return context.body(null, 204);
-          }
-          const body = (await context.req.json().catch(() => ({}))) as {
-            name?: unknown;
-            archived?: unknown;
-          };
-          const updates: { name?: string; archived?: boolean } = {};
-          if (typeof body.name === "string" && body.name.trim())
-            updates.name = body.name.trim().slice(0, 200);
-          if (typeof body.archived === "boolean")
-            updates.archived = body.archived;
-          return context.json({
-            thread: await store.updateThread({ ...params, updates }),
-          });
-        } catch (error) {
-          if ((error as { status?: number }).status === 404)
-            return context.json({ error: "Thread not found." }, 404);
-          throw error;
         }
-      }
-      const match = threadRead.exec(context.req.path);
-      if (match?.[1]) {
-        const allowed = await runner.prepareThreadRead(
-          decodeURIComponent(match[1]),
-        );
-        if (!allowed) return context.json({ error: "Thread not found." }, 404);
-      }
-      await next();
-    });
+        const match = threadRead.exec(context.req.path);
+        if (match?.[1]) {
+          const allowed = await runner.prepareThreadRead(
+            decodeURIComponent(match[1]),
+          );
+          if (!allowed)
+            return context.json({ error: "Thread not found." }, 404);
+        }
+        await next();
+      },
+    );
   });
   wrapper.route("/", inner);
   return wrapper;
 }
+
+/**
+ * Synelia fork: every 409 the runtime answers on a run (the lock path's `{ error: "Thread lock
+ * denied" }`) leaves with the machine-readable body the app reads (stream-reattach.ts).
+ */
+export const THREAD_BUSY_BODY = {
+  error: "Thread is busy.",
+  code: "thread_busy",
+} as const;
+export const threadBusyBody: MiddlewareHandler = async (context, next) => {
+  await next();
+  if (context.res.status === 409)
+    context.res = Response.json(THREAD_BUSY_BODY, { status: 409 });
+};

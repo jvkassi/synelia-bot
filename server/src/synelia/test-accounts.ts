@@ -1,7 +1,7 @@
 /**
- * Synelia fork: accounts excluded from pilot metrics. SYNELIA_TEST_ACCOUNTS is a comma-separated
- * list of emails (case-insensitive), e.g. "jv.e2e@synelia.tech,jv.test@synelia.tech". Request logs
- * mark their lines `"test": true`; metric queries filter them out (see CHANGES.md).
+ * Synelia fork: accounts excluded from pilot metrics and from the forced password change.
+ * SYNELIA_TEST_ACCOUNTS is a comma-separated list of USER IDS (stable across email changes), e.g.
+ * "aghsLBA9…,yJU4R2Vf…". Request logs mark their lines `"test": true`; metric queries filter them.
  */
 export function testAccounts(
   raw: string | undefined = process.env.SYNELIA_TEST_ACCOUNTS,
@@ -9,14 +9,14 @@ export function testAccounts(
   return new Set(
     (raw ?? "")
       .split(",")
-      .map((entry) => entry.trim().toLowerCase())
+      .map((entry) => entry.trim())
       .filter(Boolean),
   );
 }
 
 export function isTestAccount(
-  email: string | undefined | null,
+  userId: string | undefined | null,
   list: Set<string> = testAccounts(),
 ): boolean {
-  return Boolean(email) && list.has((email as string).toLowerCase());
+  return Boolean(userId) && list.has(userId as string);
 }

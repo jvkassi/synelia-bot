@@ -8,6 +8,8 @@ export type SyneliaModelOption = {
   id: string;
   provider: string;
   model: string;
+  /** Display label ('Rapide', 'Approfondi'): what the picker and the reply footer show. */
+  label?: string;
   available?: boolean;
   hidden?: boolean;
 };
@@ -77,4 +79,15 @@ export function isHiddenModel(
   return Boolean(
     list?.models.some((option) => option.id === picked && option.hidden),
   );
+}
+
+/** The display label of a stored provider/model pair (badge map, reply footer). */
+export function labelFor(
+  entry: { provider?: string | null; model?: string | null },
+  list: SyneliaModelList | undefined,
+): string | undefined {
+  return list?.models.find(
+    (option) =>
+      option.provider === entry.provider && option.model === entry.model,
+  )?.label;
 }

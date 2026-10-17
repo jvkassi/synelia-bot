@@ -22,14 +22,15 @@ export const PILOT_ALLOWED_PREFIXES = [
   "/api/attachments",
   "/api/audio", // dictation in the composer
   "/api/settings",
-  "/api/identity",
-  "/api/passwords",
-  "/api/sign-in-requests",
-  "/api/approvals",
   "/api/memory",
   "/api/route",
   "/api/admin", // admin screens; learning is closed below
 ] as const;
+/*
+ * Deliberately NOT allowed (settings screens outside phase 0, gate item 6): approvals, connected
+ * accounts (/api/identity, /api/plugins/connections), passwords/credentials (/api/passwords,
+ * /api/sign-in-requests), components gallery (/api/components). They answer 404.
+ */
 
 /** Closed even under an allowed prefix. */
 const PILOT_CLOSED_PREFIXES = ["/api/admin/learning"] as const;

@@ -3,7 +3,6 @@ import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
-import { testAccountIsAdmin } from "../src/auth/bootstrap-password-user";
 import { createRequestLog, requestLogLine } from "../src/synelia/request-log";
 import { isTestAccount, testAccounts } from "../src/synelia/test-accounts";
 
@@ -50,14 +49,22 @@ test("middleware writes a daily file and prunes files older than 7 days", async 
   expect(content).not.toContain("x=1");
 });
 
-test("test accounts: listed emails are flagged; a test account named admin is refused", () => {
-  const list = testAccounts("JV.E2E@synelia.tech, other@x.y");
-  expect(isTestAccount("jv.e2e@synelia.tech", list)).toBe(true);
-  expect(isTestAccount("real@synelia.tech", list)).toBe(false);
-  const env = {
-    SYNELIA_TEST_ACCOUNTS: "jv.e2e@synelia.tech",
-    INITIAL_ADMIN_EMAILS: "boss@synelia.tech,jv.e2e@synelia.tech",
-  };
-  expect(testAccountIsAdmin("jv.e2e@synelia.tech", env)).toBe(true);
-  expect(testAccountIsAdmin("boss@synelia.tech", env)).toBe(false);
+test("test accounts are matched by user id and flagged in the log", () => {
+  const list = testAccounts(" u-e2e , u-test ");
+  expect(isTestAccount("u-e2e", list)).toBe(true);
+  expect(isTestAccount("jv.e2e@synelia.tech", list)).toBe(false);
+  expect(isTestAccount(undefined, list)).toBe(false);
+  process.env.SYNELIA_TEST_ACCOUNTS = "u-e2e";
+  const line = JSON.parse(
+    requestLogLine({
+      at: new Date(),
+      method: "GET",
+      path: "/api/me",
+      status: 200,
+      durationMs: 1,
+      userId: "u-e2e",
+    }),
+  );
+  expect(line.test).toBe(true);
+  delete process.env.SYNELIA_TEST_ACCOUNTS;
 });

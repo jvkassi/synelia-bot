@@ -129,7 +129,13 @@ import type { IntentRouter } from "./routing/classify";
 import { createRoutingRoutes } from "./routing/routes";
 import { createCoworkerRoutingService } from "./routing/service";
 import type { SelfHostBanner } from "./self-host-banner";
-import { type SyneliaModelList, visibleModels } from "./synelia/models";
+import {
+  createModelListSource,
+  labelFor,
+  type SyneliaModelList,
+  visibleModels,
+} from "./synelia/models";
+import { createPasswordChangeGate } from "./synelia/password-change-gate";
 import { createPilotGate, pilotEnabled } from "./synelia/pilot-gate";
 import { createRequestLog } from "./synelia/request-log";
 import { createTeamBotRoutes } from "./team-bots/routes";
@@ -454,6 +460,8 @@ export function createApp(
   identityGithubCallback?: Hono<{ Variables: AppVariables }>,
 ) {
   const app = new Hono<{ Variables: AppVariables }>();
+  // Synelia fork: first, so /api/auth/* (sign-in, 401s) is logged too. No bodies.
+  app.use("/api/*", createRequestLog());
   mountDesktopConnectionFailure(app, desktopHostToken);
   mountProviderOAuthProxy(app, modelProviderProxy);
 
@@ -626,8 +634,18 @@ export function createApp(
   // Enterprise controls: capability switches and the model allowlist in front of the routes they
   // govern, the admin screen's API, and the SCIM verbs the GET/POST auth handler above does not take.
   // Synelia fork: pilot surfaces off server-side too (404), before any route can answer.
-  app.use("/api/*", createRequestLog());
   app.use("/api/*", createPilotGate());
+  app.use(
+    "/api/*",
+    createPasswordChangeGate(
+      auth
+        ? async (headers) =>
+            (await auth.api.getSession({ headers }))?.user as
+              | { id: string; mustChangePassword?: boolean | null }
+              | undefined
+        : undefined,
+    ),
+  );
   // The /bot page is outside the pilot too: the server sends the browser home before any HTML.
   if (pilotEnabled()) app.get("/bot", (context) => context.redirect("/", 302));
   app.use("/api/*", createEnterpriseGate(requireUser));
@@ -1915,6 +1933,10 @@ export function createApp(
    * Asked of the Mastra server itself (its allowlist is the one that is enforced), with the
    * deployment's agent token. Only ids and labels cross: provider URLs and keys stay in Mastra.
    */
+  const syneliaModelList = createModelListSource(
+    config.managedAgent?.alsoRun ?? config.managedAgent?.endpoint,
+    config.managedAgent?.token,
+  );
   app.get("/api/synelia/models", requireUser, async (context) => {
     const mastra =
       config.managedAgent?.alsoRun ?? config.managedAgent?.endpoint;
@@ -1951,7 +1973,8 @@ export function createApp(
       userId: context.var.actor.id,
     });
     if (!run) return context.json({ error: "Run not found." }, 404);
-    return context.json(run);
+    const label = labelFor(run, await syneliaModelList());
+    return context.json(label ? { ...run, label } : run);
   });
 
   /*
@@ -1965,11 +1988,20 @@ export function createApp(
       const local = config.runtime.intelligence.local;
       if (!local) return context.json({ error: "Not available." }, 404);
       try {
+        const map = await localIntelligence(
+          local.databaseUrl,
+        ).threadMessageModels({
+          threadId: context.req.param("threadId"),
+          userId: context.var.actor.id,
+        });
+        const list = await syneliaModelList();
         return context.json(
-          await localIntelligence(local.databaseUrl).threadMessageModels({
-            threadId: context.req.param("threadId"),
-            userId: context.var.actor.id,
-          }),
+          Object.fromEntries(
+            Object.entries(map).map(([id, entry]) => {
+              const label = labelFor(entry, list);
+              return [id, label ? { ...entry, label } : entry];
+            }),
+          ),
         );
       } catch (error) {
         if ((error as { status?: number }).status === 404)
