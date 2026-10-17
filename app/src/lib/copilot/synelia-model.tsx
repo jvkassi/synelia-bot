@@ -147,11 +147,8 @@ function Badge({
 }) {
   const text = `${providerName(provider)} · ${model}`;
   return (
-    <div
-      aria-label={`${ui.model.label} : ${text}`}
-      className="mt-1 text-xs text-muted-foreground"
-      data-testid="synelia-run-model"
-    >
+    <div className="mt-1 text-xs text-muted-foreground" data-testid="synelia-run-model">
+      <span className="sr-only">{`${ui.model.label} : `}</span>
       {text}
     </div>
   );

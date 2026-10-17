@@ -344,7 +344,7 @@ export class LocalIntelligence {
       events: unknown;
     }[];
     const last = rows[0];
-    if (!last || last.status !== "error") return null;
+    if (last?.status !== "error") return null;
     const event = jsonArray(last.events).find(
       (candidate) => (candidate as { type?: string }).type === "RUN_ERROR",
     ) as { message?: unknown } | undefined;
