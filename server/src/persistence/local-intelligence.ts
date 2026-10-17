@@ -475,7 +475,12 @@ export class LocalIntelligence {
       role?: unknown;
     }[];
     const kept = new Set(
-      assistantMessageIds(replayEvents(runs, EFFECTFUL_TOOLS)),
+      assistantMessageIds(
+        replayEvents(
+          runs as Parameters<typeof replayEvents>[0],
+          EFFECTFUL_TOOLS,
+        ),
+      ),
     );
     const dropped = new Set(
       assistantMessageIds(runs.flatMap((run) => run.events)).filter(
@@ -501,7 +506,10 @@ export class LocalIntelligence {
     // it is on connect() reload — the model's next turn is built from these events and must not carry
     // the hidden English refusal.
     return {
-      events: replayEvents(runs, EFFECTFUL_TOOLS) as never[],
+      events: replayEvents(
+        runs as Parameters<typeof replayEvents>[0],
+        EFFECTFUL_TOOLS,
+      ) as never[],
       decodeErrorRowIds: [],
       truncated: false,
     };
