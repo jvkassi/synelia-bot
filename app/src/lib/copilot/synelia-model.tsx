@@ -19,7 +19,7 @@ import {
 import { apiUrl } from "@/lib/api-url";
 import { apiFetch } from "@/lib/api-fetch";
 import { client } from "@/lib/client";
-import { codedReason } from "@/lib/copilot/stop-notice";
+import { codedReason, withRetryable } from "@/lib/copilot/stop-notice";
 import { ui } from "@/lib/i18n";
 
 export type SyneliaModel = {
@@ -346,6 +346,7 @@ export function useStoredRunError(
         lastError?: {
           message?: string | null;
           code?: string | null;
+          retryable?: boolean | null;
         } | null;
         activeRunId?: string | null;
         lostRunId?: string | null;
@@ -361,7 +362,12 @@ export function useStoredRunError(
 
 export type ThreadStatusBody = {
   /** `code`: a stable server code (stop-notice.ts), read before the message when present. */
-  lastError?: { message?: string | null; code?: string | null } | null;
+  /** `retryable: false`: the failed run had a side-effect tool, no « Réessayer » (stop-notice.ts). */
+  lastError?: {
+    message?: string | null;
+    code?: string | null;
+    retryable?: boolean | null;
+  } | null;
   activeRunId?: string | null;
   lostRunId?: string | null;
   interrupted?: boolean;
@@ -380,7 +386,10 @@ export function threadStatusView(
   const activeRunId = data?.activeRunId ?? null;
   return {
     error: endsOnUserMessage
-      ? codedReason(data?.lastError?.code, data?.lastError?.message)
+      ? withRetryable(
+          codedReason(data?.lastError?.code, data?.lastError?.message),
+          data?.lastError?.retryable,
+        )
       : null,
     activeRunId,
     // Only a run the server KNOWS was lost (lock expired, run never stored). An idle thread, or

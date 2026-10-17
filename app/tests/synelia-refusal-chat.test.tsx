@@ -52,6 +52,9 @@ let runAnswer: (
 ) => Response | Promise<Response>;
 let runs: number;
 let bodies: RunAgentInput[];
+/** What GET /api/threads/:id and the join replay report (the reload path). */
+let storedLastError: Record<string, unknown> | null;
+let joinMessages: unknown[];
 let originalFetch: typeof fetch;
 let warn: ReturnType<typeof spyOn>;
 
@@ -88,7 +91,7 @@ beforeAll(() => {
       if (url.pathname === `/api/threads/${channel.threadId}`)
         return NativeResponse.json({
           known: true,
-          lastError: null,
+          lastError: storedLastError,
           activeRunId: null,
           lostRunId: null,
         });
@@ -106,7 +109,7 @@ beforeAll(() => {
       if (url.pathname.endsWith("/connect"))
         return sse([
           { type: "RUN_STARTED", threadId: channel.threadId, runId: "join" },
-          { type: "MESSAGES_SNAPSHOT", messages: [opening] },
+          { type: "MESSAGES_SNAPSHOT", messages: joinMessages },
           { type: "RUN_FINISHED", threadId: channel.threadId, runId: "join" },
         ]);
       if (url.pathname.endsWith("/run")) {
@@ -125,6 +128,8 @@ beforeAll(() => {
 beforeEach(() => {
   runs = 0;
   bodies = [];
+  storedLastError = null;
+  joinMessages = [opening];
   warn = spyOn(console, "warn").mockImplementation(() => {});
 });
 afterEach(() => {
@@ -138,7 +143,7 @@ afterAll(async () => {
   GlobalRegistrator.unregister();
 });
 
-async function sendPhishingPrompt() {
+async function openChat() {
   const summary: ChannelSummary = {
     ...channel,
     summary: null,
@@ -161,6 +166,11 @@ async function sendPhishingPrompt() {
     </QueryClientProvider>,
   );
   await view.findByText(opening.content);
+  return view;
+}
+
+async function sendPhishingPrompt() {
+  const view = await openChat();
   const user = userEvent.setup({ document: view.container.ownerDocument });
   await user.type(
     view.getByRole("textbox", { name: ui.composer.message }),
@@ -496,4 +506,102 @@ test("evidence: the run's HTTP error does not carry the response headers (Copilo
     ui.conversation.runFailed,
   );
   expect(String(warn.mock.calls.at(-1)?.[1])).toContain("HTTP 403");
+});
+
+const NO_RETRY_TEXT =
+  "La réponse n'a pas pu aboutir. Écrivez un nouveau message pour reprendre.";
+
+test("live RUN_ERROR with metadata.retryable: false (a side-effect tool ran): no « Réessayer », the new-message sentence", async () => {
+  runAnswer = (input) =>
+    sse([
+      { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
+      {
+        type: "RUN_ERROR",
+        message: "x",
+        code: "run_stalled",
+        metadata: { retryable: false },
+      },
+    ]);
+  const view = await sendPhishingPrompt();
+  await waitFor(() =>
+    expect(view.getByTestId("transcript-stopped").textContent).toBe(
+      NO_RETRY_TEXT,
+    ),
+  );
+  expect(view.getByTestId("transcript-stopped").getAttribute("role")).toBe(
+    "alert",
+  );
+  expect(view.queryByTestId("transcript-retry")).toBeNull();
+});
+
+test("reload: lastError.retryable false from GET /api/threads/:id draws the same sentence, no « Réessayer »", async () => {
+  joinMessages = [
+    opening,
+    { id: "u-stored", role: "user", content: "Envoie le rapport" },
+  ];
+  storedLastError = {
+    message: "Provider returned error",
+    code: "run_stalled",
+    retryable: false,
+  };
+  const view = await openChat();
+  await view.findByText("Envoie le rapport");
+  await waitFor(() =>
+    expect(view.getByTestId("transcript-stopped").textContent).toBe(
+      NO_RETRY_TEXT,
+    ),
+  );
+  expect(view.queryByTestId("transcript-retry")).toBeNull();
+  expect(runs).toBe(0);
+});
+
+test("reload: the same stored error without retryable keeps « Réessayer »", async () => {
+  joinMessages = [
+    opening,
+    { id: "u-stored", role: "user", content: "Envoie le rapport" },
+  ];
+  storedLastError = { message: "Provider returned error", code: "run_stalled" };
+  const view = await openChat();
+  await waitFor(() =>
+    expect(view.getByTestId("transcript-stopped").textContent).toBe(
+      ui.conversation.runFailed,
+    ),
+  );
+  expect(view.getByTestId("transcript-retry")).toBeTruthy();
+});
+
+test("live RUN_ERROR without retryable (or true): unchanged, « Réessayer » offered", async () => {
+  runAnswer = (input) =>
+    sse([
+      { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
+      { type: "RUN_ERROR", message: "x", code: "run_stalled", retryable: true },
+    ]);
+  const view = await sendPhishingPrompt();
+  await waitFor(() =>
+    expect(view.getByTestId("transcript-stopped").textContent).toBe(
+      ui.conversation.runFailed,
+    ),
+  );
+  expect(view.getByTestId("transcript-retry")).toBeTruthy();
+});
+
+test("evidence: a TOP-LEVEL retryable on RUN_ERROR is stripped by @ag-ui/client before our code sees it", async () => {
+  runAnswer = (input) =>
+    sse([
+      { type: "RUN_STARTED", threadId: input.threadId, runId: input.runId },
+      {
+        type: "RUN_ERROR",
+        message: "x",
+        code: "run_stalled",
+        retryable: false,
+      },
+    ]);
+  const view = await sendPhishingPrompt();
+  await waitFor(() =>
+    expect(view.getByTestId("transcript-stopped").textContent).toBe(
+      ui.conversation.runFailed,
+    ),
+  );
+  // Still offered: the field never arrived. The server must send it in `metadata`.
+  expect(view.getByTestId("transcript-retry")).toBeTruthy();
 });

@@ -14,6 +14,7 @@ import {
   isProviderRefusal,
   sessionExpiredReason,
   stopNotice,
+  withRetryable,
 } from "@/lib/copilot/stop-notice";
 import { ui } from "@/lib/i18n";
 
@@ -299,7 +300,7 @@ test("channel-chat reads the RUN_ERROR code before the wording, and the stored l
     "utf8",
   );
   expect(chat).toMatch(
-    /onRunErrorEvent:[\s\S]*?codedReason\(\(event as \{ code\?: unknown \} \| undefined\)\?\.code, null\) \?\?\s*stoppedReason\(event\?\.message\)/,
+    /onRunErrorEvent:[\s\S]*?withRetryable\(\s*codedReason\(extra\?\.code, null\) \?\? stoppedReason\(event\?\.message\),\s*extra\?\.retryable \?\? extra\?\.metadata\?\.retryable,/,
   );
   // A retry adds nothing to the thread: no user message, no skill rows, no activity report.
   expect(chat).toMatch(/if \(!retry\) \{\s*target\.addMessage\(/);
@@ -410,4 +411,41 @@ test("sessionExpiredReason: 401, masked 403 (header or the server's 401 body), n
   expect(sessionExpiredReason(httpError(500, { error: "x" }))).toBe(null);
   expect(sessionExpiredReason("HTTP 401")).toBe(null);
   expect(sessionExpiredReason(null)).toBe(null);
+});
+
+test("withRetryable: only `false` removes « Réessayer »; refusal and expired-session notices keep their own sentence", () => {
+  const stalled = codedReason("run_stalled", null);
+  expect(stopNotice(withRetryable(stalled, false) ?? "", null)).toEqual({
+    text: "La réponse n'a pas pu aboutir. Écrivez un nouveau message pour reprendre.",
+    role: "alert",
+    technical: false,
+    retry: false,
+  });
+  expect(
+    stopNotice(withRetryable("Provider returned error", false) ?? "", null)
+      .text,
+  ).toBe(ui.conversation.runFailedNoRetry);
+  expect(
+    stopNotice(
+      withRetryable("Internal Server Error (HTTP 500)", false) ?? "",
+      null,
+    ).retry,
+  ).toBe(false);
+  for (const absent of [undefined, null, true, "false", 0]) {
+    expect(withRetryable(stalled, absent)).toBe(stalled);
+  }
+  expect(withRetryable(null, false)).toBe(null);
+  // Already without « Réessayer »: unchanged sentence.
+  expect(
+    stopNotice(
+      withRetryable(codedReason("provider_refusal", null), false) ?? "",
+      "Alternatif",
+    ).text,
+  ).toBe(ui.conversation.declined("Alternatif"));
+  expect(
+    stopNotice(
+      withRetryable(codedReason("session_expired", null), false) ?? "",
+      null,
+    ).text,
+  ).toBe(ui.home.sessionExpired);
 });

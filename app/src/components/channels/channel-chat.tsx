@@ -41,6 +41,7 @@ import {
   codedReason,
   EMPTY_RUN,
   sessionExpiredReason,
+  withRetryable,
 } from "@/lib/copilot/stop-notice";
 import { stoppedReason } from "@/lib/copilot/stopped-turn";
 import {
@@ -1104,9 +1105,23 @@ export function ChannelChat({
       onRunErrorEvent: ({ event }) => {
         if (alreadyRunning(event)) return;
         // Synelia fork: a stable server code wins over the wording (stop-notice.ts).
+        /*
+         * `retryable: false` (a side-effect tool ran): read from `metadata`, AG-UI's extension
+         * slot, because @ag-ui/client 1.0.1 strips unknown top-level fields from every event
+         * ("Removed unrecognised material"); top-level is read too in case it ever survives.
+         */
+        const extra = event as
+          | {
+              code?: unknown;
+              retryable?: unknown;
+              metadata?: { retryable?: unknown };
+            }
+          | undefined;
         fail(
-          codedReason((event as { code?: unknown } | undefined)?.code, null) ??
-            stoppedReason(event?.message),
+          withRetryable(
+            codedReason(extra?.code, null) ?? stoppedReason(event?.message),
+            extra?.retryable ?? extra?.metadata?.retryable,
+          ) ?? ui.conversation.stoppedWithoutReason,
         );
       },
       onRunFailed: ({ error }) => {

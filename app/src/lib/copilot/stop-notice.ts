@@ -168,10 +168,40 @@ export function alternativeModel(
   return preferred?.label ?? null;
 }
 
+/**
+ * The server marks a failed run `retryable: false` (RUN_ERROR event, stored `lastError`) when it
+ * contains a side-effect tool call (`report_refusal` included): running it again would repeat the
+ * effect. Carried on the reason as a prefix, so the live and the reload paths decide alike.
+ */
+const NO_RETRY_PREFIX = "synelia:no-retry:";
+
+/** `reason`, marked not retryable when the server said `retryable: false` (only `false` counts). */
+export function withRetryable(
+  reason: string | null,
+  retryable: unknown,
+): string | null {
+  return reason !== null && retryable === false
+    ? `${NO_RETRY_PREFIX}${reason}`
+    : reason;
+}
+
 export function stopNotice(
   reason: string,
   alternative: string | null,
 ): StopNotice {
+  if (reason.startsWith(NO_RETRY_PREFIX)) {
+    const inner = stopNotice(reason.slice(NO_RETRY_PREFIX.length), alternative);
+    // A failure that offered « Réessayer » says how to go on instead; a notice that never offered
+    // it (refusal, expired session, network) is already the right sentence.
+    return inner.retry
+      ? {
+          text: ui.conversation.runFailedNoRetry,
+          role: "alert",
+          technical: inner.technical,
+          retry: false,
+        }
+      : inner;
+  }
   const declined = (technical: boolean): StopNotice => ({
     text: ui.conversation.declined(alternative),
     role: "status",

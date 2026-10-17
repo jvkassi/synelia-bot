@@ -214,6 +214,8 @@ const fr = {
         : "Je ne peux pas répondre à cette demande. Reformulez-la, ou essayez un autre modèle en haut de la conversation.",
     /** Any other failure of the run (stall included); offered with « Réessayer ». */
     runFailed: "La réponse n'a pas pu aboutir.",
+    runFailedNoRetry:
+      "La réponse n'a pas pu aboutir. Écrivez un nouveau message pour reprendre.",
     /** Runs the failed turn again on the message already sent. */
     retry: "Réessayer",
     retrying: "Nouvelle tentative…",
