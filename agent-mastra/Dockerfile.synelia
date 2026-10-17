@@ -1,0 +1,19 @@
+# Synelia fork: the Mastra Bot with a pinned lockfile and telemetry off.
+FROM oven/bun:1.4-alpine
+
+WORKDIR /app
+COPY agent-mastra/package.json agent-mastra/bun.lock ./
+RUN bun install --frozen-lockfile
+
+COPY shared/listen-port.ts /shared/listen-port.ts
+COPY shared/model-providers.ts /shared/model-providers.ts
+COPY shared/model-providers.json /shared/model-providers.json
+COPY agent-mastra/src ./src
+
+ENV MASTRA_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1
+RUN bunx mastra build --dir src/mastra && chown -R bun:bun /app
+
+USER bun
+ENV PORT=4213
+EXPOSE 4213
+CMD ["bunx", "mastra", "start"]

@@ -8,6 +8,7 @@ import { BotPausedBanner } from "@/components/bot-profile/pause-banner";
 import { ChannelAvatar } from "@/components/channels/avatar";
 import { ChannelChat } from "@/components/channels/channel-chat";
 import { ComputerChatControls } from "@/components/computer/computer-controls";
+import { SyneliaModelPicker } from "@/lib/copilot/synelia-model";
 import { ComputerViewPanel } from "@/components/computer/computer-panel";
 import { useAutoWatchScreen } from "@/components/computer/use-auto-watch-screen";
 import { DetailPanel } from "@/components/layout/detail-panel";
@@ -134,7 +135,8 @@ function RouteComponent() {
               {channel.data?.name ?? "Channel"}
             </motion.span>
           </div>
-          <div className="flex flex-row gap-1.5">
+          <div className="flex flex-row items-center gap-1.5">
+            <SyneliaModelPicker />
             <ComputerChatControls
               computerId={agentId}
               open={isWatching}

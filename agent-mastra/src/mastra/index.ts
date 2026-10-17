@@ -21,6 +21,12 @@ import {
   botSettings,
   providerSpec,
 } from "../../../shared/model-providers";
+import {
+  defaultModelId,
+  modelOptions,
+  pickedModel,
+  resolveSyneliaModel,
+} from "./synelia-models";
 
 /** The providers this Bot can drive: the ones whose SDK modules it loads below. */
 const SUPPORTED_PROVIDERS = new Set(["openai", "anthropic"]);
@@ -138,7 +144,11 @@ const openbot = new Agent({
   id: "openbot",
   name: "openbot",
   instructions: buildOpenBotInstructions,
-  model: await buildModel(),
+  // Synelia fork: with SYNELIA_MODELS_MODE=on the model is picked per run from the allowlist.
+  model:
+    process.env.SYNELIA_MODELS_MODE === "on"
+      ? ({ requestContext }) => resolveSyneliaModel(pickedModel(requestContext))
+      : await buildModel(),
 });
 
 /** The one header OpenBot's server sends, compared without leaking length through timing. */
@@ -174,6 +184,12 @@ export const mastra = new Mastra({
         method: "GET",
         handler: async (context) =>
           context.json({ ok: true, harness: "mastra" }),
+      }),
+      // Synelia fork: the allowlist the app's model picker shows (ids and labels, never keys).
+      registerApiRoute("/synelia/models", {
+        method: "GET",
+        handler: async (context) =>
+          context.json({ models: modelOptions(), defaultModel: defaultModelId() ?? null }),
       }),
     ],
   },

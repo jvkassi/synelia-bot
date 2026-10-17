@@ -496,6 +496,8 @@ export function createApp(
        * build machine cannot offer a provider that machine had never heard of.
        */
       authProviders: configuredAuthProviders(config.auth),
+      // Synelia fork: whether the sign-in screen shows the email/password form.
+      passwordLogin: config.auth?.password === true,
       /*
        * Whether any enterprise identity provider has been registered.
        *
@@ -1896,6 +1898,30 @@ export function createApp(
       createSandboxedRoutes(sandboxedStore, requireUser),
     );
   }
+
+  /*
+   * Synelia fork: the models the Mastra Bot may answer with, for the app's model picker.
+   *
+   * Asked of the Mastra server itself (its allowlist is the one that is enforced), with the
+   * deployment's agent token. Only ids and labels cross: provider URLs and keys stay in Mastra.
+   */
+  app.get("/api/synelia/models", requireUser, async (context) => {
+    const mastra =
+      config.managedAgent?.alsoRun ?? config.managedAgent?.endpoint;
+    if (!mastra || !config.managedAgent?.token) {
+      return context.json({ models: [], defaultModel: null });
+    }
+    try {
+      const response = await fetch(new URL("/synelia/models", mastra), {
+        headers: { "x-openbot-agent-token": config.managedAgent.token },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) throw new Error(`status ${response.status}`);
+      return context.json(await response.json());
+    } catch {
+      return context.json({ error: "Model list unavailable." }, 502);
+    }
+  });
 
   if (threadIdentity) {
     app.route(

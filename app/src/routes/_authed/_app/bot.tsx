@@ -3,6 +3,7 @@ import { IconPlus } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { ComputerChatControls } from "@/components/computer/computer-controls";
+import { SyneliaModelPicker } from "@/lib/copilot/synelia-model";
 import { ComputerViewPanel } from "@/components/computer/computer-panel";
 import { DetailPanel } from "@/components/layout/detail-panel";
 import { SidebarToggleBar } from "@/components/layout/sidebar-toggle";
@@ -183,6 +184,7 @@ function BotChat({ agentId, name }: { agentId: string; name: string }) {
              * deserves a word, not just a glyph.
              */}
             <div className="flex flex-wrap items-start gap-2">
+              <SyneliaModelPicker />
               <ComputerChatControls
                 computerId={agentId}
                 open={watch === true}
