@@ -31,7 +31,7 @@ test("a forced password change blocks every API call (copilotkit runtime and SSE
   }
 });
 
-test("only session, change-password and sign-out pass the allowlist", async () => {
+test("Better Auth paths (answered by its handler first) are never gated", async () => {
   for (const path of [
     "/api/auth/get-session",
     "/api/auth/change-password",
@@ -58,4 +58,15 @@ test("tester entries come in EMAIL/PASSWORD pairs from SYNELIA_TESTER_<SLUG>_*",
       SYNELIA_TESTER_ORPHAN_EMAIL: "o@x.y",
     }),
   ).toEqual([["jane@example.com", "p"]]);
+});
+
+test("fail closed: a session cookie whose lookup throws gets 503 session_unavailable", async () => {
+  const app = new Hono();
+  app.use("/api/*", createPasswordChangeGate(async () => { throw new Error("db down"); }));
+  app.all("/api/*", (c) => c.json({ ok: true }));
+  const response = await app.request("/api/me", cookie);
+  expect(response.status).toBe(503);
+  expect(((await response.json()) as { code: string }).code).toBe("session_unavailable");
+  // No cookie: nothing to look up, unchanged behaviour.
+  expect((await app.request("/api/me")).status).toBe(200);
 });
