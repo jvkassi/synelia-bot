@@ -7,13 +7,13 @@
  * runs.
  */
 import { randomUUID } from "node:crypto";
-import type { DrawnComponent } from "@openbot/toolkit/run-turn";
 import { z } from "zod";
 import { type ApprovalDecision, approvalPreview } from "../approvals/types";
 import {
   ingestSlackEvent,
   type SlackTriggerEvent,
 } from "../responsibilities/slack";
+import type { DrawnComponent } from "@openbot/toolkit/run-turn";
 import {
   agUiStream,
   approvalFields,

@@ -1,4 +1,3 @@
-import type { AuditInitiator } from "@openbot/toolkit/initiator";
 import {
   and,
   desc,
@@ -14,6 +13,7 @@ import type { PgColumn } from "drizzle-orm/pg-core";
 import type { Database } from "./db/client";
 import { auditEvents } from "./db/schema";
 import { parsePageLimit } from "./paging";
+import type { AuditInitiator } from "@openbot/toolkit/initiator";
 
 const sensitiveKeys = new Set([
   "access_token",

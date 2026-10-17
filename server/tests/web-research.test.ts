@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import {
-  researchRoleOf,
-  RESEARCH_TOOLS as SHARED_RESEARCH_TOOLS,
-} from "@openbot/shared/research";
 import type { GrantedTool } from "@openbot/toolkit/granted-tool";
+import {
+  RESEARCH_TOOLS as SHARED_RESEARCH_TOOLS,
+  researchRoleOf,
+} from "@openbot/shared/research";
 import { parse } from "yaml";
 import { z } from "zod";
 import {

@@ -1,6 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import type { TurnRunner } from "@openbot/toolkit/run-turn";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   PERSON_QUESTION_WAITING,
@@ -20,6 +19,7 @@ import type {
   ResponsibilityStore,
 } from "../src/responsibilities/types";
 import { ResponsibilityNotFoundError } from "../src/responsibilities/types";
+import type { TurnRunner } from "@openbot/toolkit/run-turn";
 import { TEST_POOL, testDatabaseUrl } from "./support/database";
 
 /**

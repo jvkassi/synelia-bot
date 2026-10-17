@@ -2,18 +2,18 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RunAgentInput } from "@ag-ui/client";
 import { Hono } from "hono";
+import type { RunAgentInput } from "@ag-ui/client";
 import { runtimeModelForEnvironment } from "../src/copilot";
 import {
   encryptSecret,
-  type ModelCredentialSecretReader,
   resolveModelApiKey,
+  type ModelCredentialSecretReader,
 } from "../src/credentials";
 import {
   createProviderOAuthProxy,
-  type ModelOAuthRecord,
   mountProviderOAuthProxy,
+  type ModelOAuthRecord,
 } from "../src/provider-oauth";
 import { createVoiceSummarizer } from "../src/voice/summary";
 

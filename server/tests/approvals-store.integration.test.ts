@@ -4,9 +4,9 @@ import { and, eq, inArray } from "drizzle-orm";
 import { createApprovalService } from "../src/approvals/service";
 import { createApprovalStore } from "../src/approvals/store";
 import {
-  type ApprovalCandidate,
-  ApprovalNotFoundError,
   approvalAction,
+  ApprovalNotFoundError,
+  type ApprovalCandidate,
 } from "../src/approvals/types";
 import { createDatabase } from "../src/db/client";
 import { users } from "../src/db/schema/core";

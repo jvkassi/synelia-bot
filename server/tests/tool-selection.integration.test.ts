@@ -13,7 +13,6 @@ import { buildAGUITextResponse, LLMock } from "@copilotkit/aimock";
 import { AGUIMock } from "@copilotkit/aimock/agui";
 import { CopilotRuntime } from "@copilotkit/runtime/v2";
 import { createCopilotHonoHandler } from "@copilotkit/runtime/v2/hono";
-import type { GrantedTool } from "@openbot/toolkit/granted-tool";
 import { z } from "zod";
 import {
   buildAgents,
@@ -21,6 +20,7 @@ import {
   type RuntimeModel,
 } from "../src/copilot";
 import type { Selection } from "../src/plugins/selection";
+import type { GrantedTool } from "@openbot/toolkit/granted-tool";
 import { createModelCompleter } from "../src/routing/model";
 
 declare global {

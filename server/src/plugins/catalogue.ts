@@ -18,10 +18,6 @@
  * forgery primitive pointed at the deployment's own network.
  */
 
-import {
-  type ResearchRole,
-  researchRoleOfTool,
-} from "@openbot/shared/research";
 /**
  * How a server is authenticated, and whose credential does it.
  *
@@ -35,6 +31,10 @@ import {
 import { isNeverAllowedHostname } from "../computer/target";
 // Type-only, so naming the transport here creates no import cycle with the registry that resolves it.
 import type { CuratedTransportKind } from "./transport";
+import {
+  type ResearchRole,
+  researchRoleOfTool,
+} from "@openbot/shared/research";
 
 export type CatalogueAuth =
   /** Answers without any credential at all. */

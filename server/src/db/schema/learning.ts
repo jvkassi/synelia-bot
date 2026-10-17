@@ -1,5 +1,5 @@
-import type { LearningSettings } from "@openbot/shared/learning";
 import { pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+import type { LearningSettings } from "@openbot/shared/learning";
 import { jsonb } from "./json";
 
 export const learningSettings = pgTable("learning_settings", {

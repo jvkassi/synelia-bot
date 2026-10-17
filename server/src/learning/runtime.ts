@@ -6,12 +6,12 @@ import {
   SkillRegistry,
 } from "@copilotkit/runtime/internal/learned-skills";
 import type { CopilotKitIntelligence } from "@copilotkit/runtime/v2";
+import { z } from "zod";
 import type {
   LearningDeliveryStatus,
   LearningSettings,
   LearningTarget,
 } from "@openbot/shared/learning";
-import { z } from "zod";
 import type { LearningSettingsStore } from "./settings";
 
 // This published internal export is pinned to runtime 1.73.1. Keep its use here: the SDK owns

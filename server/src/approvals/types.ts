@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { RunAgentInputSchema } from "@ag-ui/core/schemas";
+import type { AuditInitiator } from "../audit";
 import {
   type ApprovalContinuation,
   currentApprovalContext,
   withApprovalContext,
 } from "@openbot/toolkit/continuation";
-import type { AuditInitiator } from "../audit";
 
 /** `handled` answers a hand-off: the person did it themselves, so it is never executed for them. */
 export type ApprovalDecision =

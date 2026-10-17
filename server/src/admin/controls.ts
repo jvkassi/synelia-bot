@@ -43,7 +43,6 @@ import type { Database } from "../db/client";
 import { agentProfiles, agents, auditEvents } from "../db/schema";
 import { createOtelEventExporter, type EventExporter } from "../telemetry/otel";
 import { scrubCommand } from "../telemetry/scrub";
-import type { WebBotAuth } from "../web-bot-auth";
 import {
   type Capability,
   type CapabilityRow,
@@ -59,6 +58,7 @@ import {
   type EnterpriseStore,
   type NetworkPolicyRow,
 } from "./settings-store";
+import type { WebBotAuth } from "../web-bot-auth";
 
 /** Action Recording keeps 90 days, as Grok Bot's does. */
 export const ACTION_RECORD_RETENTION_DAYS = 90;

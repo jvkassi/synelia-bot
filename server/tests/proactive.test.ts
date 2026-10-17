@@ -5,12 +5,10 @@ import {
   HttpAgent,
   type RunAgentInput,
 } from "@ag-ui/client";
-import type { GrantedTool } from "@openbot/toolkit/granted-tool";
-import { createTurnRunner, type RunnerLike } from "@openbot/toolkit/run-turn";
 import { Observable } from "rxjs";
 import { z } from "zod";
-import { serverTurnAdmission } from "../src/agents/turn-admission";
 import type { ApprovalRecord } from "../src/approvals/types";
+import type { GrantedTool } from "@openbot/toolkit/granted-tool";
 import { createProactiveEngine } from "../src/proactive/engine";
 import { createPrivateShareCheck } from "../src/proactive/private-share";
 import {
@@ -22,7 +20,9 @@ import {
 } from "../src/proactive/restriction";
 import type { ProactiveStore } from "../src/proactive/store";
 import type { ProactiveSetting } from "../src/proactive/types";
+import { createTurnRunner, type RunnerLike } from "@openbot/toolkit/run-turn";
 import type { WorkQueue } from "../src/work/queue";
+import { serverTurnAdmission } from "../src/agents/turn-admission";
 
 const catalogue = (effects: Record<string, "read" | "write">) => ({
   listServers: async () => [

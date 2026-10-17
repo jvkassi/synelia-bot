@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   AbstractAgent,
-  type BaseEvent,
   EventType,
+  type BaseEvent,
   type RunAgentInput,
   type Tool,
 } from "@ag-ui/client";

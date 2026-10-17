@@ -7,12 +7,6 @@ import {
   agents,
   deploymentPackages,
 } from "../db/schema";
-import { teamBotPublications } from "../db/schema/team-bots";
-import {
-  assignedCondition,
-  assignedToActor,
-  teamBotAccess,
-} from "../team-bots/access";
 import {
   authFromConfiguration,
   retireReplacedKey,
@@ -23,6 +17,12 @@ import {
   mintCallbackToken,
   sameToken,
 } from "./callback-token";
+import {
+  assignedCondition,
+  assignedToActor,
+  teamBotAccess,
+} from "../team-bots/access";
+import { teamBotPublications } from "../db/schema/team-bots";
 import { canManageAgent } from "./profile-policy";
 import type {
   AgentActor,
