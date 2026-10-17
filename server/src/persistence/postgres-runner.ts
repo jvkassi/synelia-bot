@@ -344,7 +344,7 @@ export function isAlreadyAnswered(
   historicRuns: readonly { events: readonly BaseEvent[] }[],
 ): boolean {
   const last = messages?.at(-1);
-  if (!last || last.role !== "user") return false;
+  if (last?.role !== "user") return false;
   return historicRuns.some((run) => {
     if (!run.events.some((event) => event.type === "RUN_FINISHED"))
       return false;

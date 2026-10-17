@@ -157,3 +157,19 @@ Not done in phase 0: LISTEN/NOTIFY (not used), SSE resume via Last-Event-ID, mul
 **Remédiation / règles**
 - Toute expérience de configuration (PILOT, modèles, flags) se fait uniquement sur une instance locale ou éphémère, jamais sur synelia-bot.labs.synelia.tech.
 - À décider : activer l'access log Traefik pour le routeur synelia (format JSON, sans en-têtes d'authentification). Cela touche la stack Traefik partagée, donc pas fait ici.
+
+## Passe 5
+
+**Commande de référence des tests** (une seule, depuis chaque paquet) : `cd app && bun test`, `cd server && bun test`, `cd toolkit && bun test`.
+- Résultats : app 42 échecs, mêmes noms qu'en amont (53a656b) ; server 99 ; toolkit 0.
+- Les drapeaux `pilot` du front sont coupés sous `bun test` (NODE_ENV=test) et réactivés par `SYNELIA_PILOT=1`. Ils sont toujours actifs dans un build.
+
+| Point | Changement |
+|---|---|
+| 2a | `useStoredRunError` expose toujours `activeRunId`. Erreur stockée seulement si la personne a parlé en dernier. « Réponse interrompue » uniquement sur `lostRunId` (verrou expiré sans `synelia_thread_run`). Le champ `interrupted` est supprimé côté serveur. `serverRunStep` gère l'indicateur, le bouton Stop (`/agent/:id/stop/:thread` avec `runId`) puis un seul rejeu en fin de run |
+| idempotence | 409 / « already running » traité comme « déjà en cours » : le statut est rafraîchi, pas d'erreur. Un renvoi d'un message déjà traité par un run terminé renvoie un run vide (`isAlreadyAnswered`) |
+| 404 | `GET /api/components/for-agent/*` : 200 `{components:[]}` côté serveur, requête désactivée en pilote côté front. Le gate journalise `pilot_blocked <METHODE> <préfixe>`, que `deploy.sh` affiche après le garde |
+| deploy.sh | `active_locks` fermé par défaut : en cas d'erreur psql, ERR, attente complète de 120 s puis avertissement |
+| accueil | message et « Le modèle réfléchit… » affichés dès l'envoi. En pilote avec un seul Bot, pas d'appel à `route` |
+| bannière | `/api/channels/:id` est relu toutes les 5 s tant qu'il est en erreur, donc la bannière disparaît dès que ça revient. Échec final : `ui.conversation.connectionLost` |
+| panneau | conservé (traduit, 5eeeb64). Seul le bouton « Ouvrir {nom} » est masqué en pilote |

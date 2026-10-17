@@ -4,8 +4,8 @@ import {
   afterAll,
   afterEach,
   beforeAll,
-  expect,
   test as bunTest,
+  expect,
 } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -25,8 +25,8 @@ import {
   within,
 } from "@testing-library/react";
 import { type AgentProfile, agentKeys } from "@/lib/agents/queries";
-import { Route as BotRoute } from "@/routes/_authed/_app/bot";
 import { pilot, ui } from "@/lib/i18n";
+import { Route as BotRoute } from "@/routes/_authed/_app/bot";
 
 /**
  * Synelia pilot: `/bot` is hidden (`pilot.hideBotPage`, server 302 to `/`), so this upstream suite
@@ -335,7 +335,7 @@ test("/bot opens a live Computer sidebar with ownership controls and preserves t
     "/bot?agent=general-assistant",
   );
   const toggle = await view.findByRole("button", {
-    name: ui.conversation.open("Computer"),
+    name: "Open Computer",
   });
   await waitFor(() => expect(toggle.hasAttribute("disabled")).toBe(false));
   // Taking control is offered inside the Computer, never beside the header's icon.
@@ -367,10 +367,8 @@ test("/bot opens a live Computer sidebar with ownership controls and preserves t
   expect(view.getByTestId("copilot-chat")).toBe(chat);
   expect(chat.dataset.agentId).toBe("general-assistant");
   expect(view.getByDisplayValue("Keep this conversation")).toBeTruthy();
-  expect(
-    view.getByRole("button", { name: ui.conversation.open("Computer") }),
-  ).toBeTruthy();
-  fireEvent.click(view.getByRole("button", { name: "New chat" }));
+  expect(view.getByRole("button", { name: "Open Computer" })).toBeTruthy();
+  fireEvent.click(view.getByRole("button", { name: ui.conversation.newChat }));
   await waitFor(() =>
     expect(view.getByTestId("copilot-chat").dataset.threadId).not.toBe(
       chat.dataset.threadId,
