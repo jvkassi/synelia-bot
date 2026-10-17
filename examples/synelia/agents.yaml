@@ -9,15 +9,7 @@ agents:
     type: ${PICKED_HARNESS_KIND:-remote-ag-ui}
     endpoint: ${PICKED_HARNESS_URL:-}
     remote_agent_id: openbot
-  # OpenBot's built-in Bot (CopilotKit runtime, OpenAI-compatible endpoint = 9router). Holds the
-  # coworker and skill authoring tools.
+  # OpenBot's built-in Bot, retired from the pilot (one Bot in the roster, so the home never asks
+  # POST /api/route). `retired` tombstones the row an earlier deploy seeded; history stays readable.
   - id: general-assistant
-    name: Assistant général
-    title: Everyday Work
-    role_description: Help with everyday work using clear, concise, and accurate answers.
-    avatar_seed: general-assistant
-    type: built-in
-    system_prompt: You are a helpful general assistant. Give clear, concise, and accurate answers.
-    skills:
-      - bot-creator
-      - skill-creator
+    retired: true

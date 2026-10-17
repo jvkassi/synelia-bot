@@ -130,3 +130,17 @@ endpoint: https://agents.example.test/ag-ui
     expect(result.channels[0]?.permittedAgents).toEqual([]);
   });
 });
+
+describe("Synelia fork: a retired agent", () => {
+  test("is omitted (tombstoned by the sync) and left out of its channels", () => {
+    const result = validate({
+      agents:
+        "agents: [{ id: keep, name: K, title: T, role_description: R., type: built-in, system_prompt: S }, { id: old, retired: true }]",
+      channels:
+        "channels: [{ id: c, name: C, description: D, permitted_agents: [keep, old], allowed_groups: [] }]",
+    });
+    expect(result.agents.map((each) => each.id)).toEqual(["keep"]);
+    expect(result.omittedAgentIds).toEqual(["old"]);
+    expect(result.channels[0]?.permittedAgents).toEqual(["keep"]);
+  });
+});

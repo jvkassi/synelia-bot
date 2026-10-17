@@ -362,6 +362,15 @@ function parseAgents(
 ): TenantAgent[] {
   return values.flatMap((value) => {
     const agent = asRecord(value, "agent");
+    /*
+     * Synelia fork: `retired: true` takes a Bot an earlier package seeded out of the roster. It goes
+     * the way a blank endpoint does: omitted, so the sync tombstones its profile (history stays
+     * readable) and channels naming it drop it. Removing the entry instead would leave the row live.
+     */
+    if (agent.retired === true) {
+      omittedAgentIds.add(requiredString(agent.id, "agent.id"));
+      return [];
+    }
     const type: TenantAgent["type"] | undefined =
       agent.type === "built-in"
         ? "built_in"

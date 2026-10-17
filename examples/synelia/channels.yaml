@@ -4,8 +4,9 @@ channels:
     description: Discuter avec l'assistant Synelia (Mastra).
     permitted_agents: [synelia-assistant]
     allowed_groups: [all]
+  # Kept so the sync clears its link to the retired general-assistant (a dropped entry keeps it).
   - id: general-assistant
-    name: General Assistant
-    description: Ask for help with everyday work.
+    name: Assistant général (retiré)
+    description: Ancien assistant intégré, retiré du pilote.
     permitted_agents: [general-assistant]
     allowed_groups: [all]

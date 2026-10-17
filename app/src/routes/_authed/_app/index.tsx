@@ -15,7 +15,6 @@ import {
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { defaultAgentProfile } from "@/lib/agents/default-agent";
-import { pilotRecipient } from "@/lib/agents/pilot-recipient";
 import { agentListQueryOptions, isSharedWithYou } from "@/lib/agents/queries";
 import {
   CoworkerRoutingRefusedError,
@@ -93,14 +92,12 @@ function RouteComponent() {
                   return;
                 }
                 let agentId: string | undefined;
-                // Synelia fork: in the pilot the recipient is fixed (synelia-assistant); asking the
-                // router cost one LLM call (~3.3 s) before the channel existed. See pilot-recipient.ts.
-                agentId = pilotRecipient(
-                  agents,
-                  pilot.hideBotsAndSkillsNav,
-                  fallback?.id,
-                );
-                if (!pilot.hideBotsAndSkillsNav)
+                // Synelia fork: with a single Bot to choose from there is nothing to route, and
+                // asking the router cost ~3.5 s of blank screen before the conversation opened.
+                const candidates = agents?.length ?? 0;
+                if (pilot.hideBotsAndSkillsNav && candidates <= 1 && fallback)
+                  agentId = fallback.id;
+                else
                   try {
                     agentId = (await routeMessage(draft.text)).agentId;
                   } catch (caught) {
