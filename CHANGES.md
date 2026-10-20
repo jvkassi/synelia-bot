@@ -517,3 +517,14 @@ Deux commits au-dessus de `288a605c`, un par point.
 - **Serveur sans base** (`env -u SYNELIA_TEST_DATABASE_URL -u TEST_DATABASE_URL -u DATABASE_URL bun test`, logs `review/pass10b-{base,head}-server.log`) : `264ca566` = 3445 pass / 99 fail ; `HEAD` = 3522 pass / 99 fail ; ensemble en échec **identique nom par nom** (5 noms uniques, 0 seulement-HEAD, 0 seulement-BASE).
 - **App** (`review/pass10b-head-app.log`) : 1458 pass / 42 fail ; les 42 noms en échec sont **identiques** à ceux du run de référence pass10 ; tous les nouveaux tests passent.
 
+
+## Passe 10c — preuve serveur : coupure avant `RUN_STARTED` alors que le POST est accepté (tests seuls, aucun code de production modifié)
+
+- **Où le run est enregistré** : la ligne du fil est insérée à l'acceptation du POST (`server/src/persistence/postgres-runner.ts:208-216`, `ownerOf` puis `getOrCreateThread`) ; `liveRunId` devient vrai dès `super.run()` (`postgres-runner.ts:306`, qui pose `isRunning`/`currentRunId` en mémoire, upstream `in-memory.mjs:311-312`), avant que l'agent n'émette quoi que ce soit (donc avant `RUN_STARTED` et avant l'appel modèle). `GET /api/threads/:id` renvoie `activeRunId = liveRunId ?? lockedRunId` (`app.ts`), et le client se rattache quand `activeRunId` est posé (passe 10b).
+- **Tests** (`server/tests/synelia-inflight-status.test.ts`, agent stub bloqué avant tout événement) :
+  - sans base, dans le `bun test` par défaut : « pass10c no DB: liveRunId is set while the agent is blocked before RUN_STARTED, cleared after » ;
+  - avec base (`review/pass10c-db-targeted.log`, 3 pass / 0 fail) : « brand-new thread, first run in flight: known:true + activeRunId, lastUserMessageId null; after: activeRunId null, lastUserMessageId = the message » (un autre utilisateur obtient `known:false` et rien d'autre) ; « thread with a prior run: during the new run lastUserMessageId is the OLD message (≠ new) and activeRunId is set; after, it is the new one ». `statusOf` y reproduit pas à pas le corps de la route locale.
+- **Limites connues, reportées en pass11 / P1** :
+  - `liveRunId` est **par processus** (mémoire du runner) : valable uniquement avec **une seule instance** serveur. En multi-instance, seul `lockedRunId` (verrou) répondrait.
+  - **Fenêtre avant `super.run()`** (`ownerOf` / `getOrCreateThread` / `hydrate` / `#models`, jusqu'à ~5 s) : le POST est accepté mais `activeRunId` est encore nul et `lastUserMessageId` ne contient pas le message ⇒ une coupure dans cette fenêtre peut donner un faux « non envoyé ». Correctif envisagé (enregistrer le run dès l'acceptation) non inclus : périmètre gelé ; brouillon conservé dans `review/pass10c-reverted-status-body.patch`.
+- Gates : `tsc` serveur propre, `biome` propre sur le fichier ajouté ; suite serveur sans base 3523 pass / 99 fail, ensemble en échec identique nom par nom à `264ca566` (`review/pass10c-nodb-server.log`).
