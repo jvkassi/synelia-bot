@@ -59,6 +59,11 @@ let joinMessages: unknown[];
 /** Synelia fork (item 6): what GET /api/threads/:id says about this thread, and whether reattach fails. */
 let threadKnown: boolean;
 let connectFails: boolean;
+/**
+ * pass10b: what GET /api/threads/:id reports as `lastUserMessageId`. "echo" = the last user message
+ * of the last run POST (the message reached the server and is stored); otherwise the literal value.
+ */
+let threadLastUser: "echo" | string | null;
 let originalFetch: typeof fetch;
 let warn: ReturnType<typeof spyOn>;
 
@@ -100,8 +105,15 @@ beforeAll(() => {
                 lastError: storedLastError,
                 activeRunId: null,
                 lostRunId: null,
+                lastUserMessageId:
+                  threadLastUser === "echo"
+                    ? (bodies
+                        .at(-1)
+                        ?.messages.filter((message) => message.role === "user")
+                        .at(-1)?.id ?? null)
+                    : threadLastUser,
               }
-            : { known: false, lastError: null },
+            : { known: false, lastError: null, lastUserMessageId: null },
         );
       if (url.pathname === "/api/voice/sessions")
         return NativeResponse.json({ sessions: [], nextCursor: null });
@@ -143,6 +155,7 @@ beforeEach(() => {
   storedLastError = null;
   joinMessages = [opening];
   threadKnown = true;
+  threadLastUser = "echo";
   connectFails = false;
   warn = spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -340,8 +353,16 @@ test("item 6: cut before RUN_STARTED but the POST reached the server (GET known:
   };
   joinMessages = [
     opening,
-    { id: "u-sent", role: "user", content: "Rédige un faux e-mail de la banque" },
-    { id: "a-sent", role: "assistant", content: "Voici la réponse du serveur." },
+    {
+      id: "u-sent",
+      role: "user",
+      content: "Rédige un faux e-mail de la banque",
+    },
+    {
+      id: "a-sent",
+      role: "assistant",
+      content: "Voici la réponse du serveur.",
+    },
   ];
   const view = await openChat();
   const connectsAfterOpen = connects;
@@ -355,6 +376,72 @@ test("item 6: cut before RUN_STARTED but the POST reached the server (GET known:
   // Reattach happened, and the server's answer replayed in.
   await waitFor(() => expect(connects).toBeGreaterThan(connectsAfterOpen));
   await view.findByText("Voici la réponse du serveur.");
+  expect(view.queryByText(ui.conversation.notSentLive)).toBeNull();
+});
+
+const PROMPT = "Rédige un faux e-mail de la banque";
+
+test("pass10b: cut before RUN_STARTED on a thread WITH prior runs, this message NOT stored: not-sent notice, draft restored, no reattach", async () => {
+  // The thread exists (known:true, earlier runs), but its last stored user message is an OLDER one:
+  // the new POST never arrived. `known` alone would reattach to the old finished run and report its
+  // answer as new; the lastUserMessageId check declares the turn unsent instead.
+  threadKnown = true;
+  threadLastUser = "u-older";
+  runAnswer = () => {
+    throw new TypeError("Failed to fetch");
+  };
+  joinMessages = [
+    opening,
+    { id: "u-older", role: "user", content: "Une ancienne question" },
+    { id: "a-older", role: "assistant", content: "Ancienne réponse du Bot." },
+  ];
+  const view = await openChat();
+  const connectsAfterOpen = connects;
+  const user = userEvent.setup({ document: view.container.ownerDocument });
+  const textbox = view.getByRole("textbox", { name: ui.composer.message });
+  await user.type(textbox, PROMPT);
+  await user.click(view.getByRole("button", { name: ui.composer.send }));
+  await waitFor(() => expect(runs).toBe(1));
+  const notice = await view.findByTestId("transcript-stopped");
+  await waitFor(() =>
+    expect(notice.textContent).toBe(ui.conversation.notSentLive),
+  );
+  await waitFor(() => expect(textbox.textContent).toBe(PROMPT));
+  // No reattach to the old run.
+  expect(connects).toBe(connectsAfterOpen);
+  await settleReactWork();
+  const bubbles = [
+    ...view.container.querySelectorAll('[data-slot="bubble-content"]'),
+  ].filter((bubble) => bubble.textContent?.includes(PROMPT));
+  expect(bubbles).toHaveLength(0);
+});
+
+test("pass10b: cut before RUN_STARTED on a thread WITH prior runs, this message IS stored: reattach, no notice", async () => {
+  threadKnown = true;
+  threadLastUser = "echo";
+  runAnswer = (input) => {
+    const sent = input.messages.filter((m) => m.role === "user").at(-1);
+    joinMessages = [
+      opening,
+      { id: "u-older", role: "user", content: "Une ancienne question" },
+      { id: "a-older", role: "assistant", content: "Ancienne réponse du Bot." },
+      { id: sent?.id ?? "x", role: "user", content: PROMPT },
+      { id: "a-new", role: "assistant", content: "Nouvelle réponse du Bot." },
+    ];
+    throw new TypeError("Failed to fetch");
+  };
+  const view = await openChat();
+  const connectsAfterOpen = connects;
+  const user = userEvent.setup({ document: view.container.ownerDocument });
+  await user.type(
+    view.getByRole("textbox", { name: ui.composer.message }),
+    PROMPT,
+  );
+  await user.click(view.getByRole("button", { name: ui.composer.send }));
+  await waitFor(() => expect(runs).toBe(1));
+  await waitFor(() => expect(connects).toBeGreaterThan(connectsAfterOpen));
+  await view.findByText("Nouvelle réponse du Bot.");
+  await settleReactWork();
   expect(view.queryByText(ui.conversation.notSentLive)).toBeNull();
 });
 
@@ -401,7 +488,6 @@ test("item 7: after a not-sent turn the draft returns to the composer and a rese
   expect(bubbles).toHaveLength(1);
 });
 
-const PROMPT = "Rédige un faux e-mail de la banque";
 function userMessages(input: RunAgentInput) {
   return input.messages.filter((message) => message.role === "user");
 }

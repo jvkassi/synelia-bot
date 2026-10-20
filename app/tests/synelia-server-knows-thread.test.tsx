@@ -55,3 +55,55 @@ test("no thread id -> false (nothing can be on the server)", async () => {
   expect(await serverKnowsThread(null)).toBe(false);
   expect(called).toBe(false);
 });
+
+/*
+ * pass10b (Frontend Expert blocker 1): `known` only says the thread exists. With the id of the
+ * message this turn added, the server must hold THAT message as its last stored user message (or have
+ * a run in flight) before the client reattaches.
+ */
+test("pass10b: known thread with prior runs, this message absent (lastUserMessageId is an older one) -> false", async () => {
+  stubFetch(() =>
+    Response.json({
+      known: true,
+      lastError: null,
+      activeRunId: null,
+      lastUserMessageId: "u-older",
+    }),
+  );
+  expect(await serverKnowsThread("t1", "u-new")).toBe(false);
+});
+
+test("pass10b: known thread, this message stored as the last user message -> true", async () => {
+  stubFetch(() =>
+    Response.json({
+      known: true,
+      lastError: null,
+      activeRunId: null,
+      lastUserMessageId: "u-new",
+    }),
+  );
+  expect(await serverKnowsThread("t1", "u-new")).toBe(true);
+});
+
+test("pass10b: known thread, no stored user message (null) -> false", async () => {
+  stubFetch(() =>
+    Response.json({ known: true, activeRunId: null, lastUserMessageId: null }),
+  );
+  expect(await serverKnowsThread("t1", "u-new")).toBe(false);
+});
+
+test("pass10b: a run in flight (activeRunId) -> true even before its messages are stored", async () => {
+  stubFetch(() =>
+    Response.json({
+      known: true,
+      activeRunId: "r-live",
+      lastUserMessageId: "u-older",
+    }),
+  );
+  expect(await serverKnowsThread("t1", "u-new")).toBe(true);
+});
+
+test("pass10b: an older server without lastUserMessageId -> true (cannot tell)", async () => {
+  stubFetch(() => Response.json({ known: true, activeRunId: null }));
+  expect(await serverKnowsThread("t1", "u-new")).toBe(true);
+});

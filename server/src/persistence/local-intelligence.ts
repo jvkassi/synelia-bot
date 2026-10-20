@@ -452,6 +452,26 @@ export class LocalIntelligence {
     };
   }
 
+  /**
+   * Synelia fork (pass10b, blocker 1): the id of the LAST stored user message of the thread, or null
+   * when none is stored. Same owner rule as getThreadMessages (somebody else's thread = 404). The
+   * thread status route returns it so a browser whose stream was cut before RUN_STARTED can tell
+   * "this POST's message is stored" (reattach) from "the thread exists but this message never
+   * arrived" (not sent) — `known` alone only says the thread exists.
+   */
+  async lastUserMessageId(params: {
+    threadId: string;
+    userId: string;
+  }): Promise<string | null> {
+    const { messages } = await this.getThreadMessages(params);
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const message = messages[index] as { id?: unknown; role?: unknown };
+      if (message.role === "user")
+        return typeof message.id === "string" ? message.id : null;
+    }
+    return null;
+  }
+
   async getThreadMessages(params: { threadId: string; userId: string }) {
     await this.ready();
     const row = await this.#row(params.threadId);

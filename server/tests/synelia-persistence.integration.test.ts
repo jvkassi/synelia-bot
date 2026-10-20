@@ -851,3 +851,61 @@ db(
     });
   },
 );
+
+db("lastUserMessageId (pass10b: cut before RUN_STARTED)", () => {
+  const store = url ? open() : (undefined as unknown as LocalIntelligence);
+  const saveOk = (
+    threadId: string,
+    messages: { id: string; role: string; content: string }[],
+    userId = "u1",
+  ) =>
+    store.saveRun({
+      runId: id(),
+      threadId,
+      agentId: "a",
+      parentRunId: null,
+      events: [
+        { type: "RUN_STARTED", threadId, runId: "x" },
+        { type: "RUN_FINISHED", threadId, runId: "x" },
+      ],
+      createdAt: Date.now(),
+      messages,
+      status: "finished",
+      provider: "router9",
+      model: "gemini/flash",
+      userId,
+    } as never);
+
+  test("owner: returns the id of the last stored user message, not an assistant one", async () => {
+    const threadId = id();
+    const first = id();
+    const second = id();
+    await saveOk(threadId, [{ id: first, role: "user", content: "un" }]);
+    await saveOk(threadId, [
+      { id: first, role: "user", content: "un" },
+      { id: id(), role: "assistant", content: "réponse" },
+      { id: second, role: "user", content: "deux" },
+      { id: id(), role: "assistant", content: "réponse 2" },
+    ]);
+    expect(await store.lastUserMessageId({ threadId, userId: "u1" })).toBe(
+      second,
+    );
+  });
+
+  test("another user: 404, same owner rule as getThreadMessages", async () => {
+    const threadId = id();
+    await saveOk(threadId, [{ id: id(), role: "user", content: "secret" }]);
+    expect(
+      await store
+        .lastUserMessageId({ threadId, userId: "someone-else" })
+        .then(() => "ok")
+        .catch((error) => (error as { status?: number }).status),
+    ).toBe(404);
+  });
+
+  test("empty / never-run thread: null", async () => {
+    expect(
+      await store.lastUserMessageId({ threadId: id(), userId: "u1" }),
+    ).toBeNull();
+  });
+});

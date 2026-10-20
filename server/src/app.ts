@@ -2060,6 +2060,9 @@ export function createApp(
     try {
       const lastError = await store.lastRunError(params);
       const { lockedRunId, lostRunId } = await store.threadRunState(params);
+      // Synelia fork (pass10b): the last STORED user message id, so a cut before RUN_STARTED can be
+      // told apart from "the thread merely exists" (see channel-chat.tsx, serverThreadState).
+      const lastUserMessageId = await store.lastUserMessageId(params);
       // A live run (this process's runner) or an unexpired lock means a turn is still being
       // written; `lostRunId` names a run whose lock expired without the run ever being stored.
       const activeRunId = liveRunId(params.threadId) ?? lockedRunId;
@@ -2068,10 +2071,15 @@ export function createApp(
         lastError,
         activeRunId,
         lostRunId: activeRunId ? null : lostRunId,
+        lastUserMessageId,
       });
     } catch (error) {
       if ((error as { status?: number }).status === 404)
-        return context.json({ known: false, lastError: null });
+        return context.json({
+          known: false,
+          lastError: null,
+          lastUserMessageId: null,
+        });
       return context.json({ error: "Could not check thread status." }, 502);
     }
   });

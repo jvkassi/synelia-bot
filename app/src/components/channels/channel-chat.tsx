@@ -187,14 +187,23 @@ export function channelHistoryNotice({
 }
 
 /**
- * Synelia fork (item 6): does the server have a run for this thread? Used after a cut stream, before
- * the browser decides a turn was "not sent". A single GET /api/threads/:id: `known === false` is the
- * server saying it has no such thread/run (the POST never arrived) — the one case that means not
- * sent. Any other answer (known, or the lookup itself failing) is treated as "a run may exist", so a
- * genuinely sent turn is never wrongly discarded; the caller reattaches/replays instead.
+ * Synelia fork (item 6, pass10b): did THIS turn reach the server? Used after a stream cut BEFORE
+ * RUN_STARTED, before the browser decides the turn was "not sent". A single GET /api/threads/:id.
+ *
+ * `known` alone only says the THREAD exists, not that this POST produced a run: on a thread with
+ * earlier runs it is true even when the new message never arrived, and the client would reattach to
+ * the old finished run. So when the caller passes the id of the message it just added, the answer is
+ * "reached" only if the server's `lastUserMessageId` (last STORED user message, owner-checked) is that
+ * id, or a run is currently active (`activeRunId`: a run in flight has not stored its messages yet,
+ * and a second run would have been refused, so the active run is this one).
+ *
+ * `known === false` → not sent. A lookup that fails or a non-OK status → true ("cannot tell", never
+ * discard a possibly sent turn). An older server that does not return `lastUserMessageId` at all →
+ * true (the previous behaviour). `addedUserId` null (a « Réessayer » of a stored message) → `known`.
  */
 export async function serverKnowsThread(
   threadId: string | null | undefined,
+  addedUserId: string | null = null,
 ): Promise<boolean> {
   if (!threadId) return false;
   try {
@@ -203,8 +212,16 @@ export async function serverKnowsThread(
       { credentials: "include" },
     );
     if (!response.ok) return true;
-    const body = (await response.json()) as { known?: boolean };
-    return body.known !== false;
+    const body = (await response.json()) as {
+      known?: boolean;
+      activeRunId?: string | null;
+      lastUserMessageId?: string | null;
+    };
+    if (body.known === false) return false;
+    if (addedUserId === null) return true;
+    if (typeof body.activeRunId === "string" && body.activeRunId) return true;
+    if (!("lastUserMessageId" in body)) return true;
+    return body.lastUserMessageId === addedUserId;
   } catch {
     return true;
   }
@@ -1001,8 +1018,14 @@ export function ChannelChat({
          * cached so the reattach-failed path below reuses it rather than asking twice.
          */
         let knownCache: boolean | undefined;
+        // pass10b: with no RUN_STARTED, `known` is not enough (the thread may predate this turn), so
+        // the server must hold THIS message (`addedUserId`). After a RUN_STARTED the run is proven
+        // and only `known` is asked, as before.
         const serverKnows = async () =>
-          (knownCache ??= await serverKnowsThread(channel.threadId));
+          (knownCache ??= await serverKnowsThread(
+            channel.threadId,
+            runStartedHere.current ? null : addedUserId,
+          ));
         if (!runStartedHere.current && !(await serverKnows())) {
           notSent();
         } else {
