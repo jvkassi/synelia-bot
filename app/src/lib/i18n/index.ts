@@ -200,12 +200,6 @@ const fr = {
      */
     notSentLive:
       "Votre message n'a pas été envoyé, la connexion a été perdue. Il est revenu dans la zone de saisie : renvoyez-le.",
-    /** Reopened: the last message never reached the server and its text is back in the composer. */
-    notSentReopenRestored:
-      "Votre dernier message n'a pas été envoyé. Il est revenu dans la zone de saisie : renvoyez-le.",
-    /** Reopened: the last message never reached the server and could not be restored to the composer. */
-    notSentReopenPlain:
-      "Votre dernier message n'a pas été envoyé. Renvoyez-le.",
     fallbackTitle: "Conversation",
     askAnything: "Posez votre question",
     chooseBot: "Choisir un assistant…",

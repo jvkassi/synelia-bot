@@ -14,7 +14,6 @@ import {
   readThreadMessages,
   type StoredThread,
 } from "../src/lib/copilot/thread-messages";
-import { ui } from "../src/lib/i18n";
 
 function HistoryNoticeProbe({
   lastMessageAt,
@@ -161,106 +160,5 @@ describe("channel history notice", () => {
         historyReadFailed: true,
       }),
     ).toContain("temporarily unavailable");
-  });
-
-  test("reopen first-message-lost: roster line is the person's, nothing loaded — not sent (plain)", () => {
-    expect(
-      channelHistoryNotice({
-        restoring: false,
-        messageCount: 0,
-        lastMessageAt: "2026-09-08T12:00:00.000Z",
-        historyAvailability: "ready",
-        unreadable: 0,
-        lastMessageByUser: true,
-        lastLoadedIsUser: false,
-      }),
-    ).toBe(ui.conversation.notSentReopenPlain);
-  });
-
-  test("reopen thread-with-earlier-runs: roster line is the person's, history ends on a Bot answer — not sent", () => {
-    // There ARE stored messages (earlier runs), but the person's newest message is newer than all of
-    // them (it reached the roster, no run persisted it), so the loaded transcript ends on an answer.
-    expect(
-      channelHistoryNotice({
-        restoring: false,
-        messageCount: 4,
-        lastMessageAt: "2026-09-08T12:00:00.000Z",
-        historyAvailability: "ready",
-        unreadable: 0,
-        lastMessageByUser: true,
-        lastLoadedIsUser: false,
-      }),
-    ).toBe(ui.conversation.notSentReopenPlain);
-  });
-
-  test("restorable variant is used when the message is restorable", () => {
-    expect(
-      channelHistoryNotice({
-        restoring: false,
-        messageCount: 0,
-        lastMessageAt: "2026-09-08T12:00:00.000Z",
-        historyAvailability: "ready",
-        unreadable: 0,
-        lastMessageByUser: true,
-        lastLoadedIsUser: false,
-        lastMessageRestorable: true,
-      }),
-    ).toBe(ui.conversation.notSentReopenRestored);
-  });
-
-  test("sent and still in the transcript (lastLoadedIsUser): no not-sent notice", () => {
-    expect(
-      channelHistoryNotice({
-        restoring: false,
-        messageCount: 1,
-        lastMessageAt: "2026-09-08T12:00:00.000Z",
-        historyAvailability: "ready",
-        unreadable: 0,
-        lastMessageByUser: true,
-        lastLoadedIsUser: true,
-      }),
-    ).toBeNull();
-  });
-
-  test("the roster's last line is a Bot answer (lastMessageByUser false): no not-sent notice", () => {
-    expect(
-      channelHistoryNotice({
-        restoring: false,
-        messageCount: 2,
-        lastMessageAt: "2026-09-08T12:00:00.000Z",
-        historyAvailability: "ready",
-        unreadable: 0,
-        lastMessageByUser: false,
-        lastLoadedIsUser: false,
-      }),
-    ).toBeNull();
-  });
-
-  test("history unreachable wins over not-sent: we cannot claim it was not sent when we cannot read", () => {
-    expect(
-      channelHistoryNotice({
-        restoring: false,
-        messageCount: 0,
-        lastMessageAt: "2026-09-08T12:00:00.000Z",
-        historyAvailability: "unavailable",
-        unreadable: 0,
-        lastMessageByUser: true,
-        lastLoadedIsUser: false,
-      }),
-    ).toContain("temporarily unavailable");
-  });
-
-  test("never used (lastMessageAt null): no not-sent notice", () => {
-    expect(
-      channelHistoryNotice({
-        restoring: false,
-        messageCount: 0,
-        lastMessageAt: null,
-        historyAvailability: "ready",
-        unreadable: 0,
-        lastMessageByUser: true,
-        lastLoadedIsUser: false,
-      }),
-    ).toBeNull();
   });
 });

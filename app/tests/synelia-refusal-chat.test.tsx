@@ -64,6 +64,8 @@ let connectFails: boolean;
  * of the last run POST (the message reached the server and is stored); otherwise the literal value.
  */
 let threadLastUser: "echo" | string | null;
+/** pass10b: when set, GET /api/copilotkit/threads/:id/messages answers with these (history "ready"). */
+let storedHistory: unknown[] | null;
 let originalFetch: typeof fetch;
 let warn: ReturnType<typeof spyOn>;
 
@@ -115,6 +117,11 @@ beforeAll(() => {
               }
             : { known: false, lastError: null, lastUserMessageId: null },
         );
+      if (
+        storedHistory !== null &&
+        url.pathname === `/api/copilotkit/threads/${channel.threadId}/messages`
+      )
+        return NativeResponse.json({ messages: storedHistory });
       if (url.pathname === "/api/voice/sessions")
         return NativeResponse.json({ sessions: [], nextCursor: null });
       if (url.pathname.endsWith("/info"))
@@ -156,6 +163,7 @@ beforeEach(() => {
   joinMessages = [opening];
   threadKnown = true;
   threadLastUser = "echo";
+  storedHistory = null;
   connectFails = false;
   warn = spyOn(console, "warn").mockImplementation(() => {});
 });
@@ -170,12 +178,12 @@ afterAll(async () => {
   GlobalRegistrator.unregister();
 });
 
-async function openChat() {
+async function openChat(rosterLastAgentId: string | null = "refusal-bot") {
   const summary: ChannelSummary = {
     ...channel,
     summary: null,
     lastMessage: null,
-    lastMessageAgentId: "refusal-bot",
+    lastMessageAgentId: rosterLastAgentId,
     lastMessageAt: channel.lastMessageAt,
     createdAt: "2026-10-17T00:00:00.000Z",
     pinned: false,
@@ -443,6 +451,30 @@ test("pass10b: cut before RUN_STARTED on a thread WITH prior runs, this message 
   await view.findByText("Nouvelle réponse du Bot.");
   await settleReactWork();
   expect(view.queryByText(ui.conversation.notSentLive)).toBeNull();
+});
+
+test("pass10b: reopening a conversation whose last message is the person's own shows NO not-sent notice (reopen notice deferred to P1)", async () => {
+  // The roster's last line is the person's (lastMessageAgentId null) and the stored transcript ends on
+  // a user message: exactly what a tab closed mid-run or a tools-only answer leaves. pass10 shows
+  // nothing here; the reopen notice returns in P1 once the server records the Bot reply itself.
+  joinMessages = [
+    opening,
+    { id: "u-last", role: "user", content: "Ma dernière question" },
+    // The server finished and stored the answer, but the browser never reported it to the roster
+    // (tab closed before RUN_FINISHED): the case 4dae74ed wrongly flagged « non envoyé ».
+    {
+      id: "a-last",
+      role: "assistant",
+      content: "Réponse stockée par le serveur.",
+    },
+  ];
+  storedHistory = joinMessages;
+  const view = await openChat(null);
+  await view.findByText("Réponse stockée par le serveur.");
+  await settleReactWork();
+  expect(view.queryByText(ui.conversation.notSentLive)).toBeNull();
+  expect(view.container.textContent ?? "").not.toContain("pas été envoyé");
+  expect(view.queryByTestId("transcript-stopped")).toBeNull();
 });
 
 test("item 7: after a not-sent turn the draft returns to the composer and a resend leaves exactly ONE user bubble", async () => {
